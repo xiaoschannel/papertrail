@@ -1,0 +1,11 @@
+-r requirements.txt
+--extra-index-url https://download.pytorch.org/whl/cu128
+torch
+torchvision
+torchaudio
+transformers==4.46.3
+einops
+addict
+easydict
+hf_xet
+psutil
