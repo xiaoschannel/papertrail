@@ -18,6 +18,12 @@ pg = st.navigation({
         st.Page("pages/curate/dedupe.py", title="Dedupe", icon=":material/compare:"),
         st.Page("pages/curate/normalize.py", title="Normalize", icon=":material/edit:"),
     ],
+    "Visualize": [
+        st.Page("pages/visualize/dashboard.py", title="Dashboard", icon=":material/bar_chart:", url_path="dashboard"),
+        st.Page("pages/visualize/merchant.py", title="Merchant Profile", icon=":material/store:", url_path="merchant"),
+        st.Page("pages/visualize/receipt.py", title="Receipt Detail", icon=":material/receipt_long:", url_path="receipt"),
+        st.Page("pages/visualize/timecapsule.py", title="Time Capsule", icon=":material/history:", url_path="timecapsule"),
+    ],
     "Dev": [
         st.Page("pages/dev/ocr_experiment.py", title="OCR Experiment", icon=":material/science:"),
         st.Page("pages/dev/sanity_check.py", title="Sanity Check", icon=":material/vital_signs:"),

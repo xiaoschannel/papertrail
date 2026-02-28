@@ -9,3 +9,4 @@ humanize
 openai
 rapidfuzz
 scikit-learn
+plotly
