@@ -2,12 +2,17 @@ from pathlib import Path
 
 import numpy as np
 from ollama import embed
+from rapidfuzz.distance import Levenshtein
 from sklearn.metrics.pairwise import cosine_distances
 
 from data import load_embeddings_cache, save_embeddings_cache
 
 EMBED_MODEL = "nomic-embed-text"
 DEFAULT_THRESHOLD = 0.05
+
+
+def levenshtein_similarity(a: str, b: str) -> float:
+    return Levenshtein.normalized_similarity(a, b)
 
 def ensure_embeddings(
     output_path: Path,

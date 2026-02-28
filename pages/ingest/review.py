@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import streamlit as st
-from rapidfuzz.distance import Levenshtein
+from name_similarity import levenshtein_similarity
 
 from data import (
     load_decisions,
@@ -35,7 +35,7 @@ def get_smart_match_suggestions(
         return [], None
     scored: list[tuple[float, str]] = []
     for extracted, confirmed in name_pairs.values():
-        sim = Levenshtein.normalized_similarity(query, extracted)
+        sim = levenshtein_similarity(query, extracted)
         if sim >= SMART_MATCH_THRESHOLD:
             scored.append((sim, confirmed))
     scored.sort(key=lambda x: -x[0])

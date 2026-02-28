@@ -91,6 +91,21 @@ def save_name_normalizations(output_path: Path, normalizations: dict[str, str]):
     )
 
 
+def load_distinct_pairs(output_path: Path) -> set[frozenset[str]]:
+    f = output_path / "distinct_pairs.json"
+    if not f.exists():
+        return set()
+    return {frozenset(pair) for pair in json.loads(f.read_text(encoding="utf-8"))}
+
+
+def save_distinct_pairs(output_path: Path, pairs: set[frozenset[str]]):
+    serializable = [sorted(pair) for pair in pairs]
+    serializable.sort()
+    (output_path / "distinct_pairs.json").write_text(
+        json.dumps(serializable, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+
+
 def _iter_year_month_dirs(output_path: Path):
     for year_dir in output_path.iterdir():
         if not year_dir.is_dir() or not year_dir.name.isdigit():
