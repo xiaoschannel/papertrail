@@ -48,7 +48,10 @@ Scan your documents into a folder, and follow this process:
 3. **Normalize** — Unify similar merchant/document names.
 
 ## Visualize
-(To be implemented)
+1. **Dashboard** — Monthly spending timeline, document volume, top merchants.
+2. **Merchant Profile** — Per-merchant stats, spending trend, receipt gallery, visit cadence.
+3. **Receipt Detail** — Single-document view with metadata, line items, raw OCR.
+4. **Time Capsule** — "On this day" across past years.
 
 ## Dev
 - **OCR Experiment** — Interactive single-image OCR testing with image enhancement.
