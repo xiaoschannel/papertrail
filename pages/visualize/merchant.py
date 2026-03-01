@@ -1,10 +1,15 @@
-from pathlib import Path
 
 import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from viz_data import get_output_path, load_viz_records, load_viz_items, receipt_url, sync_query_param
+from viz_data import (
+    get_output_path,
+    load_viz_items,
+    load_viz_records,
+    receipt_url,
+    sync_query_param,
+)
 
 st.title("Merchant Profile")
 

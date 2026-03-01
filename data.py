@@ -3,7 +3,12 @@ from pathlib import Path
 
 import numpy as np
 
-from models import OcrBatch, DocumentExtractionAdapter, DocumentExtraction, ReviewDecision
+from models import (
+    DocumentExtraction,
+    DocumentExtractionAdapter,
+    OcrBatch,
+    ReviewDecision,
+)
 
 
 def sidecar_path_for(file_path: Path) -> Path:

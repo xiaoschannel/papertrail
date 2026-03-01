@@ -1,7 +1,7 @@
 from ollama import chat
 from openai import OpenAI
 
-from models import DocumentExtractionAdapter, ExtractionFlat, DocumentExtraction
+from models import DocumentExtraction, DocumentExtractionAdapter, ExtractionFlat
 
 OLLAMA_MODEL = "qwen3:8b"
 OPENAI_MODEL = "gpt-4.1"

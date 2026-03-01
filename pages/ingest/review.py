@@ -1,7 +1,6 @@
 from pathlib import Path
 
 import streamlit as st
-from name_similarity import levenshtein_similarity
 
 from data import (
     load_decisions,
@@ -18,6 +17,7 @@ from models import (
     ReceiptResult,
     ReviewDecision,
 )
+from name_similarity import levenshtein_similarity
 from rules.cost_large_check import cost_large_check
 from rules.cost_zero_check import cost_zero_check
 from rules.currency_uncommon_check import currency_uncommon_check
