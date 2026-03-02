@@ -24,15 +24,34 @@ if df.empty:
     st.stop()
 
 receipts = df[df["document_type"] == "receipt"]
-merchant_names = sorted(receipts["name"].dropna().unique())
+merchant_names = receipts["name"].value_counts().index.tolist()
 if not merchant_names:
     st.info("No receipt data found.")
     st.stop()
 
-sync_query_param("name", "viz_merchant_name", merchant_names)
-selected = st.selectbox("Merchant", merchant_names, key="viz_merchant_name")
+match_mode = st.radio("Match by", ["Exact name", "Prefix"], horizontal=True, key="viz_merchant_match")
+if match_mode == "Exact name":
+    sync_query_param("name", "viz_merchant_name", merchant_names)
+    selected = st.selectbox("Merchant", merchant_names, key="viz_merchant_name")
+    merchant_df = receipts[receipts["name"] == selected].copy()
+else:
+    prefix = st.text_input("Merchant name prefix", key="viz_merchant_prefix", placeholder="e.g. Star")
+    prefix_clean = (prefix or "").strip()
+    if not prefix_clean:
+        merchant_df = pd.DataFrame()
+        st.info("Enter a prefix to match merchant names.")
+    else:
+        mask = receipts["name"].str.lower().str.startswith(prefix_clean.lower())
+        merchant_df = receipts[mask].copy()
+        selected = prefix_clean
+        if merchant_df.empty:
+            st.warning(f"No receipts match prefix \"{prefix_clean}\".")
+        else:
+            matched_names = merchant_df["name"].unique().tolist()
+            st.caption(f"Matches {len(matched_names)} merchant(s): {', '.join(matched_names[:5])}{'…' if len(matched_names) > 5 else ''}")
 
-merchant_df = receipts[receipts["name"] == selected].copy()
+if merchant_df.empty:
+    st.stop()
 dated = merchant_df[merchant_df["parsed_date"].notna()].sort_values("parsed_date")
 
 # --- Header Stats ---
@@ -60,43 +79,43 @@ c4.metric("First Visit", str(first_visit.date()) if pd.notna(first_visit) else "
 c5.metric("Last Visit", str(last_visit.date()) if pd.notna(last_visit) else "—")
 c6.metric("Avg Days Between Visits", f"{avg_gap:.0f}" if avg_gap is not None else "—")
 
-# --- Spending Trend ---
-if not dated.empty:
-    st.subheader("Spending Trend")
-    monthly = dated.groupby(dated["parsed_date"].dt.to_period("M"))["cost"].sum().rename("spend").reset_index()
-    monthly.columns = ["period", "spend"]
-    monthly["month"] = monthly["period"].dt.to_timestamp()
-    fig = px.line(monthly, x="month", y="spend", markers=True)
-    fig.update_layout(xaxis_title="", yaxis_title=f"Spend ({currency})")
-    st.plotly_chart(fig, width="stretch")
+c1, c2 = st.columns(2)
+with c1:
+    if not dated.empty:
+        st.subheader("Spending Trend")
+        monthly = dated.groupby(dated["parsed_date"].dt.to_period("M"))["cost"].sum().rename("spend").reset_index()
+        monthly.columns = ["period", "spend"]
+        monthly["month"] = monthly["period"].dt.to_timestamp()
+        fig = px.bar(monthly, x="month", y="spend")
+        fig.update_layout(xaxis_title="", yaxis_title=f"Spend ({currency})")
+        st.plotly_chart(fig, width="stretch")
 
-# --- Visit Cadence ---
-if len(dated) >= 3:
-    st.subheader("Visit Cadence")
-    sorted_dates = dated["parsed_date"].reset_index(drop=True)
-    gap_df = pd.DataFrame({
-        "visit_date": sorted_dates.iloc[1:].values,
-        "days_since_last": sorted_dates.diff().dt.days.iloc[1:].values,
-    })
-    fig2 = px.line(gap_df, x="visit_date", y="days_since_last", markers=True)
-    fig2.update_layout(xaxis_title="", yaxis_title="Days Since Last Visit")
-    st.plotly_chart(fig2, width="stretch")
+with c2:
+    if len(dated) >= 3:
+        st.subheader("Visit Cadence")
+        sorted_dates = dated["parsed_date"].reset_index(drop=True)
+        gap_df = pd.DataFrame({
+            "visit_date": sorted_dates.iloc[1:].values,
+            "days_since_last": sorted_dates.diff().dt.days.iloc[1:].values,
+        })
+        fig2 = px.scatter(gap_df, x="visit_date", y="days_since_last")
+        fig2.update_layout(xaxis_title="", yaxis_title="Days Since Last Visit")
+        st.plotly_chart(fig2, width="stretch")
 
 # --- Item Breakdown ---
 items_df = load_viz_items(str(output_path))
-merchant_items = items_df[items_df["merchant"] == selected] if not items_df.empty else pd.DataFrame()
+matched_names_set = set(merchant_df["name"].unique())
+merchant_items = items_df[items_df["merchant"].isin(matched_names_set)] if not items_df.empty else pd.DataFrame()
 
 if not merchant_items.empty:
     st.subheader("Item Breakdown")
-    sort_by = st.radio("Sort by", ["Times Purchased", "Total Spent"], horizontal=True, key="item_sort")
     agg = merchant_items.groupby("item_name").agg(
         times_purchased=("item_name", "size"),
         total_spent=("total_price", "sum"),
         avg_unit_price=("unit_price", "mean"),
     ).reset_index()
-    sort_col = "times_purchased" if sort_by == "Times Purchased" else "total_spent"
     st.dataframe(
-        agg.sort_values(sort_col, ascending=False),
+        agg.sort_values("times_purchased", ascending=False),
         column_config={
             "item_name": "Item",
             "times_purchased": "Count",
@@ -109,12 +128,30 @@ if not merchant_items.empty:
 
 # --- Receipt Gallery ---
 st.subheader("Receipts")
-gallery_limit = 20
-gallery_df = merchant_df.sort_values("parsed_date", ascending=False).head(gallery_limit)
-if len(merchant_df) > gallery_limit:
-    st.caption(f"Showing most recent {gallery_limit} of {len(merchant_df)} receipts.")
+sorted_receipts = merchant_df.sort_values("parsed_date", ascending=False)
+per_page = 20
+total_pages = max(1, (len(sorted_receipts) + per_page - 1) // per_page)
+page = min(max(0, st.session_state.get("viz_gallery_page", 0)), total_pages - 1)
+st.session_state["viz_gallery_page"] = page
+start = page * per_page
+gallery_df = sorted_receipts.iloc[start : start + per_page]
+end = start + len(gallery_df)
 
-cols_per_row = 4
+def pagination_ui(suffix: str):
+    col_prev, col_info, col_next = st.columns([1, 3, 1])
+    with col_prev:
+        if st.button("← Prev", key=f"gallery_prev_{suffix}", disabled=(page == 0), width="stretch"):
+            st.session_state["viz_gallery_page"] = page - 1
+            st.rerun()
+    with col_info:
+        st.caption(f"Page {page + 1} of {total_pages} — {start + 1}–{end} of {len(sorted_receipts)}", text_alignment="center")
+    with col_next:
+        if st.button("Next →", key=f"gallery_next_{suffix}", disabled=(page >= total_pages - 1), width="stretch"):
+            st.session_state["viz_gallery_page"] = page + 1
+            st.rerun()
+
+pagination_ui("top")
+cols_per_row = 5
 gallery_rows = list(gallery_df.iterrows())
 for i in range(0, len(gallery_rows), cols_per_row):
     cols = st.columns(cols_per_row)
@@ -126,3 +163,4 @@ for i in range(0, len(gallery_rows), cols_per_row):
                     st.image(str(img_path))
             st.caption(f"{row['date']} — {row['cost']:,.0f} {currency}")
             st.markdown(f"[Detail]({receipt_url(row['filename'])})")
+pagination_ui("bottom")
