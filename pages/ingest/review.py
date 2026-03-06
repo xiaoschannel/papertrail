@@ -25,7 +25,7 @@ from rules.date_check import date_check
 from settings import get_config
 from validation import ValidationRule
 
-SMART_MATCH_THRESHOLD = 0.35
+SMART_MATCH_THRESHOLD = 0.25
 
 
 def get_smart_match_suggestions(
