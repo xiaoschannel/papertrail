@@ -35,6 +35,8 @@ Date and time extraction rules:
 If document_type is "receipt", output:
 - name: Merchant/Store name. Include branch if present. If the merchant/store is a tenant of a mall, that also tend to be the branch name.
   - Example: "Subway at King Station", "セブン-イレブン 新宿駅前店".
+  - Place a space character between the chain and the branch name for languages that do not use a separator.
+    - Example: "セブン-イレブン新宿駅前店" -> "セブン-イレブン 新宿駅前店"
 - currency: ISO 4217 code (e.g. USD, CNY, JPY). Leave empty if not present.
 - location: If the receipt has a detailed address (not part of the branch name), include it here.
   - Example: "123 Main St, Anytown, USA", "東京都新宿区新宿1-2-3"
@@ -47,7 +49,7 @@ If document_type is "receipt", output:
   - Some receipts round the amount, make sure to include that amount as well.
     - For example if the total price is $10.03 rounded to $10, add an item for -0.03 so the total price adds up to the cost.
   - Do not include the actual payment/change amount in this list
-- cost: total amount paid, tax-inclusive.
+- cost: total amount paid, tax-inclusive. Do not try to calculate this number, but pick the most likely from the OCR text.
 
 If document_type is "other", output:
 - title: Try formulate the title with two parts using the exact words of the document:
