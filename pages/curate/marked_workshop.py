@@ -246,7 +246,7 @@ with review_col:
         doc_type_options,
         index=doc_type_options.index(default_doc_type),
         horizontal=True,
-        key=f"doc_type_{selected}",
+        key=f"doc_type_{selected}_{default_doc_type}",
     )
     name = st.text_input("Name", value=effective_name, key=f"name_{selected}_{effective_name}")
 
@@ -265,15 +265,15 @@ with review_col:
             )
 
     dt_cols = st.columns(2)
-    date_val = dt_cols[0].text_input("Date", value=default_date, key=f"date_{selected}")
-    time_val = dt_cols[1].text_input("Time", value=default_time, key=f"time_{selected}")
+    date_val = dt_cols[0].text_input("Date", value=default_date, key=f"date_{selected}_{default_date}")
+    time_val = dt_cols[1].text_input("Time", value=default_time, key=f"time_{selected}_{default_time}")
 
     if doc_type == "receipt":
         cost_cols = st.columns([2, 1, 1])
         cost_display = str(int(default_cost)) if default_cost == int(default_cost) else str(default_cost)
-        cost_str = cost_cols[0].text_input("Cost", value=cost_display, key=f"cost_{selected}")
-        currency_val = cost_cols[1].text_input("Currency", value=default_currency, key=f"currency_{selected}")
-        jpy_checked = cost_cols[2].checkbox("JPY", value=(default_currency.upper() == "JPY"), key=f"jpy_{selected}")
+        cost_str = cost_cols[0].text_input("Cost", value=cost_display, key=f"cost_{selected}_{cost_display}")
+        currency_val = cost_cols[1].text_input("Currency", value=default_currency, key=f"currency_{selected}_{default_currency}")
+        jpy_checked = cost_cols[2].checkbox("JPY", value=(default_currency.upper() == "JPY"), key=f"jpy_{selected}_{default_currency}")
         st.markdown(
             "<style>[data-testid='stHorizontalBlock'] [data-testid='stCheckbox']{padding-top:2.1rem;}</style>",
             unsafe_allow_html=True,
