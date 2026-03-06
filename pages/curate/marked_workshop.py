@@ -420,13 +420,8 @@ if accept_clicked:
     parsed_cost = wv["cost"]
     final_currency = wv["currency"]
 
-    if wv["document_type"] == "receipt" and (not parsed_cost or not final_currency):
-        missing = []
-        if not parsed_cost:
-            missing.append("cost")
-        if not final_currency:
-            missing.append("currency")
-        st.error(f"Receipt requires: {', '.join(missing)}")
+    if wv["document_type"] == "receipt" and not final_currency:
+        st.error("Receipt requires: currency")
     else:
         dec = ReviewDecision(
             verdict="accepted",

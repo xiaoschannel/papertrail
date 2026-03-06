@@ -51,6 +51,5 @@ for year_val, group in matches.groupby("year", sort=False):
                     if img_path.exists():
                         st.image(str(img_path))
                 st.markdown(f"**{row['name']}**")
-                if row["cost"]:
-                    st.caption(f"{row['cost']:,.0f} {row['currency']}")
+                st.caption(f"{row['cost']:,.0f} {row['currency']}")
                 st.markdown(f"[View]({receipt_url(row['filename'])})")

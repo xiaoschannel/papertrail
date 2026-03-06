@@ -297,9 +297,9 @@ with result_col:
             parsed_cost = 0.0
         final_currency = "JPY" if jpy_checked else currency_val
 
-        if btn_accept and doc_type == "receipt" and (not parsed_cost or not final_currency):
+        if btn_accept and doc_type == "receipt" and (not cost_str.strip() or not final_currency):
             missing = []
-            if not parsed_cost:
+            if not cost_str.strip():
                 missing.append("cost")
             if not final_currency:
                 missing.append("currency")
