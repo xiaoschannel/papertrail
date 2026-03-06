@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from models import ReviewDecision
 
 MAX_GAP = timedelta(minutes=5)
+WEEK_WINDOW = timedelta(days=7)
 
 
 def parse_verdict_datetime(date_str: str, time_str: str) -> datetime | None:
@@ -89,3 +90,31 @@ def find_adjacent_documents(
 
     adjacent.sort(key=lambda x: abs(x[1] - target_dt))
     return [fn for fn, _ in adjacent]
+
+
+def get_receipts_in_week(
+    date_str: str,
+    time_str: str,
+    decisions: dict[str, ReviewDecision],
+    include_fn: str = "",
+    include_date: str = "",
+    include_time: str = "",
+) -> list[str]:
+    target_dt = parse_verdict_datetime(date_str, time_str)
+    if target_dt is None:
+        return []
+    lo = target_dt - WEEK_WINDOW
+    hi = target_dt + WEEK_WINDOW
+    documents: list[tuple[str, datetime]] = []
+    for fn, dec in decisions.items():
+        if dec.verdict == "tossed" or dec.document_type != "receipt":
+            continue
+        dt = parse_verdict_datetime(dec.date, dec.time)
+        if dt is not None and lo <= dt <= hi:
+            documents.append((fn, dt))
+    if include_fn and include_date and include_time:
+        include_dt = parse_verdict_datetime(include_date, include_time)
+        if include_dt is not None and lo <= include_dt <= hi:
+            documents.append((include_fn, include_dt))
+    documents.sort(key=lambda x: x[1])
+    return [fn for fn, _ in documents]

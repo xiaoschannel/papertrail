@@ -10,26 +10,33 @@ from PIL import Image, ImageEnhance
 
 from data import (
     load_name_cache,
-    load_name_normalizations,
     load_reorganized_state,
     read_sidecar,
     save_name_cache,
     write_sidecar,
 )
-from dedupe_candidates import find_adjacent_documents
+from dedupe_candidates import get_receipts_in_week
 from extraction import EXTRACTORS
 from models import (
     VERDICT_COLORS,
+    CorruptedResult,
     DocumentExtractionAdapter,
     OtherResult,
     ReceiptResult,
     ReviewDecision,
     load_scan_index,
 )
-from name_similarity import ensure_embeddings, find_similar_names
+from name_similarity import get_smart_match_suggestions
 from ocr_providers import OCR_PROVIDERS, run_ocr
 from organize_utils import resolve_single_accepted_destination
+from rules.cost_large_check import cost_large_check
+from rules.cost_zero_check import cost_zero_check
+from rules.currency_uncommon_check import currency_uncommon_check
+from rules.date_check import date_check
 from settings import get_config
+from validation import ValidationRule
+
+VALIDATION_RULES: list[ValidationRule] = [date_check, cost_zero_check, cost_large_check, currency_uncommon_check]
 
 st.title("Marked Workshop")
 
@@ -68,10 +75,16 @@ if "workshop_idx" not in st.session_state or st.session_state.workshop_idx >= le
     st.session_state.workshop_idx = 0
 
 nav_cols = st.columns([1, 1, 6])
+leaving_key = f"ws_{marked_files[st.session_state.workshop_idx]}"
+leaving_ctx_key = f"ctx_{marked_files[st.session_state.workshop_idx]}"
 if nav_cols[0].button("← Prev", disabled=(st.session_state.workshop_idx == 0)):
+    st.session_state.pop(leaving_key, None)
+    st.session_state.pop(leaving_ctx_key, None)
     st.session_state.workshop_idx -= 1
     st.rerun()
 if nav_cols[1].button("Next →", disabled=(st.session_state.workshop_idx >= len(marked_files) - 1)):
+    st.session_state.pop(leaving_key, None)
+    st.session_state.pop(leaving_ctx_key, None)
     st.session_state.workshop_idx += 1
     st.rerun()
 
@@ -86,7 +99,6 @@ if ws_key not in st.session_state:
         "rotation": 0,
         "ocr_text": None,
         "extraction": None,
-        "working_values": None,
     }
 
 ws = st.session_state[ws_key]
@@ -134,15 +146,6 @@ else:
     default_cost = 0.0
     default_currency = ""
 
-wv = ws.get("working_values")
-if wv:
-    default_doc_type = wv["document_type"]
-    default_name = wv["name"]
-    default_date = wv["date"]
-    default_time = wv["time"]
-    default_cost = wv["cost"]
-    default_currency = wv["currency"]
-
 def _find_image(fn: str) -> Path | None:
     p = marked_dir / fn
     if p.exists():
@@ -159,7 +162,7 @@ def _find_image(fn: str) -> Path | None:
 
 # --- 4-column layout ---
 
-orig_col, work_col, form_col, context_col = st.columns([1, 1, 1, 1])
+orig_col, work_col, ocr_col, review_col = st.columns([1, 1, 1, 1])
 
 # Column 1: Original image
 with orig_col:
@@ -213,135 +216,246 @@ with work_col:
         with st.spinner("Extracting..."):
             new_ext = extract_fn(new_ocr)
         ws["extraction"] = new_ext
-        if isinstance(new_ext, ReceiptResult):
-            ws["working_values"] = {
-                "document_type": "receipt",
-                "name": new_ext.name or "Receipt",
-                "date": new_ext.date,
-                "time": new_ext.time,
-                "cost": new_ext.cost,
-                "currency": new_ext.currency,
-            }
-        elif isinstance(new_ext, OtherResult):
-            ws["working_values"] = {
-                "document_type": "other",
-                "name": new_ext.title or "Document",
-                "date": new_ext.date,
-                "time": new_ext.time,
-                "cost": 0.0,
-                "currency": "",
-            }
-        else:
-            ws["working_values"] = None
         st.rerun()
 
-    ocr_text = ws.get("ocr_text") or sidecar_ocr_text
+# Column 3: OCR Text
+ocr_text = ws.get("ocr_text") or sidecar_ocr_text
+with ocr_col:
+    st.markdown("**OCR Text**")
     if ocr_text:
-        with st.expander("OCR Text"):
-            st.markdown(ocr_text.replace("\n", "  \n"), unsafe_allow_html=True)
+        st.markdown(ocr_text.replace("\n", "  \n"), unsafe_allow_html=True)
+    else:
+        st.caption("(Run Reprocess for OCR)")
 
-# Column 3: Review form with Set
-with form_col:
+# Column 4: Review (Smart Match, form, validation, Accept/Toss)
+name_cache = load_name_cache(output_path)
+name_pairs = {fn: (e["extracted"], e["confirmed"]) for fn, e in name_cache.items()}
+suggestions, best_sim = get_smart_match_suggestions(default_name, name_pairs)
+
+with review_col:
     st.markdown("**Review**")
 
+    best_label = f" — {best_sim:.0%}" if best_sim is not None else ""
+    smart_match_index = 1 if best_sim == 1.0 and suggestions else 0
+    smart_match = st.selectbox(f"Smart Match ({len(suggestions)}){best_label}", [""] + suggestions, index=smart_match_index, key=f"sm_{selected}")
+    effective_name = smart_match if smart_match else default_name
+
     doc_type_options = ["receipt", "other", "corrupted"]
-    with st.form(key=f"wf_{selected}"):
-        doc_type = st.radio(
-            "Type",
-            doc_type_options,
-            index=doc_type_options.index(default_doc_type),
-            horizontal=True,
-        )
-        name = st.text_input("Name", value=default_name)
+    doc_type = st.radio(
+        "Type",
+        doc_type_options,
+        index=doc_type_options.index(default_doc_type),
+        horizontal=True,
+        key=f"doc_type_{selected}",
+    )
+    name = st.text_input("Name", value=effective_name, key=f"name_{selected}_{effective_name}")
 
-        dt_cols = st.columns(2)
-        date_val = dt_cols[0].text_input("Date", value=default_date)
-        time_val = dt_cols[1].text_input("Time", value=default_time)
-
-        if default_doc_type == "receipt":
-            cost_cols = st.columns([2, 1, 1])
-            cost_display = str(int(default_cost)) if default_cost == int(default_cost) else str(default_cost)
-            cost_str = cost_cols[0].text_input("Cost", value=cost_display)
-            currency_val = cost_cols[1].text_input("Currency", value=default_currency)
-            jpy_checked = cost_cols[2].checkbox("JPY", value=(default_currency.upper() == "JPY"))
+    PLACEHOLDER_NAMES = {"Receipt", "Document", "Corrupted"}
+    if name.strip() and name not in PLACEHOLDER_NAMES:
+        confirmed_names = {confirmed for _, confirmed in name_pairs.values()}
+        if name in confirmed_names:
+            st.markdown(
+                '<span style="color:#28a745;font-weight:600;">Name previously approved</span>',
+                unsafe_allow_html=True,
+            )
         else:
-            cost_str = "0"
-            currency_val = ""
-            jpy_checked = False
+            st.markdown(
+                '<span style="color:#ffc107;font-weight:600;">Name not seen in previous reviews</span>',
+                unsafe_allow_html=True,
+            )
 
+    dt_cols = st.columns(2)
+    date_val = dt_cols[0].text_input("Date", value=default_date, key=f"date_{selected}")
+    time_val = dt_cols[1].text_input("Time", value=default_time, key=f"time_{selected}")
+
+    if doc_type == "receipt":
+        cost_cols = st.columns([2, 1, 1])
+        cost_display = str(int(default_cost)) if default_cost == int(default_cost) else str(default_cost)
+        cost_str = cost_cols[0].text_input("Cost", value=cost_display, key=f"cost_{selected}")
+        currency_val = cost_cols[1].text_input("Currency", value=default_currency, key=f"currency_{selected}")
+        jpy_checked = cost_cols[2].checkbox("JPY", value=(default_currency.upper() == "JPY"), key=f"jpy_{selected}")
         st.markdown(
             "<style>[data-testid='stHorizontalBlock'] [data-testid='stCheckbox']{padding-top:2.1rem;}</style>",
             unsafe_allow_html=True,
         )
-        set_clicked = st.form_submit_button("Set — update context below", type="primary", width="stretch")
+    else:
+        cost_str = "0"
+        currency_val = ""
+        jpy_checked = False
 
-    if set_clicked:
-        parsed_cost = 0.0
+    try:
+        parsed_cost_live = float(cost_str)
+    except ValueError:
+        parsed_cost_live = 0.0
+    final_currency_live = "JPY" if jpy_checked else currency_val
+    if doc_type == "receipt":
+        live_ext = ReceiptResult(
+            document_type="receipt",
+            language=ext.language if isinstance(ext, ReceiptResult) else "",
+            date=date_val,
+            time=time_val,
+            name=name,
+            currency=final_currency_live,
+            location=ext.location if isinstance(ext, ReceiptResult) else "",
+            items=ext.items if isinstance(ext, ReceiptResult) else [],
+            cost=parsed_cost_live,
+        )
+    elif doc_type == "other":
+        live_ext = OtherResult(
+            document_type="other",
+            language=ext.language if isinstance(ext, OtherResult) else "",
+            date=date_val,
+            time=time_val,
+            title=name,
+        )
+    else:
+        live_ext = CorruptedResult(document_type="corrupted")
+    for rule in VALIDATION_RULES:
+        for result in rule(live_ext):
+            if result.color:
+                st.markdown(
+                    f'<span style="color:{result.color};font-weight:600;">{result.message}</span>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(f"**{result.message}**")
+
+    btn_cols = st.columns(2)
+    btn_accept = btn_cols[0].button("Accept", type="primary", width="stretch", key=f"accept_{selected}")
+    btn_toss = btn_cols[1].button("Toss", width="stretch", key=f"toss_{selected}")
+
+    if btn_accept or btn_toss:
+        verdict = "accepted" if btn_accept else "tossed"
         try:
             parsed_cost = float(cost_str)
         except ValueError:
-            pass
+            parsed_cost = 0.0
         final_currency = "JPY" if jpy_checked else currency_val
-        ws["working_values"] = {
-            "document_type": doc_type,
-            "name": name,
-            "date": date_val,
-            "time": time_val,
-            "cost": parsed_cost,
-            "currency": final_currency,
-        }
-        st.rerun()
 
-# Column 4: Context assistants
-with context_col:
-    st.markdown("**Context**")
-
-    if wv:
-        st.markdown("**Time-adjacent documents**")
-        if wv["document_type"] == "receipt" and wv["date"] and wv["time"]:
-            adjacent = find_adjacent_documents(
-                wv["date"], wv["time"], wv["cost"],
-                decisions, exclude_fn=selected,
-            )
-            if adjacent:
-                for adj_fn in adjacent[:5]:
-                    adj_dec = decisions[adj_fn]
-                    st.markdown(f"- {adj_fn}: {adj_dec.name} — {adj_dec.cost} {adj_dec.currency}")
-                with st.expander("Show images"):
-                    for adj_fn in adjacent[:5]:
-                        found = _find_image(adj_fn)
-                        if found:
-                            st.caption(adj_fn)
-                            st.image(str(found), width="stretch")
-            else:
-                st.caption("No adjacent documents found")
-
-        st.markdown("**Similar names**")
-        decision_names = {dec.name for dec in decisions.values() if dec.verdict != "tossed"}
-        normalizations = load_name_normalizations(output_path)
-        canonical_names = set(normalizations.values())
-        all_known_names = sorted(decision_names | canonical_names | {wv["name"]})
-
-        if wv["name"] and all_known_names:
-            if wv["name"] in decision_names | canonical_names:
-                st.success("Name previously approved!")
-
-            else:
-                cached_names, cached_matrix = ensure_embeddings(output_path, all_known_names)
-                similar = find_similar_names(
-                    wv["name"], all_known_names, cached_names, cached_matrix,
+        if btn_accept and doc_type == "receipt" and (not cost_str.strip() or not final_currency):
+            missing = []
+            if not cost_str.strip():
+                missing.append("cost")
+            if not final_currency:
+                missing.append("currency")
+            st.error(f"Receipt requires: {', '.join(missing)}")
+        else:
+            if btn_accept:
+                dec = ReviewDecision(
+                    verdict="accepted",
+                    document_type=doc_type,
+                    name=name,
+                    date=date_val,
+                    time=time_val,
+                    cost=parsed_cost,
+                    currency=final_currency,
                 )
-                if similar:
-                    for sim_name, dist in similar:
-                        col_n, col_b = st.columns([3, 1])
-                        col_n.text(f"{sim_name} ({dist:.2f})")
-                        if col_b.button("Use", key=f"use_{sim_name}"):
-                            ws["working_values"]["name"] = sim_name
-                            st.rerun()
+                dest_rel = resolve_single_accepted_destination(output_path, selected, dec)
+                dst = output_path / dest_rel
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(marked_dir / selected), str(dst))
+                marked_sidecar = (marked_dir / selected).with_suffix(".json")
+                if marked_sidecar.exists():
+                    marked_sidecar.unlink()
+                entry: dict = {
+                    "original_filename": selected,
+                    "batch_id": sidecar.get("batch_id"),
+                    "serial": sidecar.get("serial"),
+                    "review": dec.model_dump(),
+                }
+                final_ocr = sidecar.get("ocr")
+                if ws.get("ocr_text"):
+                    entry["ocr"] = {"markdown": ws["ocr_text"]}
+                elif final_ocr:
+                    entry["ocr"] = final_ocr
+                final_ext = ws.get("extraction") or sidecar_ext
+                if final_ext:
+                    entry["extraction"] = final_ext.model_dump()
+                write_sidecar(dst, entry)
+                name_cache = load_name_cache(output_path)
+                if isinstance(final_ext, ReceiptResult):
+                    extracted_name = final_ext.name
+                elif isinstance(final_ext, OtherResult):
+                    extracted_name = final_ext.title
                 else:
-                    st.caption("No similar names found")
+                    extracted_name = ""
+                name_cache[selected] = {"extracted": extracted_name, "confirmed": dec.name}
+                save_name_cache(output_path, name_cache)
+                st.session_state.pop(ws_key, None)
+                st.success(f"Accepted → {dest_rel}")
+            else:
+                tossed_dir.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(marked_dir / selected), str(tossed_dir / selected))
+                marked_sidecar = (marked_dir / selected).with_suffix(".json")
+                if marked_sidecar.exists():
+                    shutil.move(str(marked_sidecar), str((tossed_dir / selected).with_suffix(".json")))
+                st.session_state.pop(ws_key, None)
+                st.success(f"Tossed → tossed/{selected}")
+            st.rerun()
+
+# --- Context by time (below columns) ---
+
+st.divider()
+st.markdown("**Context by time**")
+
+week_receipts: list[str] = []
+if doc_type == "receipt" and date_val and time_val:
+    week_receipts = get_receipts_in_week(
+        date_val, time_val, decisions,
+        include_fn=selected, include_date=date_val, include_time=time_val,
+    )
+
+if week_receipts:
+    window_size = 5
+    ctx_key = f"ctx_{selected}"
+    try:
+        current_idx = week_receipts.index(selected)
+    except ValueError:
+        current_idx = 0
+    if ctx_key not in st.session_state:
+        st.session_state[ctx_key] = max(0, min(current_idx - 2, len(week_receipts) - window_size))
+    ctx_start = st.session_state[ctx_key]
+    ctx_end = min(len(week_receipts), ctx_start + window_size)
+    adj_window = week_receipts[ctx_start:ctx_end]
+
+    ctx_nav = st.columns([1, 1, 6])
+    if ctx_nav[0].button("◀ Prev", key="ctx_prev", disabled=(ctx_start == 0)):
+        st.session_state[ctx_key] = max(0, ctx_start - 1)
+        st.rerun()
+    if ctx_nav[1].button("Next ▶", key="ctx_next", disabled=(ctx_end >= len(week_receipts))):
+        st.session_state[ctx_key] = ctx_start + 1
+        st.rerun()
+    ctx_nav[2].caption(f"Week around this receipt — {ctx_start + 1}–{ctx_end} of {len(week_receipts)}")
+
+    img_cols = st.columns(window_size)
+    for i, adj_fn in enumerate(adj_window):
+        with img_cols[i]:
+            if adj_fn in tossed_fns:
+                verdict = "tossed"
+            elif (marked_dir / adj_fn).exists():
+                verdict = "marked"
+            elif adj_fn in accepted_metadata:
+                verdict = "accepted"
+            else:
+                verdict = ""
+            verdict_color = VERDICT_COLORS.get(verdict, "#999")
+            verdict_label = verdict.capitalize() if verdict else "?"
+            adj_dec = decisions.get(adj_fn)
+            detail = f" — {adj_dec.name} {adj_dec.cost} {adj_dec.currency}" if adj_dec else ""
+            if adj_fn == selected:
+                st.markdown(f'**► {adj_fn}** <span style="color:{verdict_color};font-weight:600;">{verdict_label}</span>{detail}', unsafe_allow_html=True)
+            else:
+                st.markdown(f'{adj_fn} <span style="color:{verdict_color};">{verdict_label}</span>{detail}', unsafe_allow_html=True)
+            found = _find_image(adj_fn)
+            if found:
+                st.image(str(found), width="stretch")
+            else:
+                st.caption("(not found)")
+else:
+    if doc_type != "receipt" or not date_val or not time_val:
+        st.caption("Set date and time to see receipts in the surrounding week")
     else:
-        st.caption("Set values to see adjacent documents and name suggestions")
+        st.caption("No receipts in this week")
 
 # --- Same-batch viewer (below columns) ---
 
@@ -403,83 +517,3 @@ if batch_id is not None and batch_id in batch_files_map:
                 st.caption("(not found)")
 else:
     st.caption("No batch info available for this file")
-
-# --- Finalize ---
-
-st.divider()
-st.subheader("Finalize")
-
-fin_cols = st.columns(2)
-accept_clicked = fin_cols[0].button("Accept", type="primary", width="stretch", disabled=(not wv))
-toss_clicked = fin_cols[1].button("Toss", width="stretch")
-
-if not wv and not toss_clicked:
-    fin_cols[0].caption("Set values to enable Accept")
-
-if accept_clicked:
-    parsed_cost = wv["cost"]
-    final_currency = wv["currency"]
-
-    if wv["document_type"] == "receipt" and not final_currency:
-        st.error("Receipt requires: currency")
-    else:
-        dec = ReviewDecision(
-            verdict="accepted",
-            document_type=wv["document_type"],
-            name=wv["name"],
-            date=wv["date"],
-            time=wv["time"],
-            cost=parsed_cost,
-            currency=final_currency,
-        )
-
-        dest_rel = resolve_single_accepted_destination(output_path, selected, dec)
-        dst = output_path / dest_rel
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(marked_dir / selected), str(dst))
-        marked_sidecar = (marked_dir / selected).with_suffix(".json")
-        if marked_sidecar.exists():
-            marked_sidecar.unlink()
-
-        entry: dict = {
-            "original_filename": selected,
-            "batch_id": sidecar.get("batch_id"),
-            "serial": sidecar.get("serial"),
-            "review": dec.model_dump(),
-        }
-        final_ocr = sidecar.get("ocr")
-        if ws.get("ocr_text"):
-            entry["ocr"] = {"markdown": ws["ocr_text"]}
-        elif final_ocr:
-            entry["ocr"] = final_ocr
-        final_ext = ws.get("extraction") or sidecar_ext
-        if final_ext:
-            entry["extraction"] = final_ext.model_dump()
-        write_sidecar(dst, entry)
-
-        # Update name cache
-        name_cache = load_name_cache(output_path)
-        if isinstance(final_ext, ReceiptResult):
-            extracted_name = final_ext.name
-        elif isinstance(final_ext, OtherResult):
-            extracted_name = final_ext.title
-        else:
-            extracted_name = ""
-        name_cache[selected] = {"extracted": extracted_name, "confirmed": dec.name}
-        save_name_cache(output_path, name_cache)
-
-        # Clean session state for this file
-        st.session_state.pop(ws_key, None)
-        st.success(f"Accepted → {dest_rel}")
-        st.rerun()
-
-if toss_clicked:
-    tossed_dir.mkdir(parents=True, exist_ok=True)
-    shutil.move(str(marked_dir / selected), str(tossed_dir / selected))
-    marked_sidecar = (marked_dir / selected).with_suffix(".json")
-    if marked_sidecar.exists():
-        shutil.move(str(marked_sidecar), str((tossed_dir / selected).with_suffix(".json")))
-
-    st.session_state.pop(ws_key, None)
-    st.success(f"Tossed → tossed/{selected}")
-    st.rerun()

@@ -17,39 +17,13 @@ from models import (
     ReceiptResult,
     ReviewDecision,
 )
-from name_similarity import levenshtein_similarity
+from name_similarity import get_smart_match_suggestions
 from rules.cost_large_check import cost_large_check
 from rules.cost_zero_check import cost_zero_check
 from rules.currency_uncommon_check import currency_uncommon_check
 from rules.date_check import date_check
 from settings import get_config
 from validation import ValidationRule
-
-SMART_MATCH_THRESHOLD = 0.25
-
-
-def get_smart_match_suggestions(
-    query: str, name_pairs: dict[str, tuple[str, str]], top_n: int = 5
-) -> tuple[list[str], float | None]:
-    if not name_pairs or not query:
-        return [], None
-    scored: list[tuple[float, str]] = []
-    for extracted, confirmed in name_pairs.values():
-        sim = levenshtein_similarity(query, extracted)
-        if sim >= SMART_MATCH_THRESHOLD:
-            scored.append((sim, confirmed))
-    scored.sort(key=lambda x: -x[0])
-    best_sim = scored[0][0] if scored else None
-    confirmed_best_rank: dict[str, int] = {}
-    confirmed_frequency: dict[str, int] = {}
-    for rank, (_sim, confirmed) in enumerate(scored, 1):
-        if confirmed not in confirmed_best_rank:
-            confirmed_best_rank[confirmed] = rank
-        confirmed_frequency[confirmed] = confirmed_frequency.get(confirmed, 0) + 1
-    unique_confirmed = list(confirmed_best_rank.keys())
-    unique_confirmed.sort(key=lambda c: (confirmed_best_rank[c], -confirmed_frequency[c]))
-    return unique_confirmed[:top_n], best_sim
-
 
 st.title("Review")
 
