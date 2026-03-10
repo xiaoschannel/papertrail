@@ -23,6 +23,7 @@ pg = st.navigation({
         st.Page("pages/visualize/merchant.py", title="Merchant Profile", icon=":material/store:", url_path="merchant"),
         st.Page("pages/visualize/receipt.py", title="Receipt Detail", icon=":material/receipt_long:", url_path="receipt"),
         st.Page("pages/visualize/timecapsule.py", title="Time Capsule", icon=":material/history:", url_path="timecapsule"),
+        st.Page("pages/visualize/calendar.py", title="Calendar", icon=":material/calendar_month:", url_path="calendar"),
     ],
     "Dev": [
         st.Page("pages/dev/ocr_experiment.py", title="OCR Experiment", icon=":material/science:"),
