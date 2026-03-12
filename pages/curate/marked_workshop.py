@@ -28,7 +28,7 @@ from models import (
 )
 from name_similarity import get_smart_match_suggestions
 from ocr_providers import OCR_PROVIDERS, run_ocr
-from organize_utils import resolve_single_accepted_destination
+from organize_utils import move_to_accepted_destination
 from rules.cost_large_check import cost_large_check
 from rules.cost_zero_check import cost_zero_check
 from rules.currency_uncommon_check import currency_uncommon_check
@@ -350,13 +350,8 @@ with review_col:
                     cost=parsed_cost,
                     currency=final_currency,
                 )
-                dest_rel = resolve_single_accepted_destination(output_path, selected, dec)
-                dst = output_path / dest_rel
-                dst.parent.mkdir(parents=True, exist_ok=True)
-                shutil.move(str(marked_dir / selected), str(dst))
-                marked_sidecar = (marked_dir / selected).with_suffix(".json")
-                if marked_sidecar.exists():
-                    marked_sidecar.unlink()
+                dst = move_to_accepted_destination(output_path, selected, marked_dir / selected, dec)
+                dest_rel = dst.relative_to(output_path).as_posix()
                 entry: dict = {
                     "original_filename": selected,
                     "batch_id": sidecar.get("batch_id"),

@@ -3,6 +3,7 @@ import shutil
 from collections import defaultdict
 from pathlib import Path
 
+from data import delete_sidecar
 from models import ReviewDecision
 
 FULLWIDTH_COLON = "\uff1a"
@@ -220,3 +221,24 @@ def resolve_single_accepted_destination(
     while f"{base} ({i})" in taken:
         i += 1
     return f"{folder}/{base} ({i}){ext}"
+
+
+def move_to_accepted_destination(
+    output_path: Path,
+    original_filename: str,
+    current_data_file: Path,
+    dec: ReviewDecision,
+) -> Path:
+    dest_rel = resolve_single_accepted_destination(output_path, original_filename, dec)
+    dest_full = output_path / dest_rel
+    try:
+        current_rel = current_data_file.relative_to(output_path).as_posix()
+    except ValueError:
+        current_rel = None
+    if current_rel is not None and current_rel == dest_rel:
+        return current_data_file
+    if current_data_file.exists():
+        dest_full.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(current_data_file), str(dest_full))
+        delete_sidecar(current_data_file)
+    return dest_full
