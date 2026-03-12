@@ -4,7 +4,7 @@ from openai import OpenAI
 from models import DocumentExtraction, DocumentExtractionAdapter, ExtractionFlat
 
 OLLAMA_MODEL = "qwen3:8b"
-OPENAI_MODEL = "gpt-4.1"
+OPENAI_MODEL = "gpt-5.4"
 
 EXTRACTION_PROMPT = """You are extracting structured data from OCR text of a scanned document.
 If a field is not present, corrupted or unreadable, use empty string.

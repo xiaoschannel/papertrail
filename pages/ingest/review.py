@@ -62,7 +62,7 @@ if not extracted_files:
     st.info("No extractions yet. Run Parse first.")
     st.stop()
 
-# cost_check Disabled for now because even gpt4.1 does a bad job distinguishing tax inclusivity
+# cost_check Disabled for now because even gpt5.4(yes still) does a bad job distinguishing tax inclusivity
 VALIDATION_RULES: list[ValidationRule] = [date_check, cost_zero_check, cost_large_check, currency_uncommon_check]
 
 
