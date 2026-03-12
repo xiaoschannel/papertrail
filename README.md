@@ -1,6 +1,8 @@
 # Papertrail
 
-A personal document archival tool for digitizing receipts, tickets, and other timed documents into a structured timeline. Battle-tested with over 1000 documents in Japanese, Chinese and English, on a GeForce RTX 4070 Super(12GB VRAM).
+A personal document archival tool for digitizing receipts, tickets, and other timed documents into a structured timeline. Tested with over 3000 real documents in Japanese, Chinese and English.
+
+This project is also built to test the "fast fashion era of SaaS from AI coding" idea and practice AI-assisted coding against a messy, real-world problem.
 
 # Design Decisions
 This is more of an AI(both LLM and classic ML)-assisted manual workflow due to these real-world problems I encountered:
@@ -9,7 +11,7 @@ This is more of an AI(both LLM and classic ML)-assisted manual workflow due to t
 
 The repo has multi-provider setup for flexibility. In my testing, Deepseek OCR 2 and gpt5.4 for batch processing, and for receipts that Deepseek OCR 2 failed, GLM-OCR can often get it right. Qwen3-8b is usable if you want to process everything fully locally, but gpt5.4's better accuracy really cuts down the manual re-editing.
 
-I also experimented with Datalab's Chandra, but it was too slow to host locally even at int4. The accuracy was very good, but it also do not handle half-width katakana well, so the subscription felt too expensive to justify.
+I also experimented with Datalab's Chandra, but it was too slow to host locally even at int4 (on a GeForce RTX 4070 Super(12GB VRAM)). The accuracy was very good, but it also do not handle half-width katakana well, so the subscription felt too expensive to justify.
 
 # Setup
 
