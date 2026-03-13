@@ -3,6 +3,7 @@ from pathlib import Path
 import streamlit as st
 
 from data import (
+    build_document_index,
     load_decisions,
     load_extractions,
     load_name_cache,
@@ -13,6 +14,7 @@ from models import (
     VERDICT_COLORS,
     VERDICT_LABELS,
     CorruptedResult,
+    DocumentKey,
     OtherResult,
     ReceiptResult,
     ReviewDecision,
@@ -44,35 +46,36 @@ if not index_file.exists():
     st.stop()
 
 scan_index = load_scan_index(output_path)
+indexed_keys = {batch_serial_key(bid, ser) for bid, ser, _ in iter_indexed_files(scan_index, include_archived=False)}
 key_to_filename = {batch_serial_key(bid, ser): fn for bid, ser, fn in iter_indexed_files(scan_index, include_archived=False)}
 loaded = load_ocr_results(output_path)
 ocr_by_key = {k: r.markdown for k, r in loaded.items() if r.succeeded}
-extractions = {k: v for k, v in load_extractions(output_path).items() if k in ocr_by_key}
+extractions = load_extractions(output_path)
 decisions = load_decisions(output_path)
 
-name_pairs: dict[str, tuple[str, str]] = {}
-for key, dec in decisions.items():
-    if dec.verdict == "accepted" and key in extractions:
-        ext_i = extractions[key]
-        if isinstance(ext_i, ReceiptResult):
-            name_pairs[key] = (ext_i.name, dec.name)
-        elif isinstance(ext_i, OtherResult):
-            name_pairs[key] = (ext_i.title, dec.name)
-name_cache = load_name_cache(output_path)
-for key, entry in name_cache.items():
-    name_pairs[key] = (entry["extracted"], entry["confirmed"])
-
-extracted_keys = [k for k in extractions]
-if not extracted_keys:
+index = build_document_index(output_path, indexed_keys)
+extracted_doc_keys = [k for k in extractions]
+if not extracted_doc_keys:
     st.info("No extractions yet. Run Parse first.")
     st.stop()
 
-# cost_check Disabled for now because even gpt5.4(yes still) does a bad job distinguishing tax inclusivity
 VALIDATION_RULES: list[ValidationRule] = [date_check, cost_zero_check, cost_large_check, currency_uncommon_check]
 
+name_pairs: dict[str, tuple[str, str]] = {}
+for doc_key, dec in decisions.items():
+    if dec.verdict == "accepted" and doc_key in extractions:
+        ext_i = extractions[doc_key]
+        if isinstance(ext_i, ReceiptResult):
+            name_pairs[doc_key] = (ext_i.name, dec.name)
+        elif isinstance(ext_i, OtherResult):
+            name_pairs[doc_key] = (ext_i.title, dec.name)
+name_cache = load_name_cache(output_path)
+for doc_key, entry in name_cache.items():
+    name_pairs[doc_key] = (entry["extracted"], entry["confirmed"])
 
-def _review_sort_key(key: str):
-    ext = extractions[key]
+
+def _review_sort_key(doc_key: str):
+    ext = extractions[doc_key]
     if isinstance(ext, ReceiptResult):
         return (2, ext.name.lower())
     elif isinstance(ext, OtherResult):
@@ -80,8 +83,8 @@ def _review_sort_key(key: str):
     return (0, "")
 
 
-to_review = sorted((k for k in extracted_keys if k not in decisions), key=_review_sort_key)
-total = len(extracted_keys)
+to_review = sorted((dk for dk in extracted_doc_keys if dk not in decisions), key=_review_sort_key)
+total = len(extracted_doc_keys)
 
 verdict_counts = {v: 0 for v in VERDICT_LABELS}
 for d in decisions.values():
@@ -121,7 +124,8 @@ if "review_idx" not in st.session_state or st.session_state.review_idx >= len(to
     st.session_state.review_idx = 0
 
 selected = to_review[st.session_state.review_idx]
-selected_filename = key_to_filename.get(selected, selected)
+doc_key = DocumentKey.parse(selected) or DocumentKey.from_group([selected])
+selected_keys = index.keys_for_doc(doc_key)
 img_dir = Path(image_dir) if image_dir else None
 
 nav_cols = st.columns([1, 1, 6])
@@ -131,7 +135,7 @@ if nav_cols[0].button("← Prev", disabled=(st.session_state.review_idx == 0)):
 if nav_cols[1].button("Next →", disabled=(st.session_state.review_idx >= len(to_review) - 1)):
     st.session_state.review_idx += 1
     st.rerun()
-nav_cols[2].markdown(f"**{st.session_state.review_idx + 1} / {len(to_review)}** — {selected_filename}")
+nav_cols[2].markdown(f"**{st.session_state.review_idx + 1} / {len(to_review)}** — {selected}")
 
 ext = extractions[selected]
 
@@ -163,14 +167,16 @@ ocr_col, image_col, result_col = st.columns([1, 1, 2])
 
 with ocr_col:
     st.markdown("**OCR Output**")
-    ocr_text = ocr_by_key.get(selected, "")
+    ocr_text = index.concat_ocr(doc_key, ocr_by_key)
     st.markdown(ocr_text.replace("\n", "  \n"), unsafe_allow_html=True)
 
 with image_col:
-    if img_dir and selected_filename:
-        img_path = img_dir / selected_filename
-        if img_path.exists():
-            st.image(str(img_path), width="stretch")
+    if img_dir:
+        for i, k in enumerate(selected_keys):
+            fn = key_to_filename.get(k, k)
+            img_path = img_dir / fn
+            if img_path.exists():
+                st.image(str(img_path), caption=f"Page {i + 1}: {fn}", width="stretch")
 
 with result_col:
     best_label = f" — {best_sim:.0%}" if best_sim is not None else ""

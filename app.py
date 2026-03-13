@@ -30,6 +30,7 @@ pg = st.navigation({
         st.Page("pages/dev/sanity_check.py", title="Sanity Check", icon=":material/vital_signs:"),
         st.Page("pages/dev/migrate_batch_serial.py", title="Migrate Batch+Serial", icon=":material/swap_horiz:"),
         st.Page("pages/dev/migrate_batch_archived.py", title="Migrate Batch Archived", icon=":material/archive:"),
+        st.Page("pages/dev/migrate_document_groups.py", title="Migrate Document Groups", icon=":material/merge_type:"),
     ],
     "": [
         st.Page("pages/config.py", title="Config", icon=":material/settings:"),

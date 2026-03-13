@@ -10,12 +10,14 @@ st.title("Sanity Check")
 
 cfg = get_config()
 batch_dir = cfg.get("batch_output_path", "")
+input_dir = cfg.get("input_image_path", "")
 
 if not batch_dir:
     st.info("Set batch output path in Config first.")
     st.stop()
 
 output_path = Path(batch_dir)
+input_path = Path(input_dir) if input_dir else None
 batches_path = output_path / "batches.json"
 if not batches_path.exists():
     st.info("No batches.json found. Run File Index first.")
@@ -34,10 +36,20 @@ for batch in scan_index.batches:
     col0, col1, col2 = st.columns(3)
     col0.metric("Files in batch", len(files_in_batch))
     col1.metric("Files organized", len(files_organized))
-    if files_missing:
+    if not batch.archived:
+        if input_path and input_path.exists():
+            files_in_input = {fn for fn in files_in_batch if (input_path / fn).is_file()}
+            missing_from_input = files_in_batch - files_in_input
+            if missing_from_input:
+                col2.error(f"Missing from input: {', '.join(sorted(missing_from_input))}")
+            else:
+                col2.success("All files in input folder")
+        else:
+            col2.info("Pending archive")
+    elif files_missing:
         col2.error(f"Files missing: {', '.join(sorted(files_missing))}")
     else:
-        col2.success("Clear!")
+        col2.success("All files archived")
 
 st.header("Archive Sanity")
 accepted_by_folder: dict[str, set[str]] = {}

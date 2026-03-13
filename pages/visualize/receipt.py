@@ -62,10 +62,12 @@ with btn_col:
 col_img, col_meta = st.columns([1, 1])
 
 with col_img:
-    if record["path"]:
-        image_path = output_path / record["path"]
-        if image_path.exists():
-            st.image(str(image_path), width="stretch")
+    paths = record.get("paths", [record["path"]] if record["path"] else [])
+    for i, p in enumerate(paths):
+        if p:
+            image_path = output_path / p
+            if image_path.exists():
+                st.image(str(image_path), caption=f"Page {i + 1}" if len(paths) > 1 else None, width="stretch")
 
 with col_meta:
     if edit_mode:
@@ -138,7 +140,8 @@ with col_meta:
                     cost=parsed_cost,
                     currency=final_currency,
                 )
-                target_path = move_to_accepted_destination(output_path, selected, data_file, dec)
+                orig_fn = entry.get("original_filename", selected)
+                target_path = move_to_accepted_destination(output_path, orig_fn, data_file, dec)
                 entry["review"] = dec.model_dump()
                 if doc_type == "receipt" and entry.get("extraction"):
                     ext = entry["extraction"]
@@ -152,8 +155,7 @@ with col_meta:
                 write_sidecar(target_path, entry)
                 name_cache = load_name_cache(output_path)
                 ext_name = (entry.get("extraction") or {}).get("name", "")
-                bid, ser = entry.get("batch_id"), entry.get("serial")
-                cache_key = batch_serial_key(bid, ser) if bid is not None and ser is not None else selected
+                cache_key = entry.get("document_key") or (batch_serial_key(bid, ser) if (bid := entry.get("batch_id")) is not None and (ser := entry.get("serial")) is not None else selected)
                 name_cache[cache_key] = {"extracted": ext_name, "confirmed": name}
                 save_name_cache(output_path, name_cache)
                 load_viz_records.clear()
@@ -169,7 +171,11 @@ with col_meta:
         if record["language"]:
             st.markdown(f"**Language:** {record['language']}")
         st.markdown(f"**Type:** {record['document_type']}")
-        st.markdown(f"**Original file:** `{record['filename']}`")
+        n_pages = len(record.get("paths", [record["path"]] if record["path"] else []))
+        if n_pages > 1:
+            st.markdown(f"**Document:** `{record['filename']}` ({n_pages} pages)")
+        else:
+            st.markdown(f"**Original file:** `{record['filename']}`")
         if record["document_type"] == "receipt" and record["name"]:
             st.markdown(f"[View Merchant Profile →]({merchant_url(record['name'])})")
 

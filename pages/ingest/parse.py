@@ -4,7 +4,7 @@ from pathlib import Path
 
 import streamlit as st
 
-from data import load_extractions, load_ocr_results, save_extractions
+from data import build_document_index, load_extractions, load_ocr_results, save_extractions
 from extraction import EXTRACTORS
 from models import batch_serial_key, iter_indexed_files, load_scan_index
 from settings import get_config
@@ -28,19 +28,22 @@ scan_index = load_scan_index(output_path)
 indexed_keys = {batch_serial_key(bid, ser) for bid, ser, _ in iter_indexed_files(scan_index, include_archived=False)}
 loaded = load_ocr_results(output_path)
 ocr_by_key = {k: r.markdown for k, r in loaded.items() if r.succeeded and k in indexed_keys}
-extractions = {k: v for k, v in load_extractions(output_path).items() if k in ocr_by_key}
+
+index = build_document_index(output_path, indexed_keys, ocr_keys=set(ocr_by_key))
+doc_keys_with_ocr = index.doc_keys_with_ocr(ocr_by_key)
+extractions = {k: v for k, v in load_extractions(output_path).items() if k in {str(dk) for dk in doc_keys_with_ocr}}
 
 extractor_name = st.selectbox("Model", list(EXTRACTORS.keys()))
 
 mode = st.radio("Mode", ["Process new only", "Reprocess all"], horizontal=True)
 if mode == "Reprocess all":
-    to_process = list(ocr_by_key)
+    to_process = list(doc_keys_with_ocr)
     existing_extractions = {}
 else:
     existing_extractions = dict(extractions)
-    to_process = [k for k in ocr_by_key if k not in existing_extractions]
+    to_process = [dk for dk in doc_keys_with_ocr if str(dk) not in existing_extractions]
 
-n_total = len(ocr_by_key)
+n_total = len(doc_keys_with_ocr)
 n_processed = len(extractions)
 n_new = len(to_process)
 
@@ -64,12 +67,13 @@ if run_clicked and to_process:
     failed: list[str] = []
     last_save = time.time()
 
-    for key in to_process:
+    for doc_key in to_process:
+        ocr_text = index.concat_ocr(doc_key, ocr_by_key)
         try:
-            extractions[key] = EXTRACTORS[extractor_name](ocr_by_key[key])
+            extractions[str(doc_key)] = EXTRACTORS[extractor_name](ocr_text)
             bar.tick(True)
         except Exception:
-            failed.append(key)
+            failed.append(str(doc_key))
             bar.tick(False)
         if time.time() - last_save > 15:
             save_extractions(output_path, extractions)
@@ -83,5 +87,5 @@ if run_clicked and to_process:
 if run_clicked and not to_process:
     st.info("No items to process.")
 
-if not ocr_by_key:
+if not doc_keys_with_ocr:
     st.info("No OCR results. Run OCR first.")

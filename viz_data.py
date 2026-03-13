@@ -37,13 +37,29 @@ def load_viz_records(output_path_str: str) -> pd.DataFrame:
     output_path = Path(output_path_str)
     _tossed, accepted_metadata = load_reorganized_state(output_path)
 
-    records = []
+    doc_groups: dict[str, list[tuple[str, dict]]] = {}
     for fn, entry in accepted_metadata.items():
-        review = entry.get("review", {})
-        extraction = entry.get("extraction") or {}
+        doc_key = entry.get("document_key")
+        doc_id = doc_key if doc_key else fn
+        path = entry.get("_path", "")
+        doc_groups.setdefault(doc_id, []).append((path, entry))
+
+    records = []
+    for doc_id, pages in doc_groups.items():
+        pages.sort(key=lambda x: x[0])
+        first_path, first_entry = pages[0]
+        paths = [p for p, _ in pages]
+        review = first_entry.get("review", {})
+        extraction = first_entry.get("extraction") or {}
+        ocr_parts = []
+        for _, ent in pages:
+            md = ent.get("ocr", {}).get("markdown", "")
+            if md:
+                ocr_parts.append(md)
         records.append({
-            "filename": fn,
-            "path": entry.get("_path", ""),
+            "filename": doc_id,
+            "path": first_path,
+            "paths": paths,
             "document_type": review.get("document_type", ""),
             "name": review.get("name", ""),
             "date": review.get("date", ""),
@@ -53,7 +69,7 @@ def load_viz_records(output_path_str: str) -> pd.DataFrame:
             "location": extraction.get("location", ""),
             "language": extraction.get("language", ""),
             "items": extraction.get("items", []),
-            "ocr_markdown": entry.get("ocr", {}).get("markdown", ""),
+            "ocr_markdown": "\n\n--- Page break ---\n\n".join(ocr_parts),
         })
 
     df = pd.DataFrame(records)

@@ -7,6 +7,7 @@ OLLAMA_MODEL = "qwen3:8b"
 OPENAI_MODEL = "gpt-5.4"
 
 EXTRACTION_PROMPT = """You are extracting structured data from OCR text of a scanned document.
+If the text contains multiple pages (marked with --- Page N ---), treat as one document and extract from all pages.
 If a field is not present, corrupted or unreadable, use empty string.
 
 First, determine the document_type:
