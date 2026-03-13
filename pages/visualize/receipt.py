@@ -8,7 +8,7 @@ from data import (
     save_name_cache,
     write_sidecar,
 )
-from models import ReviewDecision
+from models import ReviewDecision, batch_serial_key
 from organize_utils import move_to_accepted_destination
 from viz_data import (
     get_output_path,
@@ -152,7 +152,9 @@ with col_meta:
                 write_sidecar(target_path, entry)
                 name_cache = load_name_cache(output_path)
                 ext_name = (entry.get("extraction") or {}).get("name", "")
-                name_cache[selected] = {"extracted": ext_name, "confirmed": name}
+                bid, ser = entry.get("batch_id"), entry.get("serial")
+                cache_key = batch_serial_key(bid, ser) if bid is not None and ser is not None else selected
+                name_cache[cache_key] = {"extracted": ext_name, "confirmed": name}
                 save_name_cache(output_path, name_cache)
                 load_viz_records.clear()
                 st.session_state.receipt_edit_file = None

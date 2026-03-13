@@ -55,25 +55,32 @@ def _stem_matches_base(stem: str, base: str) -> bool:
 def plan_accepted_destinations(
     records: dict[str, ReviewDecision],
     existing_names_by_folder: dict[str, set[str]],
-    filename_to_batch: dict[str, int] | None = None,
-    filename_to_serial: dict[str, int] | None = None,
+    filename_to_batch_serial: dict[str, tuple[int, int]] | None = None,
+    key_to_filename: dict[str, str] | None = None,
+    key_to_sort: dict[str, tuple[int, int]] | None = None,
 ) -> dict[str, str]:
-    if filename_to_batch is None:
-        filename_to_batch = {}
-    if filename_to_serial is None:
-        filename_to_serial = {}
+    if filename_to_batch_serial is None:
+        filename_to_batch_serial = {}
+
+    def get_fn(key: str) -> str:
+        return key_to_filename[key] if key_to_filename else key
+
+    def get_sort(key: str) -> tuple[int, int]:
+        if key_to_sort and key in key_to_sort:
+            return key_to_sort[key]
+        return filename_to_batch_serial.get(key, (0, 0))
 
     groups: dict[tuple[str, str], list[tuple[str, int]]] = defaultdict(list)
-    for fn, dec in records.items():
-        folder, base, seconds = build_accepted_name(dec, fn)
-        groups[(folder, base)].append((fn, seconds))
+    for key, dec in records.items():
+        folder, base, seconds = build_accepted_name(dec, get_fn(key))
+        groups[(folder, base)].append((key, seconds))
 
     file_destinations: dict[str, str] = {}
     for (folder, base), members in groups.items():
         members.sort(key=lambda m: (
             m[1] if m[1] >= 0 else 9999,
-            filename_to_batch.get(m[0], 0),
-            filename_to_serial.get(m[0], 0),
+            get_sort(m[0])[0],
+            get_sort(m[0])[1],
         ))
 
         taken = existing_names_by_folder.get(folder, set())
@@ -88,7 +95,8 @@ def plan_accepted_destinations(
         start_idx = existing_count + 1 if existing_count > 0 else 0
         needs_suffix = len(members) > 1 or existing_count > 0
 
-        for idx, (fn, _sec) in enumerate(members):
+        for idx, (key, _sec) in enumerate(members):
+            fn = get_fn(key)
             ext = Path(fn).suffix
             if needs_suffix:
                 suffix_num = start_idx + idx if existing_count > 0 else idx + 1
@@ -98,7 +106,7 @@ def plan_accepted_destinations(
                     new_name = f"{base} ({suffix_num}){ext}"
             else:
                 new_name = f"{base}{ext}"
-            file_destinations[fn] = f"{folder}/{new_name}"
+            file_destinations[key] = f"{folder}/{new_name}"
 
     return file_destinations
 
@@ -132,8 +140,7 @@ def apply_reorganize(output_path: Path) -> list[tuple[str, str, str]]:
 
     stale: dict[str, ReviewDecision] = {}
     stable_stems: dict[str, set[str]] = defaultdict(set)
-    filename_to_batch: dict[str, int] = {}
-    filename_to_serial: dict[str, int] = {}
+    filename_to_batch_serial: dict[str, tuple[int, int]] = {}
 
     for fn, meta in accepted_metadata.items():
         review = meta.get("review", {})
@@ -144,10 +151,8 @@ def apply_reorganize(output_path: Path) -> list[tuple[str, str, str]]:
 
         batch_id = meta.get("batch_id")
         serial = meta.get("serial")
-        if batch_id is not None:
-            filename_to_batch[fn] = batch_id
-        if serial is not None:
-            filename_to_serial[fn] = serial
+        if batch_id is not None and serial is not None:
+            filename_to_batch_serial[fn] = (batch_id, serial)
 
         current_path = meta.get("_path", "")
         current_folder = str(Path(current_path).parent).replace("\\", "/") if current_path else ""
@@ -162,7 +167,7 @@ def apply_reorganize(output_path: Path) -> list[tuple[str, str, str]]:
         return []
 
     destinations = plan_accepted_destinations(
-        stale, stable_stems, filename_to_batch, filename_to_serial,
+        stale, stable_stems, filename_to_batch_serial,
     )
 
     moves: list[tuple[str, str, str]] = []

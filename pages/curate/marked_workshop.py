@@ -24,6 +24,8 @@ from models import (
     OtherResult,
     ReceiptResult,
     ReviewDecision,
+    batch_serial_key,
+    filename_to_batch_serial,
     load_scan_index,
 )
 from name_similarity import get_smart_match_suggestions
@@ -374,7 +376,9 @@ with review_col:
                     extracted_name = final_ext.title
                 else:
                     extracted_name = ""
-                name_cache[selected] = {"extracted": extracted_name, "confirmed": dec.name}
+                bid, ser = sidecar.get("batch_id"), sidecar.get("serial")
+                cache_key = batch_serial_key(bid, ser) if bid is not None and ser is not None else selected
+                name_cache[cache_key] = {"extracted": extracted_name, "confirmed": dec.name}
                 save_name_cache(output_path, name_cache)
                 st.session_state.pop(ws_key, None)
                 st.success(f"Accepted → {dest_rel}")
@@ -457,15 +461,16 @@ else:
 st.divider()
 st.markdown("**Same Batch**")
 
-filename_to_batch: dict[str, int] = {}
 batch_files_map: dict[int, list[str]] = {}
+fn_to_bs: dict[str, tuple[int, int]] = {}
 batches_file = output_path / "batches.json"
 if batches_file.exists():
-    scan_index, filename_to_batch = load_scan_index(output_path)
+    scan_index = load_scan_index(output_path)
+    fn_to_bs = filename_to_batch_serial(scan_index)
     for b in scan_index.batches:
         batch_files_map[b.batch_id] = [b.files[s] for s in sorted(b.files)]
 
-batch_id = filename_to_batch.get(selected)
+batch_id = fn_to_bs.get(selected, (None, None))[0]
 if batch_id is not None and batch_id in batch_files_map:
     batch_filenames = batch_files_map[batch_id]
     sel_idx = batch_filenames.index(selected) if selected in batch_filenames else 0

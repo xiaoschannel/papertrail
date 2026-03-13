@@ -22,7 +22,7 @@ if not batches_path.exists():
     st.stop()
 
 organized = scan_organized_filenames(output_path)
-scan_index, _ = load_scan_index(output_path)
+scan_index = load_scan_index(output_path)
 
 st.header("Batch Sanity")
 for batch in scan_index.batches:

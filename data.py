@@ -6,7 +6,7 @@ import numpy as np
 from models import (
     DocumentExtraction,
     DocumentExtractionAdapter,
-    OcrBatch,
+    OcrResult,
     ReviewDecision,
 )
 
@@ -33,11 +33,21 @@ def delete_sidecar(file_path: Path):
 
 
 
-def load_ocr_results(output_path: Path) -> OcrBatch:
+def load_ocr_results(output_path: Path) -> dict[str, OcrResult]:
     results_file = output_path / "ocr.json"
-    if results_file.exists():
-        return OcrBatch.model_validate_json(results_file.read_text(encoding="utf-8"))
-    return OcrBatch(results=[])
+    if not results_file.exists():
+        return {}
+    data = json.loads(results_file.read_text(encoding="utf-8"))
+    if "results" in data:
+        return {}
+    return {k: OcrResult.model_validate(v) for k, v in data.items()}
+
+
+def save_ocr_results(output_path: Path, results: dict[str, OcrResult]):
+    d = {k: v.model_dump() for k, v in results.items()}
+    (output_path / "ocr.json").write_text(
+        json.dumps(d, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
 
 
 def load_extractions(output_path: Path) -> dict[str, DocumentExtraction]:

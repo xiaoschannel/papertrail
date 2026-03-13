@@ -16,6 +16,9 @@ from models import (
     OtherResult,
     ReceiptResult,
     ReviewDecision,
+    batch_serial_key,
+    iter_indexed_files,
+    load_scan_index,
 )
 from name_similarity import get_smart_match_suggestions
 from rules.cost_large_check import cost_large_check
@@ -35,30 +38,32 @@ if not batch_dir:
     st.stop()
 
 output_path = Path(batch_dir)
+index_file = output_path / "batches.json"
+if not index_file.exists():
+    st.info("Run File Index first to create batches.json.")
+    st.stop()
 
-batch = load_ocr_results(output_path)
-succeeded = [r for r in batch.results if r.succeeded]
-all_filenames = [r.filename for r in succeeded]
-ocr_by_file = {r.filename: r.markdown for r in succeeded}
-
-extractions = {k: v for k, v in load_extractions(output_path).items() if k in set(all_filenames)}
-
+scan_index = load_scan_index(output_path)
+key_to_filename = {batch_serial_key(bid, ser): fn for bid, ser, fn in iter_indexed_files(scan_index, include_archived=False)}
+loaded = load_ocr_results(output_path)
+ocr_by_key = {k: r.markdown for k, r in loaded.items() if r.succeeded}
+extractions = {k: v for k, v in load_extractions(output_path).items() if k in ocr_by_key}
 decisions = load_decisions(output_path)
 
 name_pairs: dict[str, tuple[str, str]] = {}
-for fn, dec in decisions.items():
-    if dec.verdict == "accepted" and fn in extractions:
-        ext_i = extractions[fn]
+for key, dec in decisions.items():
+    if dec.verdict == "accepted" and key in extractions:
+        ext_i = extractions[key]
         if isinstance(ext_i, ReceiptResult):
-            name_pairs[fn] = (ext_i.name, dec.name)
+            name_pairs[key] = (ext_i.name, dec.name)
         elif isinstance(ext_i, OtherResult):
-            name_pairs[fn] = (ext_i.title, dec.name)
+            name_pairs[key] = (ext_i.title, dec.name)
 name_cache = load_name_cache(output_path)
-for fn, entry in name_cache.items():
-    name_pairs[fn] = (entry["extracted"], entry["confirmed"])
+for key, entry in name_cache.items():
+    name_pairs[key] = (entry["extracted"], entry["confirmed"])
 
-extracted_files = [f for f in all_filenames if f in extractions]
-if not extracted_files:
+extracted_keys = [k for k in extractions]
+if not extracted_keys:
     st.info("No extractions yet. Run Parse first.")
     st.stop()
 
@@ -66,8 +71,8 @@ if not extracted_files:
 VALIDATION_RULES: list[ValidationRule] = [date_check, cost_zero_check, cost_large_check, currency_uncommon_check]
 
 
-def _review_sort_key(filename):
-    ext = extractions[filename]
+def _review_sort_key(key: str):
+    ext = extractions[key]
     if isinstance(ext, ReceiptResult):
         return (2, ext.name.lower())
     elif isinstance(ext, OtherResult):
@@ -75,11 +80,8 @@ def _review_sort_key(filename):
     return (0, "")
 
 
-to_review = sorted(
-    (f for f in extracted_files if f not in decisions),
-    key=_review_sort_key,
-)
-total = len(extracted_files)
+to_review = sorted((k for k in extracted_keys if k not in decisions), key=_review_sort_key)
+total = len(extracted_keys)
 
 verdict_counts = {v: 0 for v in VERDICT_LABELS}
 for d in decisions.values():
@@ -119,6 +121,7 @@ if "review_idx" not in st.session_state or st.session_state.review_idx >= len(to
     st.session_state.review_idx = 0
 
 selected = to_review[st.session_state.review_idx]
+selected_filename = key_to_filename.get(selected, selected)
 img_dir = Path(image_dir) if image_dir else None
 
 nav_cols = st.columns([1, 1, 6])
@@ -128,7 +131,7 @@ if nav_cols[0].button("← Prev", disabled=(st.session_state.review_idx == 0)):
 if nav_cols[1].button("Next →", disabled=(st.session_state.review_idx >= len(to_review) - 1)):
     st.session_state.review_idx += 1
     st.rerun()
-nav_cols[2].markdown(f"**{st.session_state.review_idx + 1} / {len(to_review)}** — {selected}")
+nav_cols[2].markdown(f"**{st.session_state.review_idx + 1} / {len(to_review)}** — {selected_filename}")
 
 ext = extractions[selected]
 
@@ -160,12 +163,12 @@ ocr_col, image_col, result_col = st.columns([1, 1, 2])
 
 with ocr_col:
     st.markdown("**OCR Output**")
-    ocr_text = ocr_by_file.get(selected, "")
+    ocr_text = ocr_by_key.get(selected, "")
     st.markdown(ocr_text.replace("\n", "  \n"), unsafe_allow_html=True)
 
 with image_col:
-    if img_dir:
-        img_path = img_dir / selected
+    if img_dir and selected_filename:
+        img_path = img_dir / selected_filename
         if img_path.exists():
             st.image(str(img_path), width="stretch")
 

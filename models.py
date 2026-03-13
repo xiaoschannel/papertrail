@@ -127,16 +127,40 @@ class ScanBatch(BaseModel):
     start_datetime: str
     end_datetime: str
     files: dict[int, str]
+    archived: bool = False
 
 
 class ScanIndex(BaseModel):
     batches: list[ScanBatch]
 
 
-def load_scan_index(output_path: Path) -> tuple["ScanIndex", dict[str, int]]:
-    index = ScanIndex.model_validate_json((output_path / "batches.json").read_text(encoding="utf-8"))
-    filename_to_batch: dict[str, int] = {}
+def load_scan_index(output_path: Path) -> "ScanIndex":
+    return ScanIndex.model_validate_json((output_path / "batches.json").read_text(encoding="utf-8"))
+
+
+def iter_indexed_files(index: "ScanIndex", include_archived: bool = True) -> list[tuple[int, int, str]]:
+    out: list[tuple[int, int, str]] = []
     for batch in index.batches:
-        for fn in batch.files.values():
-            filename_to_batch[fn] = batch.batch_id
-    return index, filename_to_batch
+        if not include_archived and batch.archived:
+            continue
+        for serial, fn in batch.files.items():
+            out.append((batch.batch_id, serial, fn))
+    return out
+
+
+def filename_to_batch_serial(index: "ScanIndex") -> dict[str, tuple[int, int]]:
+    return {fn: (bid, ser) for bid, ser, fn in iter_indexed_files(index)}
+
+
+def batch_serial_key(batch_id: int, serial: int) -> str:
+    return f"{batch_id}:{serial}"
+
+
+def parse_batch_serial_key(key: str) -> tuple[int, int] | None:
+    parts = key.split(":")
+    if len(parts) != 2:
+        return None
+    try:
+        return int(parts[0]), int(parts[1])
+    except ValueError:
+        return None

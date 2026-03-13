@@ -4,7 +4,7 @@ from pathlib import Path
 import streamlit as st
 
 from indexing_schemes import SCHEMES, parse_canon_filename
-from models import ScanBatch, ScanIndex, load_scan_index
+from models import ScanBatch, ScanIndex, filename_to_batch_serial, load_scan_index
 from settings import IMAGE_EXTENSIONS, get_config
 
 st.title("File Index")
@@ -27,8 +27,8 @@ existing_index: ScanIndex | None = None
 indexed_filenames: set[str] = set()
 index_file = output_path / "batches.json"
 if index_file.exists():
-    existing_index, filename_to_batch = load_scan_index(output_path)
-    indexed_filenames = set(filename_to_batch.keys())
+    existing_index = load_scan_index(output_path)
+    indexed_filenames = set(filename_to_batch_serial(existing_index).keys())
 
 unindexed_filenames = [fn for fn in all_filenames if fn not in indexed_filenames]
 
