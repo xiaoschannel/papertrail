@@ -10,6 +10,7 @@ from data import (
 )
 from models import ReviewDecision, batch_serial_key
 from organize_utils import move_to_accepted_destination
+from validation import is_date_time_safe_for_archive
 from viz_data import (
     get_output_path,
     load_viz_records,
@@ -130,37 +131,41 @@ with col_meta:
                         missing.append("currency")
                 if missing:
                     st.error(f"Receipt requires: {', '.join(missing)}")
-            if receipt_ok:
-                dec = ReviewDecision(
-                    verdict=entry.get("review", {}).get("verdict", "accepted"),
-                    document_type=doc_type,
-                    name=name,
-                    date=date_val,
-                    time=time_val,
-                    cost=parsed_cost,
-                    currency=final_currency,
-                )
-                orig_fn = entry.get("original_filename", selected)
-                target_path = move_to_accepted_destination(output_path, orig_fn, data_file, dec)
-                entry["review"] = dec.model_dump()
-                if doc_type == "receipt" and entry.get("extraction"):
-                    ext = entry["extraction"]
-                    ext["location"] = location_val
-                    ext["language"] = language_val
-                    ext["name"] = name
-                    ext["date"] = date_val
-                    ext["time"] = time_val
-                    ext["cost"] = parsed_cost
-                    ext["currency"] = final_currency
-                write_sidecar(target_path, entry)
-                name_cache = load_name_cache(output_path)
-                ext_name = (entry.get("extraction") or {}).get("name", "")
-                cache_key = entry.get("document_key") or (batch_serial_key(bid, ser) if (bid := entry.get("batch_id")) is not None and (ser := entry.get("serial")) is not None else selected)
-                name_cache[cache_key] = {"extracted": ext_name, "confirmed": name}
-                save_name_cache(output_path, name_cache)
-                load_viz_records.clear()
-                st.session_state.receipt_edit_file = None
-                st.rerun()
+            else:
+                safe, err = is_date_time_safe_for_archive(date_val, time_val)
+                if not safe:
+                    st.error(err)
+                else:
+                    dec = ReviewDecision(
+                        verdict=entry.get("review", {}).get("verdict", "accepted"),
+                        document_type=doc_type,
+                        name=name,
+                        date=date_val,
+                        time=time_val,
+                        cost=parsed_cost,
+                        currency=final_currency,
+                    )
+                    orig_fn = entry.get("original_filename", selected)
+                    target_path = move_to_accepted_destination(output_path, orig_fn, data_file, dec)
+                    entry["review"] = dec.model_dump()
+                    if doc_type == "receipt" and entry.get("extraction"):
+                        ext = entry["extraction"]
+                        ext["location"] = location_val
+                        ext["language"] = language_val
+                        ext["name"] = name
+                        ext["date"] = date_val
+                        ext["time"] = time_val
+                        ext["cost"] = parsed_cost
+                        ext["currency"] = final_currency
+                    write_sidecar(target_path, entry)
+                    name_cache = load_name_cache(output_path)
+                    ext_name = (entry.get("extraction") or {}).get("name", "")
+                    cache_key = entry.get("document_key") or (batch_serial_key(bid, ser) if (bid := entry.get("batch_id")) is not None and (ser := entry.get("serial")) is not None else selected)
+                    name_cache[cache_key] = {"extracted": ext_name, "confirmed": name}
+                    save_name_cache(output_path, name_cache)
+                    load_viz_records.clear()
+                    st.session_state.receipt_edit_file = None
+                    st.rerun()
     else:
         st.markdown(f"**Date:** {record['date']}")
         st.markdown(f"**Time:** {record['time']}")

@@ -1,5 +1,5 @@
 from models import DocumentExtraction, ReceiptResult
-from validation import ValidationResult
+from validation import Hint
 
 LARGE_COST_THRESHOLDS: dict[str, float] = {
     "JPY": 10_000,
@@ -7,7 +7,7 @@ LARGE_COST_THRESHOLDS: dict[str, float] = {
 }
 
 
-def cost_large_check(ext: DocumentExtraction) -> list[ValidationResult]:
+def cost_large_check(ext: DocumentExtraction) -> list[Hint]:
     if not isinstance(ext, ReceiptResult) or ext.cost is None:
         return []
 
@@ -19,5 +19,5 @@ def cost_large_check(ext: DocumentExtraction) -> list[ValidationResult]:
     if ext.cost >= threshold:
         is_jpy = currency == "JPY"
         fmt = f"¥{ext.cost:,.0f}" if is_jpy else f"{ext.cost:,.2f} {ext.currency}"
-        return [ValidationResult(message=f"Large cost: {fmt} (≥ {threshold:,.0f} {currency})", color="#b8860b")]
+        return [Hint(message=f"Large cost: {fmt} (≥ {threshold:,.0f} {currency})", color="#b8860b")]
     return []

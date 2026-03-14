@@ -36,9 +36,9 @@ from rules.cost_zero_check import cost_zero_check
 from rules.currency_uncommon_check import currency_uncommon_check
 from rules.date_check import date_check
 from settings import get_config
-from validation import ValidationRule
+from validation import HintRule, is_date_time_safe_for_archive
 
-VALIDATION_RULES: list[ValidationRule] = [date_check, cost_zero_check, cost_large_check, currency_uncommon_check]
+HINT_RULES: list[HintRule] = [date_check, cost_zero_check, cost_large_check, currency_uncommon_check]
 
 st.title("Marked Workshop")
 
@@ -312,7 +312,7 @@ with review_col:
         )
     else:
         live_ext = CorruptedResult(document_type="corrupted")
-    for rule in VALIDATION_RULES:
+    for rule in HINT_RULES:
         for result in rule(live_ext):
             if result.color:
                 st.markdown(
@@ -341,8 +341,11 @@ with review_col:
             if not final_currency:
                 missing.append("currency")
             st.error(f"Receipt requires: {', '.join(missing)}")
-        else:
-            if btn_accept:
+        elif btn_accept:
+            safe, err = is_date_time_safe_for_archive(date_val, time_val)
+            if not safe:
+                st.error(err)
+            else:
                 dec = ReviewDecision(
                     verdict="accepted",
                     document_type=doc_type,
@@ -382,14 +385,15 @@ with review_col:
                 save_name_cache(output_path, name_cache)
                 st.session_state.pop(ws_key, None)
                 st.success(f"Accepted → {dest_rel}")
-            else:
-                tossed_dir.mkdir(parents=True, exist_ok=True)
-                shutil.move(str(marked_dir / selected), str(tossed_dir / selected))
-                marked_sidecar = (marked_dir / selected).with_suffix(".json")
-                if marked_sidecar.exists():
-                    shutil.move(str(marked_sidecar), str((tossed_dir / selected).with_suffix(".json")))
-                st.session_state.pop(ws_key, None)
-                st.success(f"Tossed → tossed/{selected}")
+                st.rerun()
+        else:
+            tossed_dir.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(marked_dir / selected), str(tossed_dir / selected))
+            marked_sidecar = (marked_dir / selected).with_suffix(".json")
+            if marked_sidecar.exists():
+                shutil.move(str(marked_sidecar), str((tossed_dir / selected).with_suffix(".json")))
+            st.session_state.pop(ws_key, None)
+            st.success(f"Tossed → tossed/{selected}")
             st.rerun()
 
 # --- Context by time (below columns) ---

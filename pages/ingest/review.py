@@ -28,7 +28,7 @@ from rules.cost_zero_check import cost_zero_check
 from rules.currency_uncommon_check import currency_uncommon_check
 from rules.date_check import date_check
 from settings import get_config
-from validation import ValidationRule
+from validation import HintRule, is_date_time_safe_for_archive
 
 st.title("Review")
 
@@ -59,7 +59,7 @@ if not extracted_doc_keys:
     st.info("No extractions yet. Run Parse first.")
     st.stop()
 
-VALIDATION_RULES: list[ValidationRule] = [date_check, cost_zero_check, cost_large_check, currency_uncommon_check]
+HINT_RULES: list[HintRule] = [date_check, cost_zero_check, cost_large_check, currency_uncommon_check]
 
 name_pairs: dict[str, tuple[str, str]] = {}
 for doc_key, dec in decisions.items():
@@ -263,7 +263,7 @@ with result_col:
         )
     else:
         live_ext = CorruptedResult(document_type="corrupted")
-    for rule in VALIDATION_RULES:
+    for rule in HINT_RULES:
         for result in rule(live_ext):
             if result.color:
                 st.markdown(
@@ -293,6 +293,22 @@ with result_col:
             if not final_currency:
                 missing.append("currency")
             st.error(f"Receipt requires: {', '.join(missing)}")
+        elif btn_accept:
+            safe, err = is_date_time_safe_for_archive(date_val, time_val)
+            if not safe:
+                st.error(err)
+            else:
+                decisions[selected] = ReviewDecision(
+                    verdict=verdict,
+                    document_type=doc_type,
+                    name=name,
+                    date=date_val,
+                    time=time_val,
+                    cost=parsed_cost,
+                    currency=final_currency,
+                )
+                save_decisions(output_path, decisions)
+                st.rerun()
         else:
             decisions[selected] = ReviewDecision(
                 verdict=verdict,

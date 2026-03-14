@@ -1,8 +1,8 @@
 from models import DocumentExtraction, ReceiptResult
-from validation import ValidationResult
+from validation import Hint
 
 
-def cost_check(ext: DocumentExtraction) -> list[ValidationResult]:
+def cost_check(ext: DocumentExtraction) -> list[Hint]:
     if not isinstance(ext, ReceiptResult) or not ext.items:
         return []
 
@@ -14,6 +14,6 @@ def cost_check(ext: DocumentExtraction) -> list[ValidationResult]:
     fmt = (lambda v: f"¥{v:,.0f}") if is_jpy else (lambda v: f"{v:,.2f} {ext.currency}")
     items_sum = sum(item.total_price for item in items_with_total)
     if abs(items_sum - ext.cost) < 0.01:
-        return [ValidationResult(message=f"Items sum {fmt(items_sum)} = Total {fmt(ext.cost)}", color="#28a745")]
+        return [Hint(message=f"Items sum {fmt(items_sum)} = Total {fmt(ext.cost)}", color="#28a745")]
     diff = ext.cost - items_sum
-    return [ValidationResult(message=f"Items sum {fmt(items_sum)} ≠ Total {fmt(ext.cost)} (diff: {fmt(diff)})", color="#dc3545")]
+    return [Hint(message=f"Items sum {fmt(items_sum)} ≠ Total {fmt(ext.cost)} (diff: {fmt(diff)})", color="#dc3545")]
