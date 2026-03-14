@@ -250,7 +250,7 @@ def _render_pagination(page: int, n_pages: int, page_key: str, batch_id: int, ke
         st.markdown(f"<div style='text-align:center;padding-top:0.5rem;'>Page {page + 1} of {n_pages}</div>", unsafe_allow_html=True)
     with pag_cols[3]:
         page_choice = st.number_input(
-            "", min_value=1, max_value=n_pages, value=page + 1,
+            "Skip to page", min_value=1, max_value=n_pages, value=page + 1,
             key=f"pag_go_{batch_id}{suffix}_p{page}", label_visibility="collapsed",
         )
         if page_choice != page + 1:
