@@ -112,9 +112,15 @@ bar_html = (
 st.markdown(bar_html, unsafe_allow_html=True)
 
 if st.button("Clear all reviews"):
-    decisions.clear()
-    save_decisions(output_path, decisions)
-    st.rerun()
+    @st.dialog("Confirm Clear All Reviews")
+    def confirm_clear_reviews():
+        st.warning("This will clear all review decisions. This cannot be undone.")
+        if st.button("Confirm", type="primary"):
+            decisions.clear()
+            save_decisions(output_path, decisions)
+            st.rerun()
+
+    confirm_clear_reviews()
 
 if not to_review:
     st.success("All items reviewed!")
