@@ -76,13 +76,15 @@ records_expanded = {
     if k in key_to_filename and key_to_filename[k] not in organized
 }
 
-st.metric("Complete batches to archive", len(complete_batches))
+non_archived = [b for b in scan_index.batches if not b.archived]
+all_complete = len(complete_batches) == len(non_archived) and len(non_archived) > 0
+
+st.metric("Batches complete", f"{len(complete_batches)} / {len(non_archived)}")
 st.metric("Files to archive", len(records_expanded))
 
-if not complete_batches:
-    incomplete = [b for b in scan_index.batches if not b.archived]
-    if incomplete:
-        st.info("No complete batches. Review all files in a batch before archiving.")
+if not all_complete:
+    if non_archived:
+        st.info("Review all files before archiving.")
     else:
         st.info("No new files to organize.")
     st.stop()
@@ -177,14 +179,11 @@ if st.button("Archive", width="stretch", type="primary"):
         batch.archived = True
     (output_path / "batches.json").write_text(scan_index.model_dump_json(indent=2), encoding="utf-8")
 
-    if all(b.archived for b in scan_index.batches):
-        cleaned = []
-        for artifact in CLEANUP_ARTIFACTS:
-            p = output_path / artifact
-            if p.exists():
-                p.unlink()
-                cleaned.append(artifact)
-        cleanup_msg = f" Cleaned up {', '.join(cleaned)}." if cleaned else ""
-        st.success(f"Archived {len(file_destinations)} files. All batches archived!{cleanup_msg}")
-    else:
-        st.success(f"Archived {len(file_destinations)} files from {len(complete_batches)} batch(es).")
+    cleaned = []
+    for artifact in CLEANUP_ARTIFACTS:
+        p = output_path / artifact
+        if p.exists():
+            p.unlink()
+            cleaned.append(artifact)
+    cleanup_msg = f" Cleaned up {', '.join(cleaned)}." if cleaned else ""
+    st.success(f"Archived {len(file_destinations)} files.{cleanup_msg}")
