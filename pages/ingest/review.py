@@ -315,7 +315,7 @@ with result_col:
         btn_toss = btn_cols[2].button("Toss", width='stretch', key=f"toss_{selected}")
 
         if btn_accept or btn_mark or btn_toss:
-            if btn_accept and not name_previously_approved:
+            if btn_accept and not name_previously_approved and name.strip() and name not in PLACEHOLDER_NAMES:
                 st.session_state.accept_for_key = selected
 
                 @st.dialog("Confirm Accept")
