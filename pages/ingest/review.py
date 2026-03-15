@@ -273,31 +273,63 @@ with result_col:
             else:
                 st.markdown(f"**{result.message}**")
 
-    btn_cols = st.columns(3)
-    btn_accept = btn_cols[0].button("Accept", type="primary", width='stretch', key=f"accept_{selected}")
-    btn_mark = btn_cols[1].button("Mark", width='stretch', key=f"mark_{selected}")
-    btn_toss = btn_cols[2].button("Toss", width='stretch', key=f"toss_{selected}")
+    confirmed_names = {c for _, c in name_pairs.values()}
+    name_previously_approved = name.strip() and name not in PLACEHOLDER_NAMES and name in confirmed_names
 
-    if btn_accept or btn_mark or btn_toss:
-        verdict = "accepted" if btn_accept else "marked" if btn_mark else "tossed"
-        try:
-            parsed_cost = float(cost_str)
-        except ValueError:
-            parsed_cost = 0.0
-        final_currency = "JPY" if jpy_checked else currency_val
+    parsed_cost = float(cost_str)
+    final_currency = "JPY" if jpy_checked else currency_val
 
-        if btn_accept and doc_type == "receipt" and (not cost_str.strip() or not final_currency):
+    def do_accept():
+        if doc_type == "receipt" and (not cost_str.strip() or not final_currency):
             missing = []
             if not cost_str.strip():
                 missing.append("cost")
             if not final_currency:
                 missing.append("currency")
             st.error(f"Receipt requires: {', '.join(missing)}")
-        elif btn_accept:
-            safe, err = is_date_time_safe_for_archive(date_val, time_val)
-            if not safe:
-                st.error(err)
+            return
+        safe, err = is_date_time_safe_for_archive(date_val, time_val)
+        if not safe:
+            st.error(err)
+            return
+        decisions[selected] = ReviewDecision(
+            verdict="accepted",
+            document_type=doc_type,
+            name=name,
+            date=date_val,
+            time=time_val,
+            cost=parsed_cost,
+            currency=final_currency,
+        )
+        save_decisions(output_path, decisions)
+        st.rerun()
+
+    if st.session_state.get("confirmed_accept") and st.session_state.get("accept_for_key") == selected:
+        st.session_state.pop("confirmed_accept", None)
+        st.session_state.pop("accept_for_key", None)
+        do_accept()
+    else:
+        btn_cols = st.columns(3)
+        btn_accept = btn_cols[0].button("Accept", type="primary", width='stretch', key=f"accept_{selected}")
+        btn_mark = btn_cols[1].button("Mark", width='stretch', key=f"mark_{selected}")
+        btn_toss = btn_cols[2].button("Toss", width='stretch', key=f"toss_{selected}")
+
+        if btn_accept or btn_mark or btn_toss:
+            if btn_accept and not name_previously_approved:
+                st.session_state.accept_for_key = selected
+
+                @st.dialog("Confirm Accept")
+                def confirm_accept_dialog():
+                    st.markdown("This name was not seen in previous reviews. Accept anyway?")
+                    if st.button("Confirm", type="primary"):
+                        st.session_state.confirmed_accept = True
+                        st.rerun()
+
+                confirm_accept_dialog()
+            elif btn_accept:
+                do_accept()
             else:
+                verdict = "marked" if btn_mark else "tossed"
                 decisions[selected] = ReviewDecision(
                     verdict=verdict,
                     document_type=doc_type,
@@ -309,15 +341,3 @@ with result_col:
                 )
                 save_decisions(output_path, decisions)
                 st.rerun()
-        else:
-            decisions[selected] = ReviewDecision(
-                verdict=verdict,
-                document_type=doc_type,
-                name=name,
-                date=date_val,
-                time=time_val,
-                cost=parsed_cost,
-                currency=final_currency,
-            )
-            save_decisions(output_path, decisions)
-            st.rerun()
