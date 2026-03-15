@@ -4,8 +4,9 @@ from pathlib import Path
 
 import streamlit as st
 
-from data import load_extractions, load_ocr_results, save_extractions
+from data import build_document_index, load_extractions, load_ocr_results, save_extractions
 from extraction import EXTRACTORS
+from models import batch_serial_key, iter_indexed_files, load_scan_index
 from settings import get_config
 from streamlit_progress import ProgressBar
 
@@ -18,25 +19,31 @@ if not batch_dir:
     st.stop()
 
 output_path = Path(batch_dir)
-batch = load_ocr_results(output_path)
-succeeded = [r for r in batch.results if r.succeeded]
-all_filenames = [r.filename for r in succeeded]
-ocr_by_file = {r.filename: r.markdown for r in succeeded}
+index_file = output_path / "batches.json"
+if not index_file.exists():
+    st.info("Run File Index first to create batches.json.")
+    st.stop()
 
-extractions = {k: v for k, v in load_extractions(output_path).items() if k in ocr_by_file}
+scan_index = load_scan_index(output_path)
+indexed_keys = {batch_serial_key(bid, ser) for bid, ser, _ in iter_indexed_files(scan_index, include_archived=False)}
+loaded = load_ocr_results(output_path)
+ocr_by_key = {k: r.markdown for k, r in loaded.items() if r.succeeded and k in indexed_keys}
 
+index = build_document_index(output_path, indexed_keys, ocr_keys=set(ocr_by_key))
+doc_keys_with_ocr = index.doc_keys_with_ocr(ocr_by_key)
+extractions = {k: v for k, v in load_extractions(output_path).items() if k in {str(dk) for dk in doc_keys_with_ocr}}
 
 extractor_name = st.selectbox("Model", list(EXTRACTORS.keys()))
 
 mode = st.radio("Mode", ["Process new only", "Reprocess all"], horizontal=True)
 if mode == "Reprocess all":
-    to_process = all_filenames
+    to_process = list(doc_keys_with_ocr)
     existing_extractions = {}
 else:
     existing_extractions = dict(extractions)
-    to_process = [f for f in all_filenames if f not in existing_extractions]
+    to_process = [dk for dk in doc_keys_with_ocr if str(dk) not in existing_extractions]
 
-n_total = len(all_filenames)
+n_total = len(doc_keys_with_ocr)
 n_processed = len(extractions)
 n_new = len(to_process)
 
@@ -49,7 +56,20 @@ col0.metric("Total", n_total)
 col1.metric("Processed", n_processed)
 col2.metric("New", n_new)
 
-run_clicked = st.button("Run Extraction", width="stretch", type="primary")
+parse_proceed = st.session_state.pop("parse_reprocess_confirmed", False)
+
+if mode == "Reprocess all" and st.button("Run Extraction", width="stretch", type="primary") and not parse_proceed:
+    @st.dialog("Confirm Reprocess All")
+    def confirm_parse_reprocess():
+        st.warning("This will replace all existing extractions. This cannot be undone.")
+        if st.button("Confirm", type="primary"):
+            st.session_state["parse_reprocess_confirmed"] = True
+            st.rerun()
+
+    confirm_parse_reprocess()
+    st.stop()
+
+run_clicked = parse_proceed or st.button("Run Extraction", width="stretch", type="primary")
 
 if run_clicked and to_process:
     if mode == "Reprocess all":
@@ -60,12 +80,13 @@ if run_clicked and to_process:
     failed: list[str] = []
     last_save = time.time()
 
-    for filename in to_process:
+    for doc_key in to_process:
+        ocr_text = index.concat_ocr(doc_key, ocr_by_key)
         try:
-            extractions[filename] = EXTRACTORS[extractor_name](ocr_by_file[filename])
+            extractions[str(doc_key)] = EXTRACTORS[extractor_name](ocr_text)
             bar.tick(True)
         except Exception:
-            failed.append(filename)
+            failed.append(str(doc_key))
             bar.tick(False)
         if time.time() - last_save > 15:
             save_extractions(output_path, extractions)
@@ -79,5 +100,5 @@ if run_clicked and to_process:
 if run_clicked and not to_process:
     st.info("No items to process.")
 
-if not all_filenames:
+if not doc_keys_with_ocr:
     st.info("No OCR results. Run OCR first.")

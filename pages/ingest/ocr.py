@@ -1,78 +1,54 @@
 import random
 import traceback
-from collections.abc import Callable
 from pathlib import Path
 
 import streamlit as st
 
-from data import load_ocr_results
-from models import OcrBatch, OcrResult
+from data import load_ocr_results, save_ocr_results
+from models import OcrResult, batch_serial_key, iter_indexed_files, load_scan_index
 from ocr_providers import OCR_PROVIDERS, teardown_ocr
-from settings import IMAGE_EXTENSIONS, get_config
+from settings import get_config
 from streamlit_progress import ProgressBar
 
 st.title("OCR")
 
-
-def get_image_files(path: Path) -> list[Path]:
-    return [f for f in path.iterdir() if f.is_file() and f.suffix.lower() in IMAGE_EXTENSIONS]
-
-
-def get_already_processed(path: Path) -> set[str]:
-    return {r.filename for r in load_ocr_results(path).results}
-
-
-def run_batch(
-    files: list[Path],
-    results_file: Path,
-    existing_results: list[OcrResult],
-    ocr_fn: Callable[[Path], str],
-    bar: ProgressBar,
-) -> list[OcrResult]:
-    new_results: list[OcrResult] = []
-    for img_file in files:
-        try:
-            raw = ocr_fn(img_file)
-            new_results.append(OcrResult(filename=img_file.name, raw=raw, boxes=None, markdown=raw, succeeded=True))
-            bar.tick(True)
-        except Exception:
-            raw = traceback.format_exc()
-            new_results.append(OcrResult(filename=img_file.name, raw=raw, boxes=None, markdown=raw, succeeded=False))
-            bar.tick(False)
-        results_file.write_text(
-            OcrBatch(results=existing_results + new_results).model_dump_json(indent=2),
-            encoding="utf-8",
-        )
-    return new_results
-
-
 cfg = get_config()
 input_dir = cfg.get("input_image_path", "")
 output_dir = cfg.get("batch_output_path", "")
-ocr_provider = st.selectbox("OCR Model", list(OCR_PROVIDERS.keys()))
-mode = st.radio("Mode", ["Process new only", "Reprocess all", "Run failed"], horizontal=True)
+
+if not input_dir or not output_dir:
+    st.info("Set input image path and batch output path in Config first.")
+    st.stop()
 
 input_path = Path(input_dir)
 output_path = Path(output_dir)
-all_images = get_image_files(input_path) if input_dir and output_dir else []
-loaded = load_ocr_results(output_path).results if output_dir else []
+index_file = output_path / "batches.json"
+if not index_file.exists():
+    st.info("Run File Index first to create batches.json.")
+    st.stop()
+
+scan_index = load_scan_index(output_path)
+indexed_items = iter_indexed_files(scan_index, include_archived=False)
+loaded = load_ocr_results(output_path)
 results_file = output_path / "ocr.json"
 
-if mode == "Reprocess all":
-    to_process = all_images
-    existing_results = []
-elif mode == "Run failed":
-    failed_names = {r.filename for r in loaded if not r.succeeded}
-    to_process = [f for f in all_images if f.name in failed_names]
-    existing_results = [r for r in loaded if r.succeeded]
-else:
-    already_done = get_already_processed(output_path) if output_dir else set()
-    to_process = [f for f in all_images if f.name not in already_done]
-    existing_results = loaded
+ocr_provider = st.selectbox("OCR Model", list(OCR_PROVIDERS.keys()))
+mode = st.radio("Mode", ["Process new only", "Reprocess all", "Run failed"], horizontal=True)
 
-n_total = len(all_images)
-n_processed = sum(1 for r in loaded if r.succeeded)
-n_failed = sum(1 for r in loaded if not r.succeeded)
+if mode == "Reprocess all":
+    to_process = [(batch_serial_key(bid, ser), input_path / fn) for bid, ser, fn in indexed_items if (input_path / fn).exists()]
+    existing = {}
+elif mode == "Run failed":
+    failed_keys = {k for k, r in loaded.items() if not r.succeeded}
+    to_process = [(k, input_path / fn) for bid, ser, fn in indexed_items if (k := batch_serial_key(bid, ser)) in failed_keys and (input_path / fn).exists()]
+    existing = {k: r for k, r in loaded.items() if r.succeeded}
+else:
+    existing = dict(loaded)
+    to_process = [(k, input_path / fn) for bid, ser, fn in indexed_items if (k := batch_serial_key(bid, ser)) not in existing and (input_path / fn).exists()]
+
+n_total = len(indexed_items)
+n_processed = sum(1 for r in loaded.values() if r.succeeded)
+n_failed = sum(1 for r in loaded.values() if not r.succeeded)
 n_new = len(to_process)
 
 col0, col1, col2, col3 = st.columns(4)
@@ -85,7 +61,20 @@ batch_limit = st.number_input("Batch size (0 = all)", min_value=0, value=0, step
 if batch_limit > 0:
     to_process = to_process[:batch_limit]
 
-if not st.button("Start Batch Processing"):
+ocr_proceed = st.session_state.pop("ocr_reprocess_confirmed", False)
+
+if mode == "Reprocess all" and st.button("Start Batch Processing") and not ocr_proceed:
+    @st.dialog("Confirm Reprocess All")
+    def confirm_ocr_reprocess():
+        st.warning("This will replace all existing OCR results. This cannot be undone.")
+        if st.button("Confirm", type="primary"):
+            st.session_state["ocr_reprocess_confirmed"] = True
+            st.rerun()
+
+    confirm_ocr_reprocess()
+    st.stop()
+
+if not ocr_proceed and not st.button("Start Batch Processing"):
     st.stop()
 
 output_path.mkdir(parents=True, exist_ok=True)
@@ -97,17 +86,24 @@ if not to_process:
 random.shuffle(to_process)
 st.info(f"Processing {len(to_process)} images...")
 
-new_results = run_batch(
-    files=to_process,
-    results_file=results_file,
-    existing_results=existing_results,
-    ocr_fn=OCR_PROVIDERS[ocr_provider].run,
-    bar=ProgressBar(len(to_process)),
-)
+new_results: dict[str, OcrResult] = {}
+bar = ProgressBar(len(to_process))
+for key, img_path in to_process:
+    try:
+        raw = OCR_PROVIDERS[ocr_provider].run(img_path)
+        new_results[key] = OcrResult(filename=img_path.name, raw=raw, boxes=None, markdown=raw, succeeded=True)
+        bar.tick(True)
+    except Exception:
+        raw = traceback.format_exc()
+        new_results[key] = OcrResult(filename=img_path.name, raw=raw, boxes=None, markdown=raw, succeeded=False)
+        bar.tick(False)
+    merged = existing | new_results
+    save_ocr_results(output_path, merged)
+
 teardown_ocr(ocr_provider)
 
-n_fails_total = sum(1 for r in new_results if not r.succeeded)
+n_fails_total = sum(1 for r in new_results.values() if not r.succeeded)
 st.success(
     f"Done! Processed {len(new_results)} new images "
-    f"({len(existing_results) + len(new_results)} total, {n_fails_total} failed). Saved to {results_file}"
+    f"({len(existing) + len(new_results)} total, {n_fails_total} failed). Saved to {results_file}"
 )

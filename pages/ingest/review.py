@@ -3,6 +3,7 @@ from pathlib import Path
 import streamlit as st
 
 from data import (
+    build_document_index,
     load_decisions,
     load_extractions,
     load_name_cache,
@@ -13,9 +14,13 @@ from models import (
     VERDICT_COLORS,
     VERDICT_LABELS,
     CorruptedResult,
+    DocumentKey,
     OtherResult,
     ReceiptResult,
     ReviewDecision,
+    batch_serial_key,
+    iter_indexed_files,
+    load_scan_index,
 )
 from name_similarity import get_smart_match_suggestions
 from rules.cost_large_check import cost_large_check
@@ -23,7 +28,7 @@ from rules.cost_zero_check import cost_zero_check
 from rules.currency_uncommon_check import currency_uncommon_check
 from rules.date_check import date_check
 from settings import get_config
-from validation import ValidationRule
+from validation import HintRule, is_date_time_safe_for_archive
 
 st.title("Review")
 
@@ -35,39 +40,42 @@ if not batch_dir:
     st.stop()
 
 output_path = Path(batch_dir)
+index_file = output_path / "batches.json"
+if not index_file.exists():
+    st.info("Run File Index first to create batches.json.")
+    st.stop()
 
-batch = load_ocr_results(output_path)
-succeeded = [r for r in batch.results if r.succeeded]
-all_filenames = [r.filename for r in succeeded]
-ocr_by_file = {r.filename: r.markdown for r in succeeded}
-
-extractions = {k: v for k, v in load_extractions(output_path).items() if k in set(all_filenames)}
-
+scan_index = load_scan_index(output_path)
+indexed_keys = {batch_serial_key(bid, ser) for bid, ser, _ in iter_indexed_files(scan_index, include_archived=False)}
+key_to_filename = {batch_serial_key(bid, ser): fn for bid, ser, fn in iter_indexed_files(scan_index, include_archived=False)}
+loaded = load_ocr_results(output_path)
+ocr_by_key = {k: r.markdown for k, r in loaded.items() if r.succeeded}
+extractions = load_extractions(output_path)
 decisions = load_decisions(output_path)
 
-name_pairs: dict[str, tuple[str, str]] = {}
-for fn, dec in decisions.items():
-    if dec.verdict == "accepted" and fn in extractions:
-        ext_i = extractions[fn]
-        if isinstance(ext_i, ReceiptResult):
-            name_pairs[fn] = (ext_i.name, dec.name)
-        elif isinstance(ext_i, OtherResult):
-            name_pairs[fn] = (ext_i.title, dec.name)
-name_cache = load_name_cache(output_path)
-for fn, entry in name_cache.items():
-    name_pairs[fn] = (entry["extracted"], entry["confirmed"])
-
-extracted_files = [f for f in all_filenames if f in extractions]
-if not extracted_files:
+index = build_document_index(output_path, indexed_keys)
+extracted_doc_keys = [k for k in extractions]
+if not extracted_doc_keys:
     st.info("No extractions yet. Run Parse first.")
     st.stop()
 
-# cost_check Disabled for now because even gpt5.4(yes still) does a bad job distinguishing tax inclusivity
-VALIDATION_RULES: list[ValidationRule] = [date_check, cost_zero_check, cost_large_check, currency_uncommon_check]
+HINT_RULES: list[HintRule] = [date_check, cost_zero_check, cost_large_check, currency_uncommon_check]
+
+name_pairs: dict[str, tuple[str, str]] = {}
+for doc_key, dec in decisions.items():
+    if dec.verdict == "accepted" and doc_key in extractions:
+        ext_i = extractions[doc_key]
+        if isinstance(ext_i, ReceiptResult):
+            name_pairs[doc_key] = (ext_i.name, dec.name)
+        elif isinstance(ext_i, OtherResult):
+            name_pairs[doc_key] = (ext_i.title, dec.name)
+name_cache = load_name_cache(output_path)
+for doc_key, entry in name_cache.items():
+    name_pairs[doc_key] = (entry["extracted"], entry["confirmed"])
 
 
-def _review_sort_key(filename):
-    ext = extractions[filename]
+def _review_sort_key(doc_key: str):
+    ext = extractions[doc_key]
     if isinstance(ext, ReceiptResult):
         return (2, ext.name.lower())
     elif isinstance(ext, OtherResult):
@@ -75,11 +83,8 @@ def _review_sort_key(filename):
     return (0, "")
 
 
-to_review = sorted(
-    (f for f in extracted_files if f not in decisions),
-    key=_review_sort_key,
-)
-total = len(extracted_files)
+to_review = sorted((dk for dk in extracted_doc_keys if dk not in decisions), key=_review_sort_key)
+total = len(extracted_doc_keys)
 
 verdict_counts = {v: 0 for v in VERDICT_LABELS}
 for d in decisions.values():
@@ -107,9 +112,15 @@ bar_html = (
 st.markdown(bar_html, unsafe_allow_html=True)
 
 if st.button("Clear all reviews"):
-    decisions.clear()
-    save_decisions(output_path, decisions)
-    st.rerun()
+    @st.dialog("Confirm Clear All Reviews")
+    def confirm_clear_reviews():
+        st.warning("This will clear all review decisions. This cannot be undone.")
+        if st.button("Confirm", type="primary"):
+            decisions.clear()
+            save_decisions(output_path, decisions)
+            st.rerun()
+
+    confirm_clear_reviews()
 
 if not to_review:
     st.success("All items reviewed!")
@@ -119,6 +130,8 @@ if "review_idx" not in st.session_state or st.session_state.review_idx >= len(to
     st.session_state.review_idx = 0
 
 selected = to_review[st.session_state.review_idx]
+doc_key = DocumentKey.parse(selected) or DocumentKey.from_group([selected])
+selected_keys = index.keys_for_doc(doc_key)
 img_dir = Path(image_dir) if image_dir else None
 
 nav_cols = st.columns([1, 1, 6])
@@ -160,14 +173,16 @@ ocr_col, image_col, result_col = st.columns([1, 1, 2])
 
 with ocr_col:
     st.markdown("**OCR Output**")
-    ocr_text = ocr_by_file.get(selected, "")
+    ocr_text = index.concat_ocr(doc_key, ocr_by_key)
     st.markdown(ocr_text.replace("\n", "  \n"), unsafe_allow_html=True)
 
 with image_col:
     if img_dir:
-        img_path = img_dir / selected
-        if img_path.exists():
-            st.image(str(img_path), width="stretch")
+        for i, k in enumerate(selected_keys):
+            fn = key_to_filename.get(k, k)
+            img_path = img_dir / fn
+            if img_path.exists():
+                st.image(str(img_path), caption=f"Page {i + 1}: {fn}", width="stretch")
 
 with result_col:
     best_label = f" — {best_sim:.0%}" if best_sim is not None else ""
@@ -248,7 +263,7 @@ with result_col:
         )
     else:
         live_ext = CorruptedResult(document_type="corrupted")
-    for rule in VALIDATION_RULES:
+    for rule in HINT_RULES:
         for result in rule(live_ext):
             if result.color:
                 st.markdown(
@@ -258,35 +273,71 @@ with result_col:
             else:
                 st.markdown(f"**{result.message}**")
 
-    btn_cols = st.columns(3)
-    btn_accept = btn_cols[0].button("Accept", type="primary", width='stretch', key=f"accept_{selected}")
-    btn_mark = btn_cols[1].button("Mark", width='stretch', key=f"mark_{selected}")
-    btn_toss = btn_cols[2].button("Toss", width='stretch', key=f"toss_{selected}")
+    confirmed_names = {c for _, c in name_pairs.values()}
+    name_previously_approved = name.strip() and name not in PLACEHOLDER_NAMES and name in confirmed_names
 
-    if btn_accept or btn_mark or btn_toss:
-        verdict = "accepted" if btn_accept else "marked" if btn_mark else "tossed"
-        try:
-            parsed_cost = float(cost_str)
-        except ValueError:
-            parsed_cost = 0.0
-        final_currency = "JPY" if jpy_checked else currency_val
+    parsed_cost = float(cost_str)
+    final_currency = "JPY" if jpy_checked else currency_val
 
-        if btn_accept and doc_type == "receipt" and (not cost_str.strip() or not final_currency):
+    def do_accept():
+        if doc_type == "receipt" and (not cost_str.strip() or not final_currency):
             missing = []
             if not cost_str.strip():
                 missing.append("cost")
             if not final_currency:
                 missing.append("currency")
             st.error(f"Receipt requires: {', '.join(missing)}")
-        else:
-            decisions[selected] = ReviewDecision(
-                verdict=verdict,
-                document_type=doc_type,
-                name=name,
-                date=date_val,
-                time=time_val,
-                cost=parsed_cost,
-                currency=final_currency,
-            )
-            save_decisions(output_path, decisions)
-            st.rerun()
+            return
+        safe, err = is_date_time_safe_for_archive(date_val, time_val)
+        if not safe:
+            st.error(err)
+            return
+        decisions[selected] = ReviewDecision(
+            verdict="accepted",
+            document_type=doc_type,
+            name=name,
+            date=date_val,
+            time=time_val,
+            cost=parsed_cost,
+            currency=final_currency,
+        )
+        save_decisions(output_path, decisions)
+        st.rerun()
+
+    if st.session_state.get("confirmed_accept") and st.session_state.get("accept_for_key") == selected:
+        st.session_state.pop("confirmed_accept", None)
+        st.session_state.pop("accept_for_key", None)
+        do_accept()
+    else:
+        btn_cols = st.columns(3)
+        btn_accept = btn_cols[0].button("Accept", type="primary", width='stretch', key=f"accept_{selected}")
+        btn_mark = btn_cols[1].button("Mark", width='stretch', key=f"mark_{selected}")
+        btn_toss = btn_cols[2].button("Toss", width='stretch', key=f"toss_{selected}")
+
+        if btn_accept or btn_mark or btn_toss:
+            if btn_accept and not name_previously_approved and name.strip() and name not in PLACEHOLDER_NAMES:
+                st.session_state.accept_for_key = selected
+
+                @st.dialog("Confirm Accept")
+                def confirm_accept_dialog():
+                    st.markdown("This name was not seen in previous reviews. Accept anyway?")
+                    if st.button("Confirm", type="primary"):
+                        st.session_state.confirmed_accept = True
+                        st.rerun()
+
+                confirm_accept_dialog()
+            elif btn_accept:
+                do_accept()
+            else:
+                verdict = "marked" if btn_mark else "tossed"
+                decisions[selected] = ReviewDecision(
+                    verdict=verdict,
+                    document_type=doc_type,
+                    name=name,
+                    date=date_val,
+                    time=time_val,
+                    cost=parsed_cost,
+                    currency=final_currency,
+                )
+                save_decisions(output_path, decisions)
+                st.rerun()

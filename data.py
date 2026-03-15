@@ -6,7 +6,10 @@ import numpy as np
 from models import (
     DocumentExtraction,
     DocumentExtractionAdapter,
-    OcrBatch,
+    DocumentGroups,
+    DocumentIndex,
+    DocumentKey,
+    OcrResult,
     ReviewDecision,
 )
 
@@ -33,11 +36,21 @@ def delete_sidecar(file_path: Path):
 
 
 
-def load_ocr_results(output_path: Path) -> OcrBatch:
+def load_ocr_results(output_path: Path) -> dict[str, OcrResult]:
     results_file = output_path / "ocr.json"
-    if results_file.exists():
-        return OcrBatch.model_validate_json(results_file.read_text(encoding="utf-8"))
-    return OcrBatch(results=[])
+    if not results_file.exists():
+        return {}
+    data = json.loads(results_file.read_text(encoding="utf-8"))
+    if "results" in data:
+        return {}
+    return {k: OcrResult.model_validate(v) for k, v in data.items()}
+
+
+def save_ocr_results(output_path: Path, results: dict[str, OcrResult]):
+    d = {k: v.model_dump() for k, v in results.items()}
+    (output_path / "ocr.json").write_text(
+        json.dumps(d, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
 
 
 def load_extractions(output_path: Path) -> dict[str, DocumentExtraction]:
@@ -109,6 +122,54 @@ def save_distinct_pairs(output_path: Path, pairs: set[frozenset[str]]):
     (output_path / "distinct_pairs.json").write_text(
         json.dumps(serializable, indent=2, ensure_ascii=False), encoding="utf-8"
     )
+
+
+def load_document_groups(output_path: Path) -> DocumentGroups:
+    f = output_path / "documents.json"
+    if not f.exists():
+        return DocumentGroups(groups=[])
+    return DocumentGroups.model_validate_json(f.read_text(encoding="utf-8"))
+
+
+def save_document_groups(output_path: Path, doc_groups: DocumentGroups):
+    (output_path / "documents.json").write_text(
+        doc_groups.model_dump_json(indent=2), encoding="utf-8"
+    )
+
+
+def build_document_index(
+    output_path: Path,
+    indexed_keys: set[str],
+    ocr_keys: set[str] | None = None,
+) -> DocumentIndex:
+    raw = load_document_groups(output_path).groups
+    return DocumentIndex.from_raw_groups(raw, indexed_keys, ocr_keys)
+
+
+def _batch_id_from_key(key: str) -> int | None:
+    dk = DocumentKey.parse(key)
+    return dk.batch_id if dk else None
+
+
+def replace_groups_for_batch(output_path: Path, batch_id: int, new_groups: list[list[str]]):
+    doc = load_document_groups(output_path)
+    multi = [g for g in new_groups if len(g) > 1]
+    keep = [g for g in doc.groups if not (g and _batch_id_from_key(g[0]) == batch_id)]
+    doc.groups = keep + multi
+    save_document_groups(output_path, doc)
+
+
+def clear_extractions_decisions_for_batch(output_path: Path, batch_id: int):
+    extractions = load_extractions(output_path)
+    decisions = load_decisions(output_path)
+    to_remove = {k for k in extractions if _batch_id_from_key(k) == batch_id}
+    to_remove |= {k for k in decisions if _batch_id_from_key(k) == batch_id and decisions[k].verdict != "tossed"}
+    for k in to_remove:
+        extractions.pop(k, None)
+        decisions.pop(k, None)
+    if to_remove:
+        save_extractions(output_path, extractions)
+        save_decisions(output_path, decisions)
 
 
 def _iter_year_month_dirs(output_path: Path):

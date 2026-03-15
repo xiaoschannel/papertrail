@@ -24,6 +24,8 @@ from models import (
     OtherResult,
     ReceiptResult,
     ReviewDecision,
+    batch_serial_key,
+    filename_to_batch_serial,
     load_scan_index,
 )
 from name_similarity import get_smart_match_suggestions
@@ -34,9 +36,9 @@ from rules.cost_zero_check import cost_zero_check
 from rules.currency_uncommon_check import currency_uncommon_check
 from rules.date_check import date_check
 from settings import get_config
-from validation import ValidationRule
+from validation import HintRule, is_date_time_safe_for_archive
 
-VALIDATION_RULES: list[ValidationRule] = [date_check, cost_zero_check, cost_large_check, currency_uncommon_check]
+HINT_RULES: list[HintRule] = [date_check, cost_zero_check, cost_large_check, currency_uncommon_check]
 
 st.title("Marked Workshop")
 
@@ -178,7 +180,7 @@ with orig_col:
     elif orientation == "↓":
         working_image = original.transpose(ROTATION_MAP[180])
 
-    enhance = st.radio("Enhance", ["None", "CLAHE", "Contrast + Gamma"], horizontal=True, key=f"enh_{selected}")
+    enhance = st.radio("Enhance", ["None", "CLAHE", "Contrast + Gamma", "Whiten background"], horizontal=True, key=f"enh_{selected}")
     if enhance == "CLAHE":
         clip = st.slider("Clip", 1.0, 10.0, 3.0, 0.5, key=f"clip_{selected}")
         grid = st.slider("Grid", 2, 16, 8, 1, key=f"grid_{selected}")
@@ -186,6 +188,20 @@ with orig_col:
         lab = cv2.cvtColor(work_arr, cv2.COLOR_RGB2LAB)
         clahe = cv2.createCLAHE(clipLimit=clip, tileGridSize=(grid, grid))
         lab[:, :, 0] = clahe.apply(lab[:, :, 0])
+        working_image = Image.fromarray(cv2.cvtColor(lab, cv2.COLOR_LAB2RGB))
+    elif enhance == "Whiten background":
+        l_min = st.slider("Lightness (min)", 128, 255, 200, 1, key=f"wb_L_{selected}")
+        chroma_min = st.slider("Chroma (min)", 1, 80, 10, 1, key=f"wb_chroma_{selected}")
+        work_arr = np.array(working_image)
+        lab = cv2.cvtColor(work_arr, cv2.COLOR_RGB2LAB)
+        L, a, b = lab[:, :, 0], lab[:, :, 1], lab[:, :, 2]
+        light = L >= l_min
+        chroma = np.maximum(np.abs(a.astype(np.int32) - 128), np.abs(b.astype(np.int32) - 128))
+        colored = chroma >= chroma_min
+        mask = light & colored
+        lab[mask, 0] = 255
+        lab[mask, 1] = 128
+        lab[mask, 2] = 128
         working_image = Image.fromarray(cv2.cvtColor(lab, cv2.COLOR_LAB2RGB))
     elif enhance == "Contrast + Gamma":
         contrast_val = st.slider("Contrast", 0.5, 3.0, 2.5, 0.1, key=f"ctr_{selected}")
@@ -310,7 +326,7 @@ with review_col:
         )
     else:
         live_ext = CorruptedResult(document_type="corrupted")
-    for rule in VALIDATION_RULES:
+    for rule in HINT_RULES:
         for result in rule(live_ext):
             if result.color:
                 st.markdown(
@@ -339,8 +355,11 @@ with review_col:
             if not final_currency:
                 missing.append("currency")
             st.error(f"Receipt requires: {', '.join(missing)}")
-        else:
-            if btn_accept:
+        elif btn_accept:
+            safe, err = is_date_time_safe_for_archive(date_val, time_val)
+            if not safe:
+                st.error(err)
+            else:
                 dec = ReviewDecision(
                     verdict="accepted",
                     document_type=doc_type,
@@ -374,18 +393,21 @@ with review_col:
                     extracted_name = final_ext.title
                 else:
                     extracted_name = ""
-                name_cache[selected] = {"extracted": extracted_name, "confirmed": dec.name}
+                bid, ser = sidecar.get("batch_id"), sidecar.get("serial")
+                cache_key = batch_serial_key(bid, ser) if bid is not None and ser is not None else selected
+                name_cache[cache_key] = {"extracted": extracted_name, "confirmed": dec.name}
                 save_name_cache(output_path, name_cache)
                 st.session_state.pop(ws_key, None)
                 st.success(f"Accepted → {dest_rel}")
-            else:
-                tossed_dir.mkdir(parents=True, exist_ok=True)
-                shutil.move(str(marked_dir / selected), str(tossed_dir / selected))
-                marked_sidecar = (marked_dir / selected).with_suffix(".json")
-                if marked_sidecar.exists():
-                    shutil.move(str(marked_sidecar), str((tossed_dir / selected).with_suffix(".json")))
-                st.session_state.pop(ws_key, None)
-                st.success(f"Tossed → tossed/{selected}")
+                st.rerun()
+        else:
+            tossed_dir.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(marked_dir / selected), str(tossed_dir / selected))
+            marked_sidecar = (marked_dir / selected).with_suffix(".json")
+            if marked_sidecar.exists():
+                shutil.move(str(marked_sidecar), str((tossed_dir / selected).with_suffix(".json")))
+            st.session_state.pop(ws_key, None)
+            st.success(f"Tossed → tossed/{selected}")
             st.rerun()
 
 # --- Context by time (below columns) ---
@@ -457,15 +479,16 @@ else:
 st.divider()
 st.markdown("**Same Batch**")
 
-filename_to_batch: dict[str, int] = {}
 batch_files_map: dict[int, list[str]] = {}
+fn_to_bs: dict[str, tuple[int, int]] = {}
 batches_file = output_path / "batches.json"
 if batches_file.exists():
-    scan_index, filename_to_batch = load_scan_index(output_path)
+    scan_index = load_scan_index(output_path)
+    fn_to_bs = filename_to_batch_serial(scan_index)
     for b in scan_index.batches:
         batch_files_map[b.batch_id] = [b.files[s] for s in sorted(b.files)]
 
-batch_id = filename_to_batch.get(selected)
+batch_id = fn_to_bs.get(selected, (None, None))[0]
 if batch_id is not None and batch_id in batch_files_map:
     batch_filenames = batch_files_map[batch_id]
     sel_idx = batch_filenames.index(selected) if selected in batch_filenames else 0
