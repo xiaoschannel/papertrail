@@ -79,17 +79,8 @@ records_expanded = {
 non_archived = [b for b in scan_index.batches if not b.archived]
 all_complete = len(complete_batches) == len(non_archived) and len(non_archived) > 0
 
-st.metric("Batches complete", f"{len(complete_batches)} / {len(non_archived)}")
-st.metric("Files to archive", len(records_expanded))
-
-if not all_complete:
-    if non_archived:
-        st.info("Review all files before archiving.")
-    else:
-        st.info("No new files to organize.")
-    st.stop()
-
-existing_names_by_folder = scan_existing_names(output_path)
+n_documents = len(doc_keys_to_archive)
+n_multipage = sum(1 for dk in doc_keys_to_archive if (p := DocumentKey.parse(dk)) and len(index.keys_for_doc(p)) > 1)
 
 accepted_doc_keys = [dk for dk, dec in decisions_to_archive.items() if dec.verdict == "accepted"]
 marked_doc_keys = [dk for dk, dec in decisions_to_archive.items() if dec.verdict == "marked"]
@@ -100,6 +91,29 @@ accepted_records = {
     k: v for k, v in index.expand_decisions(accepted_decisions).items()
     if k in key_to_filename and key_to_filename[k] not in organized
 }
+
+n_accepted = len(accepted_records)
+n_marked = sum(len(index.keys_for_doc(DocumentKey.parse(dk) or DocumentKey.from_group([dk]))) for dk in marked_doc_keys)
+n_tossed = sum(len(index.keys_for_doc(DocumentKey.parse(dk) or DocumentKey.from_group([dk]))) for dk in tossed_doc_keys)
+
+c0, c1, c2, _ = st.columns(4)
+c0.metric("Batches complete", f"{len(complete_batches)} / {len(non_archived)}")
+c1.metric("Documents", n_documents)
+c2.metric("Multipage", n_multipage)
+c3, c4, c5, c6 = st.columns(4)
+c3.metric("Files", len(records_expanded))
+c4.metric("Accepted", n_accepted)
+c5.metric("Marked", n_marked)
+c6.metric("Tossed", n_tossed)
+
+if not all_complete:
+    if non_archived:
+        st.info("Review all files before archiving.")
+    else:
+        st.info("No new files to organize.")
+    st.stop()
+
+existing_names_by_folder = scan_existing_names(output_path)
 
 file_destinations = plan_accepted_destinations(
     accepted_records,
@@ -117,15 +131,6 @@ for dk in tossed_doc_keys:
     for key in index.keys_for_doc(dk_parsed):
         if key in key_to_filename and key_to_filename[key] not in organized:
             file_destinations[key] = f"tossed/{key_to_filename[key]}"
-
-n_accepted = len(accepted_records)
-n_marked = sum(len(index.keys_for_doc(DocumentKey.parse(dk) or DocumentKey.from_group([dk]))) for dk in marked_doc_keys)
-n_tossed = sum(len(index.keys_for_doc(DocumentKey.parse(dk) or DocumentKey.from_group([dk]))) for dk in tossed_doc_keys)
-
-col0, col1, col2 = st.columns(3)
-col0.metric("Accepted", n_accepted)
-col1.metric("Marked", n_marked)
-col2.metric("Tossed", n_tossed)
 
 st.subheader("Preview")
 preview_data = [
