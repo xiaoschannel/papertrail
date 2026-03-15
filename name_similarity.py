@@ -19,7 +19,7 @@ SMART_MATCH_THRESHOLD = 0.25
 
 
 def get_smart_match_suggestions(
-    query: str, name_pairs: dict[str, tuple[str, str]], top_n: int = 5
+    query: str, name_pairs: dict[str, tuple[str, str]]
 ) -> tuple[list[str], float | None]:
     if not name_pairs or not query:
         return [], None
@@ -38,7 +38,7 @@ def get_smart_match_suggestions(
         confirmed_frequency[confirmed] = confirmed_frequency.get(confirmed, 0) + 1
     unique_confirmed = list(confirmed_best_rank.keys())
     unique_confirmed.sort(key=lambda c: (confirmed_best_rank[c], -confirmed_frequency[c]))
-    return unique_confirmed[:top_n], best_sim
+    return unique_confirmed, best_sim
 
 
 def ensure_embeddings(
