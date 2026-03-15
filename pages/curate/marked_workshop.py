@@ -180,7 +180,7 @@ with orig_col:
     elif orientation == "↓":
         working_image = original.transpose(ROTATION_MAP[180])
 
-    enhance = st.radio("Enhance", ["None", "CLAHE", "Contrast + Gamma"], horizontal=True, key=f"enh_{selected}")
+    enhance = st.radio("Enhance", ["None", "CLAHE", "Contrast + Gamma", "Whiten background"], horizontal=True, key=f"enh_{selected}")
     if enhance == "CLAHE":
         clip = st.slider("Clip", 1.0, 10.0, 3.0, 0.5, key=f"clip_{selected}")
         grid = st.slider("Grid", 2, 16, 8, 1, key=f"grid_{selected}")
@@ -188,6 +188,20 @@ with orig_col:
         lab = cv2.cvtColor(work_arr, cv2.COLOR_RGB2LAB)
         clahe = cv2.createCLAHE(clipLimit=clip, tileGridSize=(grid, grid))
         lab[:, :, 0] = clahe.apply(lab[:, :, 0])
+        working_image = Image.fromarray(cv2.cvtColor(lab, cv2.COLOR_LAB2RGB))
+    elif enhance == "Whiten background":
+        l_min = st.slider("Lightness (min)", 128, 255, 200, 1, key=f"wb_L_{selected}")
+        chroma_min = st.slider("Chroma (min)", 1, 80, 10, 1, key=f"wb_chroma_{selected}")
+        work_arr = np.array(working_image)
+        lab = cv2.cvtColor(work_arr, cv2.COLOR_RGB2LAB)
+        L, a, b = lab[:, :, 0], lab[:, :, 1], lab[:, :, 2]
+        light = L >= l_min
+        chroma = np.maximum(np.abs(a.astype(np.int32) - 128), np.abs(b.astype(np.int32) - 128))
+        colored = chroma >= chroma_min
+        mask = light & colored
+        lab[mask, 0] = 255
+        lab[mask, 1] = 128
+        lab[mask, 2] = 128
         working_image = Image.fromarray(cv2.cvtColor(lab, cv2.COLOR_LAB2RGB))
     elif enhance == "Contrast + Gamma":
         contrast_val = st.slider("Contrast", 0.5, 3.0, 2.5, 0.1, key=f"ctr_{selected}")
