@@ -28,11 +28,6 @@ pg = st.navigation({
     "Dev": [
         st.Page("pages/dev/ocr_experiment.py", title="OCR Experiment", icon=":material/science:"),
         st.Page("pages/dev/sanity_check.py", title="Sanity Check", icon=":material/vital_signs:"),
-        st.Page("pages/dev/migrate_batch_serial.py", title="Migrate Batch+Serial", icon=":material/swap_horiz:"),
-        st.Page("pages/dev/migrate_batch_archived.py", title="Migrate Batch Archived", icon=":material/archive:"),
-        st.Page("pages/dev/migrate_document_groups.py", title="Migrate Document Groups", icon=":material/merge_type:"),
-        st.Page("pages/dev/fix_leftover_extractions.py", title="Fix Leftover Extractions", icon=":material/cleaning_services:"),
-        st.Page("pages/dev/fix_invalid_dates.py", title="Fix Invalid Dates", icon=":material/calendar_today:"),
     ],
     "": [
         st.Page("pages/config.py", title="Config", icon=":material/settings:"),
