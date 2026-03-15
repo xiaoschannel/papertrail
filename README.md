@@ -1,5 +1,8 @@
 # Papertrail
 
+> _Ex vestigiis veritas_  
+> Truth from traces.
+
 A personal document archival tool for digitizing receipts, tickets, and other timed documents into a structured timeline. Tested with over 3000 real documents in Japanese, Chinese and English.
 
 This project is also built to test the "fast fashion era of SaaS from AI coding" idea and practice AI-assisted coding against a messy, real-world problem.
