@@ -1,3 +1,4 @@
+from itertools import combinations
 from pathlib import Path
 
 import streamlit as st
@@ -109,32 +110,19 @@ else:
                 if st.checkbox(label, value=True, key=f"sel_{cid}_{m}"):
                     checked.append(m)
 
-            unchecked = [m for m in members if m not in checked]
+            if len(checked) >= 2:
+                radio_options = []
+                for m in checked:
+                    radio_options.append(f"{m} (canonical)" if m in canonical_names else m)
+                canonical_in_checked = [m for m in checked if m in canonical_names]
+                default_idx = checked.index(canonical_in_checked[0]) if canonical_in_checked else 0
 
-            if len(checked) < 2:
-                if unchecked:
-                    if st.button("Confirm different", key=f"distinct_btn_{cid}"):
-                        for u in unchecked:
-                            for c in checked:
-                                distinct_pairs.add(frozenset({u, c}))
-                        save_distinct_pairs(output_path, distinct_pairs)
-                        st.rerun()
-                continue
+                selected_radio = st.radio(
+                    "Normalize to", radio_options, index=default_idx, key=f"target_{cid}"
+                )
+                target = checked[radio_options.index(selected_radio)]
+                to_merge = [m for m in checked if m != target]
 
-            radio_options = []
-            for m in checked:
-                radio_options.append(f"{m} (canonical)" if m in canonical_names else m)
-            canonical_in_checked = [m for m in checked if m in canonical_names]
-            default_idx = checked.index(canonical_in_checked[0]) if canonical_in_checked else 0
-
-            selected_radio = st.radio(
-                "Normalize to", radio_options, index=default_idx, key=f"target_{cid}"
-            )
-            target = checked[radio_options.index(selected_radio)]
-            to_merge = [m for m in checked if m != target]
-
-            col1, col2 = st.columns(2)
-            with col1:
                 if st.button("Normalize", key=f"norm_btn_{cid}"):
                     for variant in to_merge:
                         normalizations[variant] = target
@@ -170,12 +158,11 @@ else:
                         st.toast(f"Reorganized {len(moves)} file(s)")
                     st.rerun()
 
-            with col2:
-                if unchecked and st.button("Confirm different", key=f"distinct_btn_{cid}"):
-                    for u in unchecked:
-                        distinct_pairs.add(frozenset({u, target}))
-                    save_distinct_pairs(output_path, distinct_pairs)
-                    st.rerun()
+            if st.button("All different", key=f"distinct_btn_{cid}"):
+                for a, b in combinations(members, 2):
+                    distinct_pairs.add(frozenset({a, b}))
+                save_distinct_pairs(output_path, distinct_pairs)
+                st.rerun()
 
 if distinct_pairs:
     st.divider()
