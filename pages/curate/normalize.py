@@ -3,11 +3,15 @@ from pathlib import Path
 import streamlit as st
 
 from data import (
+    load_decisions,
     load_distinct_pairs,
+    load_name_cache,
     load_name_normalizations,
     load_reorganized_state,
     read_sidecar,
+    save_decisions,
     save_distinct_pairs,
+    save_name_cache,
     save_name_normalizations,
     write_sidecar,
 )
@@ -143,6 +147,24 @@ else:
                                 entry["review"]["name"] = target
                                 write_sidecar(output_path / path_str, entry)
                     save_name_normalizations(output_path, normalizations)
+
+                    decisions = load_decisions(output_path)
+                    for fn, dec in decisions.items():
+                        new_name = normalizations.get(dec.name, dec.name)
+                        if new_name != dec.name:
+                            decisions[fn] = dec.model_copy(update={"name": new_name})
+                    if decisions:
+                        save_decisions(output_path, decisions)
+
+                    name_cache = load_name_cache(output_path)
+                    for fn, entry in name_cache.items():
+                        conf = entry.get("confirmed", "")
+                        new_conf = normalizations.get(conf, conf)
+                        if new_conf != conf:
+                            name_cache[fn] = {**entry, "confirmed": new_conf}
+                    if name_cache:
+                        save_name_cache(output_path, name_cache)
+
                     moves = apply_reorganize(output_path)
                     if moves:
                         st.toast(f"Reorganized {len(moves)} file(s)")

@@ -103,7 +103,7 @@ def plan_accepted_destinations(
     return file_destinations
 
 
-def apply_reorganize(output_path: Path) -> list[tuple[str, str, str]]:
+def apply_reorganize(output_path: Path, dry_run: bool = False) -> list[tuple[str, str, str]]:
     accepted_metadata: dict[str, dict] = {}
     for year_dir in output_path.iterdir():
         if not year_dir.is_dir() or not year_dir.name.isdigit():
@@ -171,17 +171,19 @@ def apply_reorganize(output_path: Path) -> list[tuple[str, str, str]]:
         if old_path_str == new_dest:
             continue
 
+        moves.append((fn, old_path_str, new_dest))
+
+        if dry_run:
+            continue
+
         old_full = output_path / old_path_str if old_path_str else None
         new_full = output_path / new_dest
-
         if old_full and old_full.exists():
             new_full.parent.mkdir(parents=True, exist_ok=True)
             shutil.move(str(old_full), str(new_full))
             old_sidecar = old_full.with_suffix(".json")
             if old_sidecar.exists():
                 shutil.move(str(old_sidecar), str(new_full.with_suffix(".json")))
-
-        moves.append((fn, old_path_str, new_dest))
 
     return moves
 
