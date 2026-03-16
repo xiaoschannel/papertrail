@@ -90,79 +90,81 @@ st.metric("Clusters", len(visible_clusters))
 if not visible_clusters:
     st.success("No name clusters at current setting.")
 else:
-    for cid, members in sorted(visible_clusters.items()):
-        with st.expander(f"Cluster {cid + 1} — {len(members)} names"):
-            toggle_key = f"toggle_all_{cid}"
+    for i, (cid, members) in enumerate(sorted(visible_clusters.items())):
+        if i > 0:
+            st.divider()
+        st.subheader(f"Cluster {cid + 1} — {len(members)} names")
+        toggle_key = f"toggle_all_{cid}"
 
-            def _on_toggle(cid=cid, members=members):
-                val = st.session_state[f"toggle_all_{cid}"]
-                for m in members:
-                    st.session_state[f"sel_{cid}_{m}"] = val
-
-            st.checkbox("Toggle all", value=True, key=toggle_key, on_change=_on_toggle)
-
-            checked: list[str] = []
+        def _on_toggle(cid=cid, members=members):
+            val = st.session_state[f"toggle_all_{cid}"]
             for m in members:
-                count = len(name_to_filenames.get(m, []))
-                label = f"{m} ({count})" if count else f"{m} (canonical only)"
-                if m in canonical_names:
-                    label += " [canonical]"
-                if st.checkbox(label, value=True, key=f"sel_{cid}_{m}"):
-                    checked.append(m)
+                st.session_state[f"sel_{cid}_{m}"] = val
 
-            if len(checked) >= 2:
-                radio_options = []
-                for m in checked:
-                    radio_options.append(f"{m} (canonical)" if m in canonical_names else m)
-                canonical_in_checked = [m for m in checked if m in canonical_names]
-                default_idx = checked.index(canonical_in_checked[0]) if canonical_in_checked else 0
+        st.checkbox("Toggle all", value=True, key=toggle_key, on_change=_on_toggle)
 
-                selected_radio = st.radio(
-                    "Normalize to", radio_options, index=default_idx, key=f"target_{cid}"
-                )
-                target = checked[radio_options.index(selected_radio)]
-                to_merge = [m for m in checked if m != target]
+        checked: list[str] = []
+        for m in members:
+            count = len(name_to_filenames.get(m, []))
+            label = f"{m} ({count})" if count else f"{m} (canonical only)"
+            if m in canonical_names:
+                label += " [canonical]"
+            if st.checkbox(label, value=True, key=f"sel_{cid}_{m}"):
+                checked.append(m)
 
-                if st.button("Normalize", key=f"norm_btn_{cid}"):
-                    for variant in to_merge:
-                        normalizations[variant] = target
-                        for fn in name_to_filenames.get(variant, []):
-                            path_str = accepted_metadata.get(fn, {}).get("_path", "")
-                            if not path_str:
-                                continue
-                            entry = read_sidecar(output_path / path_str)
-                            if entry:
-                                entry["review"]["name"] = target
-                                write_sidecar(output_path / path_str, entry)
-                    save_name_normalizations(output_path, normalizations)
+        if len(checked) >= 2:
+            radio_options = []
+            for m in checked:
+                radio_options.append(f"{m} (canonical)" if m in canonical_names else m)
+            canonical_in_checked = [m for m in checked if m in canonical_names]
+            default_idx = checked.index(canonical_in_checked[0]) if canonical_in_checked else 0
 
-                    decisions = load_decisions(output_path)
-                    for fn, dec in decisions.items():
-                        new_name = normalizations.get(dec.name, dec.name)
-                        if new_name != dec.name:
-                            decisions[fn] = dec.model_copy(update={"name": new_name})
-                    if decisions:
-                        save_decisions(output_path, decisions)
+            selected_radio = st.radio(
+                "Normalize to", radio_options, index=default_idx, key=f"target_{cid}"
+            )
+            target = checked[radio_options.index(selected_radio)]
+            to_merge = [m for m in checked if m != target]
 
-                    name_cache = load_name_cache(output_path)
-                    for fn, entry in name_cache.items():
-                        conf = entry.get("confirmed", "")
-                        new_conf = normalizations.get(conf, conf)
-                        if new_conf != conf:
-                            name_cache[fn] = {**entry, "confirmed": new_conf}
-                    if name_cache:
-                        save_name_cache(output_path, name_cache)
+            if st.button("Normalize", key=f"norm_btn_{cid}"):
+                for variant in to_merge:
+                    normalizations[variant] = target
+                    for fn in name_to_filenames.get(variant, []):
+                        path_str = accepted_metadata.get(fn, {}).get("_path", "")
+                        if not path_str:
+                            continue
+                        entry = read_sidecar(output_path / path_str)
+                        if entry:
+                            entry["review"]["name"] = target
+                            write_sidecar(output_path / path_str, entry)
+                save_name_normalizations(output_path, normalizations)
 
-                    moves = apply_reorganize(output_path)
-                    if moves:
-                        st.toast(f"Reorganized {len(moves)} file(s)")
-                    st.rerun()
+                decisions = load_decisions(output_path)
+                for fn, dec in decisions.items():
+                    new_name = normalizations.get(dec.name, dec.name)
+                    if new_name != dec.name:
+                        decisions[fn] = dec.model_copy(update={"name": new_name})
+                if decisions:
+                    save_decisions(output_path, decisions)
 
-            if st.button("All different", key=f"distinct_btn_{cid}"):
-                for a, b in combinations(members, 2):
-                    distinct_pairs.add(frozenset({a, b}))
-                save_distinct_pairs(output_path, distinct_pairs)
+                name_cache = load_name_cache(output_path)
+                for fn, entry in name_cache.items():
+                    conf = entry.get("confirmed", "")
+                    new_conf = normalizations.get(conf, conf)
+                    if new_conf != conf:
+                        name_cache[fn] = {**entry, "confirmed": new_conf}
+                if name_cache:
+                    save_name_cache(output_path, name_cache)
+
+                moves = apply_reorganize(output_path)
+                if moves:
+                    st.toast(f"Reorganized {len(moves)} file(s)")
                 st.rerun()
+
+        if st.button("All different", key=f"distinct_btn_{cid}"):
+            for a, b in combinations(members, 2):
+                distinct_pairs.add(frozenset({a, b}))
+            save_distinct_pairs(output_path, distinct_pairs)
+            st.rerun()
 
 if distinct_pairs:
     st.divider()
