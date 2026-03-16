@@ -1,3 +1,4 @@
+from itertools import combinations
 from pathlib import Path
 
 import streamlit as st
@@ -89,38 +90,29 @@ st.metric("Clusters", len(visible_clusters))
 if not visible_clusters:
     st.success("No name clusters at current setting.")
 else:
-    for cid, members in sorted(visible_clusters.items()):
-        with st.expander(f"Cluster {cid + 1} — {len(members)} names"):
-            toggle_key = f"toggle_all_{cid}"
+    for i, (cid, members) in enumerate(sorted(visible_clusters.items())):
+        if i > 0:
+            st.divider()
+        st.subheader(f"Cluster {cid + 1} — {len(members)} names")
+        toggle_key = f"toggle_all_{cid}"
 
-            def _on_toggle(cid=cid, members=members):
-                val = st.session_state[f"toggle_all_{cid}"]
-                for m in members:
-                    st.session_state[f"sel_{cid}_{m}"] = val
-
-            st.checkbox("Toggle all", value=True, key=toggle_key, on_change=_on_toggle)
-
-            checked: list[str] = []
+        def _on_toggle(cid=cid, members=members):
+            val = st.session_state[f"toggle_all_{cid}"]
             for m in members:
-                count = len(name_to_filenames.get(m, []))
-                label = f"{m} ({count})" if count else f"{m} (canonical only)"
-                if m in canonical_names:
-                    label += " [canonical]"
-                if st.checkbox(label, value=True, key=f"sel_{cid}_{m}"):
-                    checked.append(m)
+                st.session_state[f"sel_{cid}_{m}"] = val
 
-            unchecked = [m for m in members if m not in checked]
+        st.checkbox("Toggle all", value=True, key=toggle_key, on_change=_on_toggle)
 
-            if len(checked) < 2:
-                if unchecked:
-                    if st.button("Confirm different", key=f"distinct_btn_{cid}"):
-                        for u in unchecked:
-                            for c in checked:
-                                distinct_pairs.add(frozenset({u, c}))
-                        save_distinct_pairs(output_path, distinct_pairs)
-                        st.rerun()
-                continue
+        checked: list[str] = []
+        for m in members:
+            count = len(name_to_filenames.get(m, []))
+            label = f"{m} ({count})" if count else f"{m} (canonical only)"
+            if m in canonical_names:
+                label += " [canonical]"
+            if st.checkbox(label, value=True, key=f"sel_{cid}_{m}"):
+                checked.append(m)
 
+        if len(checked) >= 2:
             radio_options = []
             for m in checked:
                 radio_options.append(f"{m} (canonical)" if m in canonical_names else m)
@@ -133,49 +125,46 @@ else:
             target = checked[radio_options.index(selected_radio)]
             to_merge = [m for m in checked if m != target]
 
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("Normalize", key=f"norm_btn_{cid}"):
-                    for variant in to_merge:
-                        normalizations[variant] = target
-                        for fn in name_to_filenames.get(variant, []):
-                            path_str = accepted_metadata.get(fn, {}).get("_path", "")
-                            if not path_str:
-                                continue
-                            entry = read_sidecar(output_path / path_str)
-                            if entry:
-                                entry["review"]["name"] = target
-                                write_sidecar(output_path / path_str, entry)
-                    save_name_normalizations(output_path, normalizations)
+            if st.button("Normalize", key=f"norm_btn_{cid}"):
+                for variant in to_merge:
+                    normalizations[variant] = target
+                    for fn in name_to_filenames.get(variant, []):
+                        path_str = accepted_metadata.get(fn, {}).get("_path", "")
+                        if not path_str:
+                            continue
+                        entry = read_sidecar(output_path / path_str)
+                        if entry:
+                            entry["review"]["name"] = target
+                            write_sidecar(output_path / path_str, entry)
+                save_name_normalizations(output_path, normalizations)
 
-                    decisions = load_decisions(output_path)
-                    for fn, dec in decisions.items():
-                        new_name = normalizations.get(dec.name, dec.name)
-                        if new_name != dec.name:
-                            decisions[fn] = dec.model_copy(update={"name": new_name})
-                    if decisions:
-                        save_decisions(output_path, decisions)
+                decisions = load_decisions(output_path)
+                for fn, dec in decisions.items():
+                    new_name = normalizations.get(dec.name, dec.name)
+                    if new_name != dec.name:
+                        decisions[fn] = dec.model_copy(update={"name": new_name})
+                if decisions:
+                    save_decisions(output_path, decisions)
 
-                    name_cache = load_name_cache(output_path)
-                    for fn, entry in name_cache.items():
-                        conf = entry.get("confirmed", "")
-                        new_conf = normalizations.get(conf, conf)
-                        if new_conf != conf:
-                            name_cache[fn] = {**entry, "confirmed": new_conf}
-                    if name_cache:
-                        save_name_cache(output_path, name_cache)
+                name_cache = load_name_cache(output_path)
+                for fn, entry in name_cache.items():
+                    conf = entry.get("confirmed", "")
+                    new_conf = normalizations.get(conf, conf)
+                    if new_conf != conf:
+                        name_cache[fn] = {**entry, "confirmed": new_conf}
+                if name_cache:
+                    save_name_cache(output_path, name_cache)
 
-                    moves = apply_reorganize(output_path)
-                    if moves:
-                        st.toast(f"Reorganized {len(moves)} file(s)")
-                    st.rerun()
+                moves = apply_reorganize(output_path)
+                if moves:
+                    st.toast(f"Reorganized {len(moves)} file(s)")
+                st.rerun()
 
-            with col2:
-                if unchecked and st.button("Confirm different", key=f"distinct_btn_{cid}"):
-                    for u in unchecked:
-                        distinct_pairs.add(frozenset({u, target}))
-                    save_distinct_pairs(output_path, distinct_pairs)
-                    st.rerun()
+        if st.button("All different", key=f"distinct_btn_{cid}"):
+            for a, b in combinations(members, 2):
+                distinct_pairs.add(frozenset({a, b}))
+            save_distinct_pairs(output_path, distinct_pairs)
+            st.rerun()
 
 if distinct_pairs:
     st.divider()
