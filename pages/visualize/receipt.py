@@ -8,7 +8,7 @@ from data import (
     save_name_cache,
     write_sidecar,
 )
-from models import ReviewDecision, batch_serial_key
+from models import ReceiptResult, ReviewDecision, Sidecar, batch_serial_key
 from organize_utils import move_to_accepted_destination
 from validation import is_date_time_safe_for_archive
 from viz_data import (
@@ -40,8 +40,8 @@ if st.session_state.get("receipt_edit_file") and st.session_state.receipt_edit_f
     st.session_state.receipt_edit_file = None
 
 data_file = output_path / record["path"] if record["path"] else None
-entry = read_sidecar(data_file) if data_file else {}
-can_edit = bool(record["path"] and entry)
+sidecar = read_sidecar(data_file) if data_file else None
+can_edit = bool(record["path"] and sidecar)
 
 edit_mode = can_edit and st.session_state.get("receipt_edit_file") == selected
 
@@ -72,16 +72,16 @@ with col_img:
 
 with col_meta:
     if edit_mode:
-        review = entry.get("review", {})
-        ext = entry.get("extraction") or {}
-        default_doc_type = review.get("document_type", "receipt")
-        default_name = review.get("name", record["name"] or "")
-        default_date = review.get("date", record["date"] or "")
-        default_time = review.get("time", record["time"] or "")
-        default_cost = float(review.get("cost", record.get("cost", 0)))
-        default_currency = review.get("currency", record.get("currency", ""))
-        default_location = ext.get("location", record.get("location", ""))
-        default_language = ext.get("language", record.get("language", ""))
+        review = sidecar.review
+        ext = sidecar.extraction
+        default_doc_type = review.document_type
+        default_name = review.name or record["name"] or ""
+        default_date = review.date or record["date"] or ""
+        default_time = review.time or record["time"] or ""
+        default_cost = float(review.cost or record.get("cost", 0))
+        default_currency = review.currency or record.get("currency", "")
+        default_location = getattr(ext, "location", "") or record.get("location", "")
+        default_language = getattr(ext, "language", "") or record.get("language", "")
 
         doc_type_options = ["receipt", "other", "corrupted"]
         doc_type = st.radio(
@@ -137,7 +137,7 @@ with col_meta:
                     st.error(err)
                 else:
                     dec = ReviewDecision(
-                        verdict=entry.get("review", {}).get("verdict", "accepted"),
+                        verdict=sidecar.review.verdict,
                         document_type=doc_type,
                         name=name,
                         date=date_val,
@@ -145,22 +145,19 @@ with col_meta:
                         cost=parsed_cost,
                         currency=final_currency,
                     )
-                    orig_fn = entry.get("original_filename", selected)
-                    target_path = move_to_accepted_destination(output_path, orig_fn, data_file, dec)
-                    entry["review"] = dec.model_dump()
-                    if doc_type == "receipt" and entry.get("extraction"):
-                        ext = entry["extraction"]
-                        ext["location"] = location_val
-                        ext["language"] = language_val
-                        ext["name"] = name
-                        ext["date"] = date_val
-                        ext["time"] = time_val
-                        ext["cost"] = parsed_cost
-                        ext["currency"] = final_currency
-                    write_sidecar(target_path, entry)
+                    target_path = move_to_accepted_destination(output_path, sidecar.original_filename, data_file, dec)
+                    updated_ext = sidecar.extraction
+                    if doc_type == "receipt" and isinstance(updated_ext, ReceiptResult):
+                        updated_ext = updated_ext.model_copy(update={
+                            "location": location_val, "language": language_val,
+                            "name": name, "date": date_val, "time": time_val,
+                            "cost": parsed_cost, "currency": final_currency,
+                        })
+                    updated_sc = sidecar.model_copy(update={"review": dec, "extraction": updated_ext})
+                    write_sidecar(target_path, updated_sc)
                     name_cache = load_name_cache(output_path)
-                    ext_name = (entry.get("extraction") or {}).get("name", "")
-                    cache_key = entry.get("document_key") or (batch_serial_key(bid, ser) if (bid := entry.get("batch_id")) is not None and (ser := entry.get("serial")) is not None else selected)
+                    ext_name = getattr(updated_ext, "name", "")
+                    cache_key = sidecar.document_key or (batch_serial_key(bid, ser) if (bid := sidecar.batch_id) is not None and (ser := sidecar.serial) is not None else selected)
                     name_cache[cache_key] = {"extracted": ext_name, "confirmed": name}
                     save_name_cache(output_path, name_cache)
                     load_viz_records.clear()

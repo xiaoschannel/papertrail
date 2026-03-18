@@ -1,10 +1,9 @@
-import json
 import shutil
 from collections import defaultdict
 from pathlib import Path
 
 from data import delete_sidecar
-from models import ReviewDecision
+from models import ReviewDecision, Sidecar
 
 FULLWIDTH_COLON = "\uff1a"
 WINDOWS_FORBIDDEN = str.maketrans({
@@ -112,49 +111,39 @@ def plan_accepted_destinations(
 
 
 def apply_reorganize(output_path: Path) -> list[tuple[str, str, str]]:
-    accepted_metadata: dict[str, dict] = {}
+    accepted: dict[str, tuple[Sidecar, str]] = {}
     for year_dir in output_path.iterdir():
         if not year_dir.is_dir() or not year_dir.name.isdigit():
             continue
         for month_dir in year_dir.iterdir():
             if not month_dir.is_dir() or not (month_dir.name.isdigit() or month_dir.name == "undated"):
                 continue
-            sidecars: list[Path] = []
+            sidecar_paths: list[Path] = []
             stem_to_datafile: dict[str, Path] = {}
             for p in month_dir.iterdir():
                 if not p.is_file():
                     continue
                 if p.suffix == ".json":
-                    sidecars.append(p)
+                    sidecar_paths.append(p)
                 else:
                     stem_to_datafile[p.stem] = p
-            for sidecar in sidecars:
-                entry = json.loads(sidecar.read_text(encoding="utf-8"))
-                orig = entry.get("original_filename", "")
-                if not orig:
-                    continue
-                data_file = stem_to_datafile.get(sidecar.stem)
-                if data_file:
-                    entry["_path"] = data_file.relative_to(output_path).as_posix()
-                accepted_metadata[orig] = entry
+            for sp in sidecar_paths:
+                sc = Sidecar.model_validate_json(sp.read_text(encoding="utf-8"))
+                data_file = stem_to_datafile.get(sp.stem)
+                rel_path = data_file.relative_to(output_path).as_posix() if data_file else ""
+                accepted[sc.original_filename] = (sc, rel_path)
 
     stale: dict[str, ReviewDecision] = {}
     stable_stems: dict[str, set[str]] = defaultdict(set)
     filename_to_batch_serial: dict[str, tuple[int, int]] = {}
 
-    for fn, meta in accepted_metadata.items():
-        review = meta.get("review", {})
-        if not review:
-            continue
-        dec = ReviewDecision(**review)
+    for fn, (sc, current_path) in accepted.items():
+        dec = sc.review
         expected_folder, expected_base, _ = build_accepted_name(dec, fn)
 
-        batch_id = meta.get("batch_id")
-        serial = meta.get("serial")
-        if batch_id is not None and serial is not None:
-            filename_to_batch_serial[fn] = (batch_id, serial)
+        if sc.batch_id is not None and sc.serial is not None:
+            filename_to_batch_serial[fn] = (sc.batch_id, sc.serial)
 
-        current_path = meta.get("_path", "")
         current_folder = str(Path(current_path).parent).replace("\\", "/") if current_path else ""
         current_stem = Path(current_path).stem if current_path else ""
 
@@ -172,7 +161,7 @@ def apply_reorganize(output_path: Path) -> list[tuple[str, str, str]]:
 
     moves: list[tuple[str, str, str]] = []
     for fn, new_dest in destinations.items():
-        old_path_str = accepted_metadata[fn].get("_path", "")
+        old_path_str = accepted[fn][1]
         if old_path_str == new_dest:
             continue
 

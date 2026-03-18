@@ -13,15 +13,9 @@ class DetectedBox(BaseModel):
 
 
 class OcrResult(BaseModel):
-    filename: str
-    raw: str
-    boxes: list[DetectedBox] | None = None
     markdown: str
+    boxes: list[DetectedBox] | None = None
     succeeded: bool = True
-
-
-class OcrBatch(BaseModel):
-    results: list[OcrResult]
 
 
 class ReceiptItem(BaseModel):
@@ -133,6 +127,16 @@ class ReviewDecision(BaseModel):
     time: str
     cost: float = 0.0
     currency: str = ""
+
+
+class Sidecar(BaseModel):
+    original_filename: str
+    batch_id: int | None = None
+    serial: int | None = None
+    review: ReviewDecision
+    document_key: str | None = None
+    ocr: OcrResult | None = None
+    extraction: DocumentExtraction | None = None
 
 
 class ScanBatch(BaseModel):

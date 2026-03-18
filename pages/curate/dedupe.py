@@ -23,9 +23,8 @@ if not accepted_metadata and not tossed_fns:
     st.stop()
 
 records: dict[str, ReviewDecision] = {}
-for fn, entry in accepted_metadata.items():
-    if entry.get("review"):
-        records[fn] = ReviewDecision(**entry["review"])
+for fn, (sc, _path) in accepted_metadata.items():
+    records[fn] = sc.review
 
 clusters = find_dedupe_clusters(records)
 
@@ -47,7 +46,7 @@ for idx, cluster in enumerate(clusters):
             label = f"~~{fn}~~\n\n~~{dec.name} — {dec.cost} {dec.currency}~~" if is_tossed else f"**{fn}**\n\n{dec.name} — {dec.cost} {dec.currency}"
             st.markdown(label)
             if not is_tossed and st.button("Toss", key=f"toss_{fn}", width="stretch"):
-                path_str = accepted_metadata.get(fn, {}).get("_path", "")
+                path_str = accepted_metadata[fn][1] if fn in accepted_metadata else ""
                 if path_str:
                     src = output_path / path_str
                     dst = output_path / "tossed" / fn
@@ -59,7 +58,7 @@ for idx, cluster in enumerate(clusters):
                         shutil.move(str(src_sidecar), str(sidecar_path_for(dst)))
                 st.rerun()
             if not is_tossed:
-                path_str = accepted_metadata.get(fn, {}).get("_path", "")
+                path_str = accepted_metadata[fn][1] if fn in accepted_metadata else ""
                 if path_str:
                     src = output_path / path_str
                     if src.exists():

@@ -39,8 +39,8 @@ distinct_pairs = load_distinct_pairs(output_path)
 
 decision_names: set[str] = set()
 name_to_filenames: dict[str, list[str]] = {}
-for fn, entry in accepted_metadata.items():
-    name = entry.get("review", {}).get("name", "")
+for fn, (sc, _path) in accepted_metadata.items():
+    name = sc.review.name
     if name:
         decision_names.add(name)
         name_to_filenames.setdefault(name, []).append(fn)
@@ -129,13 +129,13 @@ else:
                 for variant in to_merge:
                     normalizations[variant] = target
                     for fn in name_to_filenames.get(variant, []):
-                        path_str = accepted_metadata.get(fn, {}).get("_path", "")
-                        if not path_str:
+                        meta = accepted_metadata.get(fn)
+                        if not meta or not meta[1]:
                             continue
-                        entry = read_sidecar(output_path / path_str)
-                        if entry:
-                            entry["review"]["name"] = target
-                            write_sidecar(output_path / path_str, entry)
+                        sc = read_sidecar(output_path / meta[1])
+                        if sc:
+                            updated_review = sc.review.model_copy(update={"name": target})
+                            write_sidecar(output_path / meta[1], sc.model_copy(update={"review": updated_review}))
                 save_name_normalizations(output_path, normalizations)
 
                 decisions = load_decisions(output_path)
