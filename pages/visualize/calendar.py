@@ -91,7 +91,12 @@ elif date_param:
     except ValueError:
         pass
 
-current_date = date.fromisoformat(st.session_state["cal_view_date"])
+data_min = date(dated["parsed_date"].min().year, dated["parsed_date"].min().month, dated["parsed_date"].min().day)
+data_max = date(dated["parsed_date"].max().year, dated["parsed_date"].max().month, dated["parsed_date"].max().day)
+
+current_date = min(max(date.fromisoformat(st.session_state["cal_view_date"]), data_min), data_max)
+if st.session_state["cal_view_date"] != current_date.isoformat():
+    st.session_state["cal_view_date"] = current_date.isoformat()
 period_param = st.session_state["cal_view_period"]
 
 period = st.radio("View", ["week", "month"], horizontal=True, index=0 if period_param == "week" else 1, key="cal_period")
@@ -104,9 +109,12 @@ if period != period_param:
     )
     st.rerun()
 
+_default = current_date if period == "week" else first_of_month(current_date)
 go_date = st.date_input(
     "Go to date",
-    value=current_date if period == "week" else first_of_month(current_date),
+    value=min(max(_default, data_min), data_max),
+    min_value=data_min,
+    max_value=data_max,
     key="cal_go_date",
 )
 if period == "week":
