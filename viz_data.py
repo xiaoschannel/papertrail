@@ -5,6 +5,7 @@ import pandas as pd
 import streamlit as st
 
 from data import load_reorganized_state
+from models import Sidecar
 from settings import get_config
 
 
@@ -37,38 +38,36 @@ def load_viz_records(output_path_str: str) -> pd.DataFrame:
     output_path = Path(output_path_str)
     _tossed, accepted_metadata = load_reorganized_state(output_path)
 
-    doc_groups: dict[str, list[tuple[str, dict]]] = {}
-    for fn, entry in accepted_metadata.items():
-        doc_key = entry.get("document_key")
-        doc_id = doc_key if doc_key else fn
-        path = entry.get("_path", "")
-        doc_groups.setdefault(doc_id, []).append((path, entry))
+    doc_groups: dict[str, list[tuple[str, Sidecar]]] = {}
+    for fn, (sc, rel_path) in accepted_metadata.items():
+        doc_id = sc.document_key or fn
+        doc_groups.setdefault(doc_id, []).append((rel_path, sc))
 
     records = []
     for doc_id, pages in doc_groups.items():
         pages.sort(key=lambda x: x[0])
-        first_path, first_entry = pages[0]
+        first_path, first_sc = pages[0]
         paths = [p for p, _ in pages]
-        review = first_entry.get("review", {})
-        extraction = first_entry.get("extraction") or {}
+        review = first_sc.review
+        extraction = first_sc.extraction
         ocr_parts = []
-        for _, ent in pages:
-            md = ent.get("ocr", {}).get("markdown", "")
-            if md:
-                ocr_parts.append(md)
+        for _, sc in pages:
+            if sc.ocr and sc.ocr.markdown:
+                ocr_parts.append(sc.ocr.markdown)
+        items = getattr(extraction, "items", [])
         records.append({
             "filename": doc_id,
             "path": first_path,
             "paths": paths,
-            "document_type": review.get("document_type", ""),
-            "name": review.get("name", ""),
-            "date": review.get("date", ""),
-            "time": review.get("time", ""),
-            "cost": float(review.get("cost", 0)),
-            "currency": review.get("currency", ""),
-            "location": extraction.get("location", ""),
-            "language": extraction.get("language", ""),
-            "items": extraction.get("items", []),
+            "document_type": review.document_type,
+            "name": review.name,
+            "date": review.date,
+            "time": review.time,
+            "cost": float(review.cost),
+            "currency": review.currency,
+            "location": getattr(extraction, "location", ""),
+            "language": getattr(extraction, "language", ""),
+            "items": [item.model_dump() for item in items] if items else [],
             "ocr_markdown": "\n\n--- Page break ---\n\n".join(ocr_parts),
         })
 

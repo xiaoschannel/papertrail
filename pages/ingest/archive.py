@@ -18,6 +18,7 @@ from models import (
     OcrResult,
     OtherResult,
     ReceiptResult,
+    Sidecar,
     batch_serial_key,
     iter_indexed_files,
     load_scan_index,
@@ -153,19 +154,16 @@ if st.button("Archive", width="stretch", type="primary"):
         dec = decisions_to_archive[doc_key]
         parsed = parse_batch_serial_key(key)
         doc_key_obj = index.key_to_doc_key(key)
-        entry: dict = {
-            "original_filename": fn,
-            "batch_id": parsed[0] if parsed else None,
-            "serial": parsed[1] if parsed else None,
-            "review": dec.model_dump(),
-        }
-        if doc_key_obj.is_multi_page:
-            entry["document_key"] = doc_key
-        if key in ocr_by_key:
-            entry["ocr"] = ocr_by_key[key].model_dump()
-        if doc_key in extractions:
-            entry["extraction"] = extractions[doc_key].model_dump()
-        write_sidecar(dst, entry)
+        sc = Sidecar(
+            original_filename=fn,
+            batch_id=parsed[0] if parsed else None,
+            serial=parsed[1] if parsed else None,
+            review=dec,
+            document_key=doc_key if doc_key_obj.is_multi_page else None,
+            ocr=ocr_by_key.get(key),
+            extraction=extractions.get(doc_key),
+        )
+        write_sidecar(dst, sc)
 
     name_cache = load_name_cache(output_path)
     for doc_key in doc_keys_to_archive:

@@ -85,17 +85,15 @@ new_results: dict[str, OcrResult] = {}
 bar = ProgressBar(len(to_process))
 for key, img_path in to_process:
     try:
-        raw = OCR_PROVIDERS[ocr_provider].run(img_path, structured=False)
-        markdown = raw
+        markdown = OCR_PROVIDERS[ocr_provider].run(img_path, structured=False)
         boxes = None
         if cfg.get("extract_structured", True):
             structured_raw = OCR_PROVIDERS[ocr_provider].run(img_path, structured=True)
             boxes = parse_grounding_output(structured_raw)
-        new_results[key] = OcrResult(filename=img_path.name, raw=raw, boxes=boxes, markdown=markdown, succeeded=True)
+        new_results[key] = OcrResult(markdown=markdown, boxes=boxes)
         bar.tick(True)
     except Exception:
-        raw = traceback.format_exc()
-        new_results[key] = OcrResult(filename=img_path.name, raw=raw, boxes=None, markdown=raw, succeeded=False)
+        new_results[key] = OcrResult(markdown=traceback.format_exc(), succeeded=False)
         bar.tick(False)
     merged = existing | new_results
     save_ocr_results(output_path, merged)

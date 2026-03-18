@@ -21,11 +21,11 @@ from box_drawing import draw_field_boxes
 from models import (
     VERDICT_COLORS,
     CorruptedResult,
-    DetectedBox,
-    DocumentExtractionAdapter,
+    OcrResult,
     OtherResult,
     ReceiptResult,
     ReviewDecision,
+    Sidecar,
     batch_serial_key,
     filename_to_batch_serial,
     load_scan_index,
@@ -69,10 +69,8 @@ if not marked_files:
 st.metric("Marked files", len(marked_files))
 
 decisions: dict[str, ReviewDecision] = {}
-for fn, entry in accepted_metadata.items():
-    review = entry.get("review")
-    if review:
-        decisions[fn] = ReviewDecision(**review)
+for fn, (sc, _path) in accepted_metadata.items():
+    decisions[fn] = sc.review
 
 # --- Navigation ---
 
@@ -123,14 +121,8 @@ ROTATION_MAP = {
 # --- Sidecar data ---
 
 sidecar = read_sidecar(marked_dir / selected)
-sidecar_ext = None
-if sidecar.get("extraction"):
-    sidecar_ext = DocumentExtractionAdapter.validate_python(sidecar["extraction"])
-sidecar_ocr_data = sidecar.get("ocr", {})
-sidecar_ocr_text = sidecar_ocr_data.get("markdown", "")
-sidecar_ocr_boxes: list[DetectedBox] | None = None
-if sidecar_ocr_data.get("boxes"):
-    sidecar_ocr_boxes = [DetectedBox.model_validate(b) for b in sidecar_ocr_data["boxes"]]
+sidecar_ext = sidecar.extraction if sidecar else None
+sidecar_ocr = sidecar.ocr if sidecar else None
 
 ext = ws.get("extraction") or sidecar_ext
 
@@ -160,11 +152,13 @@ def _find_image(fn: str) -> Path | None:
     p = marked_dir / fn
     if p.exists():
         return p
-    accepted_path = accepted_metadata.get(fn, {}).get("_path", "")
-    if accepted_path:
-        p = output_path / accepted_path
-        if p.exists():
-            return p
+    meta = accepted_metadata.get(fn)
+    if meta:
+        accepted_path = meta[1]
+        if accepted_path:
+            p = output_path / accepted_path
+            if p.exists():
+                return p
     p = tossed_dir / fn
     if p.exists():
         return p
@@ -222,7 +216,7 @@ with orig_col:
 # Column 2: Working image + rotate/enhance/reprocess
 with work_col:
     st.markdown("**Working Image**")
-    active_boxes = ws.get("ocr_boxes") or sidecar_ocr_boxes
+    active_boxes = ws.get("ocr_boxes") or (sidecar_ocr.boxes if sidecar_ocr else None)
     field_sources = getattr(ext, "field_sources", {}) if ext else {}
     if active_boxes and field_sources:
         st.image(draw_field_boxes(working_image, 1, active_boxes, field_sources), width="stretch")
@@ -267,7 +261,7 @@ with work_col:
         st.rerun()
 
 # Column 3: OCR Text
-ocr_text = ws.get("ocr_text") or sidecar_ocr_text
+ocr_text = ws.get("ocr_text") or (sidecar_ocr.markdown if sidecar_ocr else "")
 with ocr_col:
     st.markdown("**OCR Text**")
     if ocr_text:
@@ -403,24 +397,20 @@ with review_col:
                 )
                 dst = move_to_accepted_destination(output_path, selected, marked_dir / selected, dec)
                 dest_rel = dst.relative_to(output_path).as_posix()
-                entry: dict = {
-                    "original_filename": selected,
-                    "batch_id": sidecar.get("batch_id"),
-                    "serial": sidecar.get("serial"),
-                    "review": dec.model_dump(),
-                }
-                final_ocr = sidecar.get("ocr")
                 if ws.get("ocr_text"):
-                    ocr_entry: dict = {"markdown": ws["ocr_text"]}
-                    if ws.get("ocr_boxes"):
-                        ocr_entry["boxes"] = [b.model_dump() for b in ws["ocr_boxes"]]
-                    entry["ocr"] = ocr_entry
-                elif final_ocr:
-                    entry["ocr"] = final_ocr
+                    final_ocr = OcrResult(markdown=ws["ocr_text"], boxes=ws.get("ocr_boxes"))
+                else:
+                    final_ocr = sidecar_ocr
                 final_ext = ws.get("extraction") or sidecar_ext
-                if final_ext:
-                    entry["extraction"] = final_ext.model_dump()
-                write_sidecar(dst, entry)
+                sc = Sidecar(
+                    original_filename=selected,
+                    batch_id=sidecar.batch_id if sidecar else None,
+                    serial=sidecar.serial if sidecar else None,
+                    review=dec,
+                    ocr=final_ocr,
+                    extraction=final_ext,
+                )
+                write_sidecar(dst, sc)
                 name_cache = load_name_cache(output_path)
                 if isinstance(final_ext, ReceiptResult):
                     extracted_name = final_ext.name
@@ -428,7 +418,7 @@ with review_col:
                     extracted_name = final_ext.title
                 else:
                     extracted_name = ""
-                bid, ser = sidecar.get("batch_id"), sidecar.get("serial")
+                bid, ser = sc.batch_id, sc.serial
                 cache_key = batch_serial_key(bid, ser) if bid is not None and ser is not None else selected
                 name_cache[cache_key] = {"extracted": extracted_name, "confirmed": dec.name}
                 save_name_cache(output_path, name_cache)

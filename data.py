@@ -11,6 +11,7 @@ from models import (
     DocumentKey,
     OcrResult,
     ReviewDecision,
+    Sidecar,
 )
 
 
@@ -18,16 +19,16 @@ def sidecar_path_for(file_path: Path) -> Path:
     return file_path.with_suffix(".json")
 
 
-def read_sidecar(file_path: Path) -> dict:
+def read_sidecar(file_path: Path) -> Sidecar | None:
     sp = sidecar_path_for(file_path)
     if not sp.exists():
-        return {}
-    return json.loads(sp.read_text(encoding="utf-8"))
+        return None
+    return Sidecar.model_validate_json(sp.read_text(encoding="utf-8"))
 
 
-def write_sidecar(file_path: Path, entry: dict):
+def write_sidecar(file_path: Path, entry: Sidecar):
     sidecar_path_for(file_path).write_text(
-        json.dumps(entry, indent=2, ensure_ascii=False), encoding="utf-8"
+        entry.model_dump_json(indent=2, exclude_none=True), encoding="utf-8"
     )
 
 
@@ -191,42 +192,36 @@ def scan_organized_filenames(output_path: Path) -> set[str]:
     if marked_dir.exists():
         organized.update(p.name for p in marked_dir.iterdir() if p.is_file() and p.suffix.lower() != ".json")
     for month_dir in _iter_year_month_dirs(output_path):
-        for sidecar in month_dir.glob("*.json"):
-            entry = json.loads(sidecar.read_text(encoding="utf-8"))
-            orig = entry.get("original_filename", "")
-            if orig:
-                organized.add(orig)
+        for sidecar_path in month_dir.glob("*.json"):
+            sc = Sidecar.model_validate_json(sidecar_path.read_text(encoding="utf-8"))
+            organized.add(sc.original_filename)
     return organized
 
 
 def load_reorganized_state(
     output_path: Path,
-) -> tuple[set[str], dict[str, dict]]:
+) -> tuple[set[str], dict[str, tuple[Sidecar, str]]]:
     tossed: set[str] = set()
     tossed_dir = output_path / "tossed"
     if tossed_dir.exists():
         tossed = {p.name for p in tossed_dir.iterdir() if p.is_file() and p.suffix.lower() != ".json"}
 
-    accepted_metadata: dict[str, dict] = {}
+    accepted_metadata: dict[str, tuple[Sidecar, str]] = {}
     for month_dir in _iter_year_month_dirs(output_path):
-        sidecars: list[Path] = []
+        sidecar_paths: list[Path] = []
         stem_to_datafile: dict[str, Path] = {}
         for p in month_dir.iterdir():
             if not p.is_file():
                 continue
             if p.suffix == ".json":
-                sidecars.append(p)
+                sidecar_paths.append(p)
             else:
                 stem_to_datafile[p.stem] = p
-        for sidecar in sidecars:
-            entry = json.loads(sidecar.read_text(encoding="utf-8"))
-            orig = entry.get("original_filename", "")
-            if not orig:
-                continue
-            data_file = stem_to_datafile.get(sidecar.stem)
-            if data_file:
-                entry["_path"] = data_file.relative_to(output_path).as_posix()
-            accepted_metadata[orig] = entry
+        for sp in sidecar_paths:
+            sc = Sidecar.model_validate_json(sp.read_text(encoding="utf-8"))
+            data_file = stem_to_datafile.get(sp.stem)
+            rel_path = data_file.relative_to(output_path).as_posix() if data_file else ""
+            accepted_metadata[sc.original_filename] = (sc, rel_path)
 
     return tossed, accepted_metadata
 
