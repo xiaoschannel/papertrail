@@ -48,9 +48,13 @@ Scan your documents into a folder, and follow this process:
 ## Visualize
 1. **Dashboard** — Monthly spending timeline, document volume, top merchants.
 2. **Merchant Profile** — Per-merchant stats, spending trend, receipt gallery, visit cadence.
-3. **Receipt Detail** — Single-document view with metadata, line items, raw OCR.
+3. **Receipt Detail** — Single-document view with metadata, line items, raw OCR, and in-place editing.
 4. **Time Capsule** — "On this day" across past years.
+5. **Calendar** — Week and month calendar view of archived documents by date.
 
 ## Dev
-- **OCR Experiment** — Interactive single-image OCR testing with image enhancement.
+- **Experiment** — Interactive single-image OCR and extraction testing with image enhancement.
 - **Sanity Check** — Validate batch coverage and archive metadata integrity.
+
+## Config
+- **Config** — Set input/output paths and toggle structured OCR.
