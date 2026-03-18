@@ -12,45 +12,20 @@ _GROUNDING_RE = re.compile(
 )
 
 
-def parse_grounding_output(raw: str) -> tuple[str, list[DetectedBox]]:
+def parse_grounding_output(raw: str) -> list[DetectedBox]:
     boxes: list[DetectedBox] = []
-    clean_parts: list[str] = []
-    last_end = 0
-
     for match in _GROUNDING_RE.finditer(raw):
-        before = raw[last_end:match.start()]
-        if before.strip():
-            clean_parts.append(before)
-        last_end = match.end()
-
         ref_text = match.group(1).strip()
         det_raw = match.group(2).strip()
 
         try:
             parsed = ast.literal_eval(det_raw)
+            coords = [[int(x) for x in coord] for coord in parsed]
+            boxes.append(DetectedBox(ref_type=str(len(boxes)), coords=coords, text=ref_text or None))
         except (SyntaxError, ValueError):
-            if ref_text:
-                clean_parts.append(ref_text)
+            print(f"Failed to parse the coordinates output: {det_raw}")
             continue
-        if isinstance(parsed, list) and parsed:
-            if isinstance(parsed[0], list):
-                coords = [c for c in parsed if len(c) == 4]
-            elif len(parsed) == 4:
-                coords = [parsed]
-            else:
-                coords = []
-        else:
-            coords = []
-
-        if coords:
-            boxes.append(DetectedBox(ref_type=str(len(boxes)), coords=coords, text=ref_text))
-            clean_parts.append(ref_text)
-
-    tail = raw[last_end:]
-    if tail.strip():
-        clean_parts.append(tail)
-
-    return "\n".join(clean_parts), boxes
+    return boxes
 
 
 @st.cache_resource

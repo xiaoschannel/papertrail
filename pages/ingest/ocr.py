@@ -7,7 +7,7 @@ import streamlit as st
 from data import load_ocr_results, save_ocr_results
 from models import OcrResult, batch_serial_key, iter_indexed_files, load_scan_index
 from ocr_providers import OCR_PROVIDERS, teardown_ocr
-from ocr_providers.deepseek import _GROUNDING_RE, parse_grounding_output
+from ocr_providers.deepseek import parse_grounding_output
 from settings import get_config
 from streamlit_progress import ProgressBar
 
@@ -96,8 +96,7 @@ for key, img_path in to_process:
         boxes = None
         if cfg.get("extract_structured", True):
             structured_raw = OCR_PROVIDERS[ocr_provider].run(img_path, structured=True)
-            if _GROUNDING_RE.search(structured_raw):
-                _, boxes = parse_grounding_output(structured_raw)
+            boxes = parse_grounding_output(structured_raw)
         new_results[key] = OcrResult(filename=img_path.name, raw=raw, boxes=boxes, markdown=markdown, succeeded=True)
         bar.tick(True)
     except Exception:

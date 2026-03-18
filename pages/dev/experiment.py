@@ -10,7 +10,7 @@ from PIL import Image, ImageEnhance
 from box_drawing import draw_all_boxes, draw_field_boxes
 from extraction import EXTRACTORS, build_extraction_prompt
 from ocr_providers import OCR_PROVIDERS, run_ocr
-from ocr_providers.deepseek import _GROUNDING_RE, parse_grounding_output
+from ocr_providers.deepseek import parse_grounding_output
 
 st.title("Experiment")
 
@@ -21,7 +21,7 @@ if not uploaded:
 
 if st.session_state.get("exp_file") != uploaded.name:
     st.session_state.exp_file = uploaded.name
-    for k in ["exp_plain", "exp_structured_md", "exp_structured_raw", "exp_boxes", "exp_extraction"]:
+    for k in ["exp_plain", "exp_structured_raw", "exp_boxes", "exp_extraction"]:
         st.session_state.pop(k, None)
 
 original = Image.open(uploaded).convert("RGB")
@@ -89,18 +89,12 @@ if st.button("Run OCR"):
         with st.spinner("Running structured OCR..."):
             raw_structured = run_ocr(tmp_path, provider=ocr_provider, structured=True)
         st.session_state.exp_structured_raw = raw_structured
-        if _GROUNDING_RE.search(raw_structured):
-            md, boxes = parse_grounding_output(raw_structured)
-            st.session_state.exp_structured_md = md
-            st.session_state.exp_boxes = boxes
-        else:
-            st.session_state.exp_structured_md = raw_structured
-            st.session_state.exp_boxes = None
+        st.session_state.exp_boxes = parse_grounding_output(raw_structured)
     st.session_state.pop("exp_extraction", None)
     tmp_path.unlink()
 
 has_plain = "exp_plain" in st.session_state
-has_structured = "exp_structured_md" in st.session_state
+has_structured = "exp_structured_raw" in st.session_state
 if not has_plain:
     st.stop()
 
@@ -114,12 +108,8 @@ if has_structured:
         else:
             st.image(image, caption="No boxes detected", width="stretch")
     with col_structured:
-        st.markdown("**Structured — Markdown**")
-        display_s = st.radio("Display", ["Markdown", "Raw"], horizontal=True, key="disp_structured")
-        if display_s == "Raw":
-            st.text_area("Structured raw", st.session_state.exp_structured_raw, height=600, label_visibility="collapsed")
-        else:
-            st.markdown(st.session_state.exp_structured_md.replace("\n", "  \n"), unsafe_allow_html=True)
+        st.markdown("**Structured**")
+        st.text_area("Structured output", st.session_state.exp_structured_raw, height=600, label_visibility="collapsed")
     with col_plain:
         st.markdown("**Plain — Markdown**")
         display_p = st.radio("Display", ["Markdown", "Raw"], horizontal=True, key="disp_plain")

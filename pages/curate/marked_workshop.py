@@ -32,7 +32,7 @@ from models import (
 )
 from name_similarity import get_smart_match_suggestions
 from ocr_providers import OCR_PROVIDERS, run_ocr
-from ocr_providers.deepseek import _GROUNDING_RE, parse_grounding_output
+from ocr_providers.deepseek import parse_grounding_output
 from organize_utils import move_to_accepted_destination
 from rules.cost_large_check import cost_large_check
 from rules.cost_zero_check import cost_zero_check
@@ -237,23 +237,29 @@ with work_col:
         os.close(fd)
         tmp_path = Path(tmp_str)
         working_image.save(tmp_path)
+        extract_structured = cfg.get("extract_structured", True)
         with st.spinner("Running OCR..."):
-            raw_ocr = run_ocr(tmp_path, provider=ocr_provider, structured=cfg.get("extract_structured", True))
-        tmp_path.unlink()
-        if _GROUNDING_RE.search(raw_ocr):
-            clean_text, boxes = parse_grounding_output(raw_ocr)
-            ws["ocr_text"] = clean_text
+            plain_raw = run_ocr(tmp_path, provider=ocr_provider, structured=False)
+        ws["ocr_text"] = plain_raw
+        if extract_structured:
+            with st.spinner("Running structured OCR..."):
+                structured_raw = run_ocr(tmp_path, provider=ocr_provider, structured=True)
+            boxes = parse_grounding_output(structured_raw)
             ws["ocr_boxes"] = boxes
-            annotated_lines = ["--- Page 1 ---"]
-            for idx, box in enumerate(boxes):
-                annotated_lines.append(f"[P1-BOX-{idx}] {box.text}")
-            extractor_input = "\n".join(annotated_lines)
-            has_boxes = True
+            if boxes:
+                annotated_lines = ["--- Page 1 ---"]
+                for idx, box in enumerate(boxes):
+                    annotated_lines.append(f"[P1-BOX-{idx}] {box.text}")
+                extractor_input = "\n".join(annotated_lines)
+                has_boxes = True
+            else:
+                extractor_input = plain_raw
+                has_boxes = False
         else:
-            ws["ocr_text"] = raw_ocr
             ws["ocr_boxes"] = None
-            extractor_input = raw_ocr
+            extractor_input = plain_raw
             has_boxes = False
+        tmp_path.unlink()
         extract_fn = EXTRACTORS[extractor_name]
         with st.spinner("Extracting..."):
             new_ext = extract_fn(extractor_input, has_boxes=has_boxes)
