@@ -62,20 +62,14 @@ batch_limit = st.number_input("Batch size (0 = all)", min_value=0, value=0, step
 if batch_limit > 0:
     to_process = to_process[:batch_limit]
 
-ocr_proceed = st.session_state.pop("ocr_reprocess_confirmed", False)
+if mode == "Reprocess all":
+    st.warning("This will replace all existing OCR results. This cannot be undone.")
+    reprocess_confirmed = st.checkbox("I understand, proceed with reprocess")
+    start_clicked = st.button("Start Batch Processing", disabled=not reprocess_confirmed)
+else:
+    start_clicked = st.button("Start Batch Processing")
 
-if mode == "Reprocess all" and st.button("Start Batch Processing") and not ocr_proceed:
-    @st.dialog("Confirm Reprocess All")
-    def confirm_ocr_reprocess():
-        st.warning("This will replace all existing OCR results. This cannot be undone.")
-        if st.button("Confirm", type="primary"):
-            st.session_state["ocr_reprocess_confirmed"] = True
-            st.rerun()
-
-    confirm_ocr_reprocess()
-    st.stop()
-
-if not ocr_proceed and not st.button("Start Batch Processing"):
+if not start_clicked:
     st.stop()
 
 output_path.mkdir(parents=True, exist_ok=True)

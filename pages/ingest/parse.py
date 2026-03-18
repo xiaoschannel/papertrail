@@ -62,20 +62,12 @@ col0.metric("Total", n_total)
 col1.metric("Processed", n_processed)
 col2.metric("New", n_new)
 
-parse_proceed = st.session_state.pop("parse_reprocess_confirmed", False)
-
-if mode == "Reprocess all" and st.button("Run Extraction", width="stretch", type="primary") and not parse_proceed:
-    @st.dialog("Confirm Reprocess All")
-    def confirm_parse_reprocess():
-        st.warning("This will replace all existing extractions. This cannot be undone.")
-        if st.button("Confirm", type="primary"):
-            st.session_state["parse_reprocess_confirmed"] = True
-            st.rerun()
-
-    confirm_parse_reprocess()
-    st.stop()
-
-run_clicked = parse_proceed or st.button("Run Extraction", width="stretch", type="primary")
+if mode == "Reprocess all":
+    st.warning("This will replace all existing extractions. This cannot be undone.")
+    reprocess_confirmed = st.checkbox("I understand, proceed with reprocess")
+    run_clicked = st.button("Run Extraction", width="stretch", type="primary", disabled=not reprocess_confirmed)
+else:
+    run_clicked = st.button("Run Extraction", width="stretch", type="primary")
 
 if run_clicked and to_process:
     if mode == "Reprocess all":
