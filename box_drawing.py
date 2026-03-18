@@ -18,10 +18,17 @@ DEFAULT_FIELD_COLOR = (120, 120, 120)
 EXCLUDED_SOURCE_FIELDS = {"document_type", "language", "currency", "items"}
 
 _CJK_FONT_CANDIDATES = [
-    Path(r"C:\Windows\Fonts\msyh.ttc"),
-    Path(r"C:\Windows\Fonts\meiryo.ttc"),
-    Path(r"C:\Windows\Fonts\YuGothR.ttc"),
-    Path(r"C:\Windows\Fonts\msgothic.ttc"),
+    Path("C:/Windows/Fonts/msyh.ttc"),
+    Path("C:/Windows/Fonts/meiryo.ttc"),
+    Path("C:/Windows/Fonts/YuGothR.ttc"),
+    Path("C:/Windows/Fonts/msgothic.ttc"),
+    Path("/System/Library/Fonts/Supplemental/Arial Unicode.ttf"),
+    Path("/System/Library/Fonts/PingFang.ttc"),
+    Path("/System/Library/Fonts/Hiragino Sans GB.ttc"),
+    Path("/Library/Fonts/Arial Unicode.ttf"),
+    Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
+    Path("/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc"),
+    Path("/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"),
 ]
 
 
