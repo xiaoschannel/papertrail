@@ -41,6 +41,7 @@ class ReceiptResult(BaseModel):
     location: str
     items: list[ReceiptItem] = []
     cost: float
+    field_sources: dict[str, list[str]] = {}
 
 
 class OtherResult(BaseModel):
@@ -49,6 +50,7 @@ class OtherResult(BaseModel):
     date: str
     time: str
     title: str
+    field_sources: dict[str, list[str]] = {}
 
 
 class CorruptedResult(BaseModel):
@@ -63,6 +65,11 @@ DocumentExtraction = Annotated[
 DocumentExtractionAdapter = TypeAdapter(DocumentExtraction)
 
 
+class FieldSourceEntry(BaseModel):
+    field: str
+    boxes: list[str]
+
+
 class ExtractionFlat(BaseModel):
     document_type: Literal["receipt", "other", "corrupted"]
     language: str = ""
@@ -74,8 +81,10 @@ class ExtractionFlat(BaseModel):
     location: str = ""
     items: list[ReceiptItem] = []
     cost: float = 0.0
+    field_sources: list[FieldSourceEntry] = []
 
     def to_extraction(self) -> DocumentExtraction:
+        sources = {fs.field: fs.boxes for fs in self.field_sources}
         if self.document_type == "corrupted":
             return CorruptedResult(document_type="corrupted")
         if self.document_type == "other":
@@ -85,6 +94,7 @@ class ExtractionFlat(BaseModel):
                 date=self.date,
                 time=self.time,
                 title=self.title,
+                field_sources=sources,
             )
         return ReceiptResult(
             document_type="receipt",
@@ -96,6 +106,7 @@ class ExtractionFlat(BaseModel):
             location=self.location,
             items=self.items,
             cost=self.cost,
+            field_sources=sources,
         )
 
 
@@ -314,6 +325,26 @@ class DocumentIndex:
             if k in ocr_by_key:
                 parts.append(f"--- Page {i + 1} ---\n{ocr_by_key[k]}")
         return "\n\n".join(parts)
+
+    def concat_ocr_with_boxes(
+        self,
+        doc_key: DocumentKey,
+        ocr_results: "dict[str, OcrResult]",
+    ) -> tuple[str, bool]:
+        parts = []
+        has_boxes = False
+        for i, k in enumerate(self.keys_for_doc(doc_key)):
+            r = ocr_results.get(k)
+            if not r or not r.succeeded:
+                continue
+            page_num = i + 1
+            section = f"--- Page {page_num} ---\n{r.markdown}"
+            if r.boxes:
+                has_boxes = True
+                box_lines = [f"[P{page_num}-BOX-{idx}] {box.text}" for idx, box in enumerate(r.boxes)]
+                section += f"\n--- Page {page_num} Grounding Boxes ---\n" + "\n".join(box_lines)
+            parts.append(section)
+        return "\n\n".join(parts), has_boxes
 
     def expand_decisions(self, decisions: dict[DocumentKey, T]) -> dict[str, T]:
         result: dict[str, T] = {}

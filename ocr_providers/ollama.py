@@ -7,7 +7,7 @@ class OllamaOcrProvider:
     MODEL = "glm-ocr:latest"
     PROMPT = "Extract all text from this image exactly as shown, preserving layout."
 
-    def run(self, path: Path) -> str:
+    def run(self, path: Path, structured: bool = False) -> str:
         response = chat(
             model=self.MODEL,
             messages=[{"role": "user", "content": self.PROMPT, "images": [path.read_bytes()]}],

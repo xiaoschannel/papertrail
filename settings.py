@@ -3,7 +3,7 @@ from pathlib import Path
 
 CONFIG_PATH = Path(__file__).resolve().parent / "config.json"
 
-DEFAULTS = {"input_image_path": "", "batch_output_path": ""}
+DEFAULTS = {"input_image_path": "", "batch_output_path": "", "extract_structured": True}
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 

@@ -4,9 +4,14 @@ from pathlib import Path
 
 import streamlit as st
 
-from data import build_document_index, load_extractions, load_ocr_results, save_extractions
+from data import (
+    build_document_index,
+    load_extractions,
+    load_ocr_results,
+    save_extractions,
+)
 from extraction import EXTRACTORS
-from models import batch_serial_key, iter_indexed_files, load_scan_index
+from models import OcrResult, batch_serial_key, iter_indexed_files, load_scan_index
 from settings import get_config
 from streamlit_progress import ProgressBar
 
@@ -28,6 +33,7 @@ scan_index = load_scan_index(output_path)
 indexed_keys = {batch_serial_key(bid, ser) for bid, ser, _ in iter_indexed_files(scan_index, include_archived=False)}
 loaded = load_ocr_results(output_path)
 ocr_by_key = {k: r.markdown for k, r in loaded.items() if r.succeeded and k in indexed_keys}
+ocr_results_by_key: dict[str, OcrResult] = {k: r for k, r in loaded.items() if r.succeeded and k in indexed_keys}
 
 index = build_document_index(output_path, indexed_keys, ocr_keys=set(ocr_by_key))
 doc_keys_with_ocr = index.doc_keys_with_ocr(ocr_by_key)
@@ -81,9 +87,9 @@ if run_clicked and to_process:
     last_save = time.time()
 
     for doc_key in to_process:
-        ocr_text = index.concat_ocr(doc_key, ocr_by_key)
+        ocr_text, has_boxes = index.concat_ocr_with_boxes(doc_key, ocr_results_by_key)
         try:
-            extractions[str(doc_key)] = EXTRACTORS[extractor_name](ocr_text)
+            extractions[str(doc_key)] = EXTRACTORS[extractor_name](ocr_text, has_boxes=has_boxes)
             bar.tick(True)
         except Exception:
             failed.append(str(doc_key))

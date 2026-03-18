@@ -1,3 +1,5 @@
+import typing
+
 from ollama import chat
 from openai import OpenAI
 
@@ -33,6 +35,18 @@ Date and time extraction rules:
 - e.g. A parking receipt may have a start time and end time.
 - Since the receipt would be printed at the end of the parking session, the end date/time should be extracted.
 
+About inferring:
+All the ocr output can be unreliable. They can either be
+- garbled(bad spelling, repeats, anything that do not make sense), or
+- coherently wrong(526 instead of 528, make sense while wrong)
+
+For the first case, sometimes you can recover from other cues.
+- e.g. name from location, if name looks garbled
+Do not try to recover the second case:
+- e.g. total cost from items or vice versa
+- or name from location(or vice versa), if they differ, and both make sense
+This is because you do not know which one is correct.
+
 If document_type is "receipt", output:
 - name: Merchant/Store name. Include branch if present. If the merchant/store is a tenant of a mall, that also tend to be the branch name.
   - Example: "Subway at King Station", "セブン-イレブン 新宿駅前店".
@@ -49,8 +63,8 @@ If document_type is "receipt", output:
   - likewise if there are other charges, such as tips, service fees whatever, add an item for that.
   - Some receipts round the amount, make sure to include that amount as well.
     - For example if the total price is $10.03 rounded to $10, add an item for -0.03 so the total price adds up to the cost.
-  - Do not include the actual payment/change amount in this list
-- cost: total amount paid, tax-inclusive. Do not try to calculate this number, but pick the most likely from the OCR text.
+  - Do not include the actual payment/change amount in this list.
+- cost: total amount paid, tax-inclusive.
 
 If document_type is "other", output:
 - title: Try formulate the title with two parts using the exact words of the document:
@@ -62,9 +76,29 @@ If document_type is "other", output:
 OCR text:
 {ocr_text}"""
 
+FIELD_SOURCES_ADDENDUM = """
 
-def extract_ollama(ocr_text: str) -> DocumentExtraction:
-    prompt = EXTRACTION_PROMPT.format(ocr_text=ocr_text)
+After each page's OCR text there is a "Grounding Boxes" section listing detected regions of that page, each tagged like [P1-BOX-0].
+For each field you extract, also output field_sources: a dict mapping field names to the list of box tags (as "page:box" strings) that the field's value came from.
+For example: "field_sources": {{"name": ["1:0"], "date": ["1:2"], "cost": ["2:1"]}}
+- Use the page number and box index from the tag, e.g. [P1-BOX-3] becomes "1:3".
+- A field may cite multiple boxes if its value spans several regions.
+- Only cite boxes that directly contain the field's value.
+- Only provide sources for: name, title, date, time, cost, location, and items.
+- Do NOT provide sources for document_type, language, or currency.
+
+Note the grounding boxes are a separate OCR pass from the original image -- They are variations from the same ground truth.
+Both can be unreliable, but they can be used as additional cues for inference-based recovery.
+"""
+
+
+def build_extraction_prompt(ocr_text: str, has_boxes: bool = False) -> str:
+    base = EXTRACTION_PROMPT.format(ocr_text=ocr_text)
+    return base + FIELD_SOURCES_ADDENDUM if has_boxes else base
+
+
+def extract_ollama(ocr_text: str, has_boxes: bool = False) -> DocumentExtraction:
+    prompt = build_extraction_prompt(ocr_text, has_boxes)
     response = chat(
         model=OLLAMA_MODEL,
         messages=[{"role": "user", "content": prompt}],
@@ -74,9 +108,9 @@ def extract_ollama(ocr_text: str) -> DocumentExtraction:
     return DocumentExtractionAdapter.validate_json(response.message.content)
 
 
-def extract_openai(ocr_text: str) -> DocumentExtraction:
+def extract_openai(ocr_text: str, has_boxes: bool = False) -> DocumentExtraction:
     client = OpenAI()
-    prompt = EXTRACTION_PROMPT.format(ocr_text=ocr_text)
+    prompt = build_extraction_prompt(ocr_text, has_boxes)
     response = client.chat.completions.parse(
         model=OPENAI_MODEL,
         messages=[{"role": "user", "content": prompt}],
@@ -86,7 +120,7 @@ def extract_openai(ocr_text: str) -> DocumentExtraction:
     return response.choices[0].message.parsed.to_extraction()
 
 
-EXTRACTORS = {
+EXTRACTORS: dict[str, typing.Callable[..., DocumentExtraction]] = {
     f"OpenAI - {OPENAI_MODEL}": extract_openai,
     f"Ollama - {OLLAMA_MODEL}": extract_ollama,
 }
