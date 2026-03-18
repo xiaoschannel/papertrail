@@ -28,7 +28,6 @@ pg = st.navigation({
     "Dev": [
         st.Page("pages/dev/experiment.py", title="Experiment", icon=":material/science:"),
         st.Page("pages/dev/sanity_check.py", title="Sanity Check", icon=":material/vital_signs:"),
-        st.Page("pages/dev/sidecar_check.py", title="Sidecar Check", icon=":material/fact_check:"),
     ],
     "": [
         st.Page("pages/config.py", title="Config", icon=":material/settings:"),
