@@ -23,8 +23,8 @@ if not accepted_metadata and not tossed_fns:
     st.stop()
 
 records: dict[str, ReviewDecision] = {}
-for fn, (sc, _path) in accepted_metadata.items():
-    records[fn] = sc.review
+for fn, (sidecar, _path) in accepted_metadata.items():
+    records[fn] = sidecar.review
 
 clusters = find_dedupe_clusters(records)
 
@@ -39,11 +39,11 @@ for idx, cluster in enumerate(clusters):
     first = decs[0][1]
     st.subheader(f"Cluster {idx + 1} — {first.date} ~{first.time}")
     cols = st.columns(6)
-    for i, (fn, dec) in enumerate(decs):
+    for i, (fn, decision) in enumerate(decs):
         col = cols[i % 6]
         is_tossed = fn in tossed_fns
         with col:
-            label = f"~~{fn}~~\n\n~~{dec.name} — {dec.cost} {dec.currency}~~" if is_tossed else f"**{fn}**\n\n{dec.name} — {dec.cost} {dec.currency}"
+            label = f"~~{fn}~~\n\n~~{decision.name} — {decision.cost} {decision.currency}~~" if is_tossed else f"**{fn}**\n\n{decision.name} — {decision.cost} {decision.currency}"
             st.markdown(label)
             if not is_tossed and st.button("Toss", key=f"toss_{fn}", width="stretch"):
                 path_str = accepted_metadata[fn][1] if fn in accepted_metadata else ""

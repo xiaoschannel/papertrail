@@ -2,18 +2,18 @@ from models import DocumentExtraction, ReceiptResult
 from validation import Hint
 
 
-def cost_check(ext: DocumentExtraction) -> list[Hint]:
-    if not isinstance(ext, ReceiptResult) or not ext.items:
+def cost_check(extraction: DocumentExtraction) -> list[Hint]:
+    if not isinstance(extraction, ReceiptResult) or not extraction.items:
         return []
 
-    items_with_total = [item for item in ext.items if item.total_price is not None]
+    items_with_total = [item for item in extraction.items if item.total_price is not None]
     if not items_with_total:
         return []
 
-    is_jpy = ext.currency.upper() == "JPY"
-    fmt = (lambda v: f"¥{v:,.0f}") if is_jpy else (lambda v: f"{v:,.2f} {ext.currency}")
+    is_jpy = extraction.currency.upper() == "JPY"
+    fmt = (lambda v: f"¥{v:,.0f}") if is_jpy else (lambda v: f"{v:,.2f} {extraction.currency}")
     items_sum = sum(item.total_price for item in items_with_total)
-    if abs(items_sum - ext.cost) < 0.01:
-        return [Hint(message=f"Items sum {fmt(items_sum)} = Total {fmt(ext.cost)}", color="#28a745")]
-    diff = ext.cost - items_sum
-    return [Hint(message=f"Items sum {fmt(items_sum)} ≠ Total {fmt(ext.cost)} (diff: {fmt(diff)})", color="#dc3545")]
+    if abs(items_sum - extraction.cost) < 0.01:
+        return [Hint(message=f"Items sum {fmt(items_sum)} = Total {fmt(extraction.cost)}", color="#28a745")]
+    diff = extraction.cost - items_sum
+    return [Hint(message=f"Items sum {fmt(items_sum)} ≠ Total {fmt(extraction.cost)} (diff: {fmt(diff)})", color="#dc3545")]

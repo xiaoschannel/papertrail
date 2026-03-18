@@ -6,17 +6,17 @@ from models import CorruptedResult, DocumentExtraction
 from validation import Hint
 
 
-def date_check(ext: DocumentExtraction) -> list[Hint]:
-    if isinstance(ext, CorruptedResult):
+def date_check(extraction: DocumentExtraction) -> list[Hint]:
+    if isinstance(extraction, CorruptedResult):
         return []
-    if not ext.date:
+    if not extraction.date:
         return []
 
-    time_fmt = "%H:%M:%S" if ext.time and len(ext.time) > 5 else "%H:%M"
+    time_fmt = "%H:%M:%S" if extraction.time and len(extraction.time) > 5 else "%H:%M"
     try:
-        doc_dt = datetime.strptime(f"{ext.date} {ext.time}", f"%Y-%m-%d {time_fmt}") if ext.time else datetime.strptime(ext.date, "%Y-%m-%d")
+        doc_dt = datetime.strptime(f"{extraction.date} {extraction.time}", f"%Y-%m-%d {time_fmt}") if extraction.time else datetime.strptime(extraction.date, "%Y-%m-%d")
     except ValueError:
-        date_str = f"{ext.date} {ext.time}" if ext.time else ext.date
+        date_str = f"{extraction.date} {extraction.time}" if extraction.time else extraction.date
         return [Hint(message=f"Failed to parse: {date_str}", color="#dc3545")]
 
     now = datetime.now()

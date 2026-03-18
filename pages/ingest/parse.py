@@ -30,14 +30,14 @@ if not index_file.exists():
     st.stop()
 
 scan_index = load_scan_index(output_path)
-indexed_keys = {batch_serial_key(bid, ser) for bid, ser, _ in iter_indexed_files(scan_index, include_archived=False)}
+indexed_keys = {batch_serial_key(batch_id, serial) for batch_id, serial, _ in iter_indexed_files(scan_index, include_archived=False)}
 loaded = load_ocr_results(output_path)
 ocr_by_key = {k: r.markdown for k, r in loaded.items() if r.succeeded and k in indexed_keys}
 ocr_results_by_key: dict[str, OcrResult] = {k: r for k, r in loaded.items() if r.succeeded and k in indexed_keys}
 
 index = build_document_index(output_path, indexed_keys, ocr_keys=set(ocr_by_key))
 doc_keys_with_ocr = index.doc_keys_with_ocr(ocr_by_key)
-extractions = {k: v for k, v in load_extractions(output_path).items() if k in {str(dk) for dk in doc_keys_with_ocr}}
+extractions = {k: v for k, v in load_extractions(output_path).items() if k in {str(doc_key) for doc_key in doc_keys_with_ocr}}
 
 extractor_name = st.selectbox("Model", list(EXTRACTORS.keys()))
 
@@ -47,7 +47,7 @@ if mode == "Reprocess all":
     existing_extractions = {}
 else:
     existing_extractions = dict(extractions)
-    to_process = [dk for dk in doc_keys_with_ocr if str(dk) not in existing_extractions]
+    to_process = [doc_key for doc_key in doc_keys_with_ocr if str(doc_key) not in existing_extractions]
 
 n_total = len(doc_keys_with_ocr)
 n_processed = len(extractions)

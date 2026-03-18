@@ -23,22 +23,22 @@ def parse_scan_datetime(fn: str) -> tuple[int, int, int, int, int, int]:
     return year, month, day, hour, minute, second
 
 
-def build_accepted_name(dec: ReviewDecision, fn: str) -> tuple[str, str, int]:
-    if dec.date:
-        parts = dec.date.split("-")
+def build_accepted_name(decision: ReviewDecision, fn: str) -> tuple[str, str, int]:
+    if decision.date:
+        parts = decision.date.split("-")
         year, month, day = int(parts[0]), int(parts[1]), int(parts[2])
-        time_parts = dec.time.split(":") if dec.time else ["0", "0"]
+        time_parts = decision.time.split(":") if decision.time else ["0", "0"]
         hour = time_parts[0].zfill(2)
         minute = time_parts[1].zfill(2) if len(time_parts) > 1 else "00"
         seconds = int(time_parts[2]) if len(time_parts) > 2 else -1
         folder = f"{year}/{month:02d}"
-        safe_name = sanitize_filename(dec.name)
+        safe_name = sanitize_filename(decision.name)
         base = f"{year}年{month}月{day}日 {hour}{FULLWIDTH_COLON}{minute} {safe_name}"
     else:
         sy, sm, sd, sh, smi, ss = parse_scan_datetime(fn)
         seconds = ss
         folder = f"{sy}/undated"
-        safe_name = sanitize_filename(dec.name)
+        safe_name = sanitize_filename(decision.name)
         base = f"{sy}年{sm}月{sd}日 {sh:02d}{FULLWIDTH_COLON}{smi:02d} {safe_name}"
     return folder, base, seconds
 
@@ -70,8 +70,8 @@ def plan_accepted_destinations(
         return filename_to_batch_serial.get(key, (0, 0))
 
     groups: dict[tuple[str, str], list[tuple[str, int]]] = defaultdict(list)
-    for key, dec in records.items():
-        folder, base, seconds = build_accepted_name(dec, get_fn(key))
+    for key, decision in records.items():
+        folder, base, seconds = build_accepted_name(decision, get_fn(key))
         groups[(folder, base)].append((key, seconds))
 
     file_destinations: dict[str, str] = {}
@@ -96,15 +96,15 @@ def plan_accepted_destinations(
 
         for idx, (key, _sec) in enumerate(members):
             fn = get_fn(key)
-            ext = Path(fn).suffix
+            suffix = Path(fn).suffix
             if needs_suffix:
                 suffix_num = start_idx + idx if existing_count > 0 else idx + 1
                 if existing_count == 0 and idx == 0:
-                    new_name = f"{base}{ext}"
+                    new_name = f"{base}{suffix}"
                 else:
-                    new_name = f"{base} ({suffix_num}){ext}"
+                    new_name = f"{base} ({suffix_num}){suffix}"
             else:
-                new_name = f"{base}{ext}"
+                new_name = f"{base}{suffix}"
             file_destinations[key] = f"{folder}/{new_name}"
 
     return file_destinations
@@ -127,22 +127,22 @@ def apply_reorganize(output_path: Path) -> list[tuple[str, str, str]]:
                     sidecar_paths.append(p)
                 else:
                     stem_to_datafile[p.stem] = p
-            for sp in sidecar_paths:
-                sc = Sidecar.model_validate_json(sp.read_text(encoding="utf-8"))
-                data_file = stem_to_datafile.get(sp.stem)
+            for sidecar_path in sidecar_paths:
+                sidecar = Sidecar.model_validate_json(sidecar_path.read_text(encoding="utf-8"))
+                data_file = stem_to_datafile.get(sidecar_path.stem)
                 rel_path = data_file.relative_to(output_path).as_posix() if data_file else ""
-                accepted[sc.original_filename] = (sc, rel_path)
+                accepted[sidecar.original_filename] = (sidecar, rel_path)
 
     stale: dict[str, ReviewDecision] = {}
     stable_stems: dict[str, set[str]] = defaultdict(set)
     filename_to_batch_serial: dict[str, tuple[int, int]] = {}
 
-    for fn, (sc, current_path) in accepted.items():
-        dec = sc.review
-        expected_folder, expected_base, _ = build_accepted_name(dec, fn)
+    for fn, (sidecar, current_path) in accepted.items():
+        decision = sidecar.review
+        expected_folder, expected_base, _ = build_accepted_name(decision, fn)
 
-        if sc.batch_id is not None and sc.serial is not None:
-            filename_to_batch_serial[fn] = (sc.batch_id, sc.serial)
+        if sidecar.batch_id is not None and sidecar.serial is not None:
+            filename_to_batch_serial[fn] = (sidecar.batch_id, sidecar.serial)
 
         current_folder = str(Path(current_path).parent).replace("\\", "/") if current_path else ""
         current_stem = Path(current_path).stem if current_path else ""
@@ -150,7 +150,7 @@ def apply_reorganize(output_path: Path) -> list[tuple[str, str, str]]:
         if current_folder == expected_folder and _stem_matches_base(current_stem, expected_base):
             stable_stems[expected_folder].add(current_stem)
         else:
-            stale[fn] = dec
+            stale[fn] = decision
 
     if not stale:
         return []
@@ -197,10 +197,10 @@ def scan_existing_names(output_path: Path) -> dict[str, set[str]]:
 def resolve_single_accepted_destination(
     output_path: Path,
     fn: str,
-    dec: ReviewDecision,
+    decision: ReviewDecision,
 ) -> str:
-    folder, base, _seconds = build_accepted_name(dec, fn)
-    ext = Path(fn).suffix
+    folder, base, _seconds = build_accepted_name(decision, fn)
+    suffix = Path(fn).suffix
 
     taken: set[str] = set()
     target_dir = output_path / folder
@@ -209,21 +209,21 @@ def resolve_single_accepted_destination(
             taken.add(sidecar.stem)
 
     if base not in taken:
-        return f"{folder}/{base}{ext}"
+        return f"{folder}/{base}{suffix}"
 
     i = 2
     while f"{base} ({i})" in taken:
         i += 1
-    return f"{folder}/{base} ({i}){ext}"
+    return f"{folder}/{base} ({i}){suffix}"
 
 
 def move_to_accepted_destination(
     output_path: Path,
     original_filename: str,
     current_data_file: Path,
-    dec: ReviewDecision,
+    decision: ReviewDecision,
 ) -> Path:
-    dest_rel = resolve_single_accepted_destination(output_path, original_filename, dec)
+    dest_rel = resolve_single_accepted_destination(output_path, original_filename, decision)
     dest_full = output_path / dest_rel
     try:
         current_rel = current_data_file.relative_to(output_path).as_posix()

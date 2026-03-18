@@ -7,17 +7,17 @@ LARGE_COST_THRESHOLDS: dict[str, float] = {
 }
 
 
-def cost_large_check(ext: DocumentExtraction) -> list[Hint]:
-    if not isinstance(ext, ReceiptResult) or ext.cost is None:
+def cost_large_check(extraction: DocumentExtraction) -> list[Hint]:
+    if not isinstance(extraction, ReceiptResult) or extraction.cost is None:
         return []
 
-    currency = ext.currency.upper()
+    currency = extraction.currency.upper()
     threshold = LARGE_COST_THRESHOLDS.get(currency)
     if threshold is None:
         return []
 
-    if ext.cost >= threshold:
+    if extraction.cost >= threshold:
         is_jpy = currency == "JPY"
-        fmt = f"¥{ext.cost:,.0f}" if is_jpy else f"{ext.cost:,.2f} {ext.currency}"
+        fmt = f"¥{extraction.cost:,.0f}" if is_jpy else f"{extraction.cost:,.2f} {extraction.currency}"
         return [Hint(message=f"Large cost: {fmt} (≥ {threshold:,.0f} {currency})", color="#b8860b")]
     return []

@@ -15,7 +15,7 @@ class Hint(BaseModel):
 
 
 class HintRule(Protocol):
-    def __call__(self, ext: DocumentExtraction) -> list[Hint]: ...
+    def __call__(self, extraction: DocumentExtraction) -> list[Hint]: ...
 
 
 # --- Submission blockers (must pass before save) ---

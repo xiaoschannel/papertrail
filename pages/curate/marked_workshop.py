@@ -69,8 +69,8 @@ if not marked_files:
 st.metric("Marked files", len(marked_files))
 
 decisions: dict[str, ReviewDecision] = {}
-for fn, (sc, _path) in accepted_metadata.items():
-    decisions[fn] = sc.review
+for fn, (sidecar, _path) in accepted_metadata.items():
+    decisions[fn] = sidecar.review
 
 # --- Navigation ---
 
@@ -78,7 +78,7 @@ if "workshop_idx" not in st.session_state or st.session_state.workshop_idx >= le
     st.session_state.workshop_idx = 0
 
 nav_cols = st.columns([1, 1, 6])
-leaving_key = f"ws_{marked_files[st.session_state.workshop_idx]}"
+leaving_key = f"workshop_state_{marked_files[st.session_state.workshop_idx]}"
 leaving_ctx_key = f"ctx_{marked_files[st.session_state.workshop_idx]}"
 if nav_cols[0].button("← Prev", disabled=(st.session_state.workshop_idx == 0)):
     st.session_state.pop(leaving_key, None)
@@ -96,16 +96,16 @@ nav_cols[2].markdown(f"**{st.session_state.workshop_idx + 1} / {len(marked_files
 
 # --- Per-file session state ---
 
-ws_key = f"ws_{selected}"
-if ws_key not in st.session_state:
-    st.session_state[ws_key] = {
+workshop_state_key = f"workshop_state_{selected}"
+if workshop_state_key not in st.session_state:
+    st.session_state[workshop_state_key] = {
         "rotation": 0,
         "ocr_text": None,
         "ocr_boxes": None,
         "extraction": None,
     }
 
-ws = st.session_state[ws_key]
+workshop_state = st.session_state[workshop_state_key]
 
 # --- Load and transform image ---
 
@@ -124,20 +124,20 @@ sidecar = read_sidecar(marked_dir / selected)
 sidecar_ext = sidecar.extraction if sidecar else None
 sidecar_ocr = sidecar.ocr if sidecar else None
 
-ext = ws.get("extraction") or sidecar_ext
+extraction = workshop_state.get("extraction") or sidecar_ext
 
-if isinstance(ext, ReceiptResult):
+if isinstance(extraction, ReceiptResult):
     default_doc_type = "receipt"
-    default_name = ext.name or "Receipt"
-    default_date = ext.date
-    default_time = ext.time
-    default_cost = ext.cost
-    default_currency = ext.currency
-elif isinstance(ext, OtherResult):
+    default_name = extraction.name or "Receipt"
+    default_date = extraction.date
+    default_time = extraction.time
+    default_cost = extraction.cost
+    default_currency = extraction.currency
+elif isinstance(extraction, OtherResult):
     default_doc_type = "other"
-    default_name = ext.title or "Document"
-    default_date = ext.date
-    default_time = ext.time
+    default_name = extraction.title or "Document"
+    default_date = extraction.date
+    default_time = extraction.time
     default_cost = 0.0
     default_currency = ""
 else:
@@ -216,8 +216,8 @@ with orig_col:
 # Column 2: Working image + rotate/enhance/reprocess
 with work_col:
     st.markdown("**Working Image**")
-    active_boxes = ws.get("ocr_boxes") or (sidecar_ocr.boxes if sidecar_ocr else None)
-    field_sources = getattr(ext, "field_sources", {}) if ext else {}
+    active_boxes = workshop_state.get("ocr_boxes") or (sidecar_ocr.boxes if sidecar_ocr else None)
+    field_sources = getattr(extraction, "field_sources", {}) if extraction else {}
     if active_boxes and field_sources:
         st.image(draw_field_boxes(working_image, 1, active_boxes, field_sources), width="stretch")
     else:
@@ -234,12 +234,12 @@ with work_col:
         extract_structured = cfg.get("extract_structured", True)
         with st.spinner("Running OCR..."):
             plain_raw = run_ocr(tmp_path, provider=ocr_provider, structured=False)
-        ws["ocr_text"] = plain_raw
+        workshop_state["ocr_text"] = plain_raw
         if extract_structured:
             with st.spinner("Running structured OCR..."):
                 structured_raw = run_ocr(tmp_path, provider=ocr_provider, structured=True)
             boxes = parse_grounding_output(structured_raw)
-            ws["ocr_boxes"] = boxes
+            workshop_state["ocr_boxes"] = boxes
             if boxes:
                 annotated_lines = ["--- Page 1 ---"]
                 for idx, box in enumerate(boxes):
@@ -250,18 +250,18 @@ with work_col:
                 extractor_input = plain_raw
                 has_boxes = False
         else:
-            ws["ocr_boxes"] = None
+            workshop_state["ocr_boxes"] = None
             extractor_input = plain_raw
             has_boxes = False
         tmp_path.unlink()
         extract_fn = EXTRACTORS[extractor_name]
         with st.spinner("Extracting..."):
             new_ext = extract_fn(extractor_input, has_boxes=has_boxes)
-        ws["extraction"] = new_ext
+        workshop_state["extraction"] = new_ext
         st.rerun()
 
 # Column 3: OCR Text
-ocr_text = ws.get("ocr_text") or (sidecar_ocr.markdown if sidecar_ocr else "")
+ocr_text = workshop_state.get("ocr_text") or (sidecar_ocr.markdown if sidecar_ocr else "")
 with ocr_col:
     st.markdown("**OCR Text**")
     if ocr_text:
@@ -333,19 +333,19 @@ with review_col:
     if doc_type == "receipt":
         live_ext = ReceiptResult(
             document_type="receipt",
-            language=ext.language if isinstance(ext, ReceiptResult) else "",
+            language=extraction.language if isinstance(extraction, ReceiptResult) else "",
             date=date_val,
             time=time_val,
             name=name,
             currency=final_currency_live,
-            location=ext.location if isinstance(ext, ReceiptResult) else "",
-            items=ext.items if isinstance(ext, ReceiptResult) else [],
+            location=extraction.location if isinstance(extraction, ReceiptResult) else "",
+            items=extraction.items if isinstance(extraction, ReceiptResult) else [],
             cost=parsed_cost_live,
         )
     elif doc_type == "other":
         live_ext = OtherResult(
             document_type="other",
-            language=ext.language if isinstance(ext, OtherResult) else "",
+            language=extraction.language if isinstance(extraction, OtherResult) else "",
             date=date_val,
             time=time_val,
             title=name,
@@ -386,7 +386,7 @@ with review_col:
             if not safe:
                 st.error(err)
             else:
-                dec = ReviewDecision(
+                decision = ReviewDecision(
                     verdict="accepted",
                     document_type=doc_type,
                     name=name,
@@ -395,22 +395,22 @@ with review_col:
                     cost=parsed_cost,
                     currency=final_currency,
                 )
-                dst = move_to_accepted_destination(output_path, selected, marked_dir / selected, dec)
+                dst = move_to_accepted_destination(output_path, selected, marked_dir / selected, decision)
                 dest_rel = dst.relative_to(output_path).as_posix()
-                if ws.get("ocr_text"):
-                    final_ocr = OcrResult(markdown=ws["ocr_text"], boxes=ws.get("ocr_boxes"))
+                if workshop_state.get("ocr_text"):
+                    final_ocr = OcrResult(markdown=workshop_state["ocr_text"], boxes=workshop_state.get("ocr_boxes"))
                 else:
                     final_ocr = sidecar_ocr
-                final_ext = ws.get("extraction") or sidecar_ext
-                sc = Sidecar(
+                final_ext = workshop_state.get("extraction") or sidecar_ext
+                new_sidecar = Sidecar(
                     original_filename=selected,
                     batch_id=sidecar.batch_id if sidecar else None,
                     serial=sidecar.serial if sidecar else None,
-                    review=dec,
+                    review=decision,
                     ocr=final_ocr,
                     extraction=final_ext,
                 )
-                write_sidecar(dst, sc)
+                write_sidecar(dst, new_sidecar)
                 name_cache = load_name_cache(output_path)
                 if isinstance(final_ext, ReceiptResult):
                     extracted_name = final_ext.name
@@ -418,11 +418,11 @@ with review_col:
                     extracted_name = final_ext.title
                 else:
                     extracted_name = ""
-                bid, ser = sc.batch_id, sc.serial
-                cache_key = batch_serial_key(bid, ser) if bid is not None and ser is not None else selected
-                name_cache[cache_key] = {"extracted": extracted_name, "confirmed": dec.name}
+                batch_id, serial = new_sidecar.batch_id, new_sidecar.serial
+                cache_key = batch_serial_key(batch_id, serial) if batch_id is not None and serial is not None else selected
+                name_cache[cache_key] = {"extracted": extracted_name, "confirmed": decision.name}
                 save_name_cache(output_path, name_cache)
-                st.session_state.pop(ws_key, None)
+                st.session_state.pop(workshop_state_key, None)
                 st.success(f"Accepted → {dest_rel}")
                 st.rerun()
         else:
@@ -431,7 +431,7 @@ with review_col:
             marked_sidecar = (marked_dir / selected).with_suffix(".json")
             if marked_sidecar.exists():
                 shutil.move(str(marked_sidecar), str((tossed_dir / selected).with_suffix(".json")))
-            st.session_state.pop(ws_key, None)
+            st.session_state.pop(workshop_state_key, None)
             st.success(f"Tossed → tossed/{selected}")
             st.rerun()
 

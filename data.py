@@ -20,10 +20,10 @@ def sidecar_path_for(file_path: Path) -> Path:
 
 
 def read_sidecar(file_path: Path) -> Sidecar | None:
-    sp = sidecar_path_for(file_path)
-    if not sp.exists():
+    sidecar_path = sidecar_path_for(file_path)
+    if not sidecar_path.exists():
         return None
-    return Sidecar.model_validate_json(sp.read_text(encoding="utf-8"))
+    return Sidecar.model_validate_json(sidecar_path.read_text(encoding="utf-8"))
 
 
 def write_sidecar(file_path: Path, entry: Sidecar):
@@ -148,8 +148,8 @@ def build_document_index(
 
 
 def _batch_id_from_key(key: str) -> int | None:
-    dk = DocumentKey.parse(key)
-    return dk.batch_id if dk else None
+    doc_key = DocumentKey.parse(key)
+    return doc_key.batch_id if doc_key else None
 
 
 def replace_groups_for_batch(output_path: Path, batch_id: int, new_groups: list[list[str]]):
@@ -193,8 +193,8 @@ def scan_organized_filenames(output_path: Path) -> set[str]:
         organized.update(p.name for p in marked_dir.iterdir() if p.is_file() and p.suffix.lower() != ".json")
     for month_dir in _iter_year_month_dirs(output_path):
         for sidecar_path in month_dir.glob("*.json"):
-            sc = Sidecar.model_validate_json(sidecar_path.read_text(encoding="utf-8"))
-            organized.add(sc.original_filename)
+            sidecar = Sidecar.model_validate_json(sidecar_path.read_text(encoding="utf-8"))
+            organized.add(sidecar.original_filename)
     return organized
 
 
@@ -217,11 +217,11 @@ def load_reorganized_state(
                 sidecar_paths.append(p)
             else:
                 stem_to_datafile[p.stem] = p
-        for sp in sidecar_paths:
-            sc = Sidecar.model_validate_json(sp.read_text(encoding="utf-8"))
-            data_file = stem_to_datafile.get(sp.stem)
+        for sidecar_path in sidecar_paths:
+            sidecar = Sidecar.model_validate_json(sidecar_path.read_text(encoding="utf-8"))
+            data_file = stem_to_datafile.get(sidecar_path.stem)
             rel_path = data_file.relative_to(output_path).as_posix() if data_file else ""
-            accepted_metadata[sc.original_filename] = (sc, rel_path)
+            accepted_metadata[sidecar.original_filename] = (sidecar, rel_path)
 
     return tossed, accepted_metadata
 

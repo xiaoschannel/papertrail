@@ -37,15 +37,15 @@ ocr_provider = st.selectbox("OCR Model", list(OCR_PROVIDERS.keys()))
 mode = st.radio("Mode", ["Process new only", "Reprocess all", "Run failed"], horizontal=True)
 
 if mode == "Reprocess all":
-    to_process = [(batch_serial_key(bid, ser), input_path / fn) for bid, ser, fn in indexed_items if (input_path / fn).exists()]
+    to_process = [(batch_serial_key(batch_id, serial), input_path / fn) for batch_id, serial, fn in indexed_items if (input_path / fn).exists()]
     existing = {}
 elif mode == "Run failed":
     failed_keys = {k for k, r in loaded.items() if not r.succeeded}
-    to_process = [(k, input_path / fn) for bid, ser, fn in indexed_items if (k := batch_serial_key(bid, ser)) in failed_keys and (input_path / fn).exists()]
+    to_process = [(k, input_path / fn) for batch_id, serial, fn in indexed_items if (k := batch_serial_key(batch_id, serial)) in failed_keys and (input_path / fn).exists()]
     existing = {k: r for k, r in loaded.items() if r.succeeded}
 else:
     existing = dict(loaded)
-    to_process = [(k, input_path / fn) for bid, ser, fn in indexed_items if (k := batch_serial_key(bid, ser)) not in existing and (input_path / fn).exists()]
+    to_process = [(k, input_path / fn) for batch_id, serial, fn in indexed_items if (k := batch_serial_key(batch_id, serial)) not in existing and (input_path / fn).exists()]
 
 n_total = len(indexed_items)
 n_processed = sum(1 for r in loaded.values() if r.succeeded)

@@ -45,8 +45,8 @@ if not index_file.exists():
     st.stop()
 
 scan_index = load_scan_index(output_path)
-indexed_keys = {batch_serial_key(bid, ser) for bid, ser, _ in iter_indexed_files(scan_index, include_archived=False)}
-key_to_filename = {batch_serial_key(bid, ser): fn for bid, ser, fn in iter_indexed_files(scan_index, include_archived=False)}
+indexed_keys = {batch_serial_key(batch_id, serial) for batch_id, serial, _ in iter_indexed_files(scan_index, include_archived=False)}
+key_to_filename = {batch_serial_key(batch_id, serial): fn for batch_id, serial, fn in iter_indexed_files(scan_index, include_archived=False)}
 loaded = load_ocr_results(output_path)
 ocr_by_key: dict[str, OcrResult] = {k: r for k, r in loaded.items() if r.succeeded}
 extractions = load_extractions(output_path)
@@ -69,7 +69,7 @@ for b in complete_batches:
         k = batch_serial_key(b.batch_id, serial)
         doc_keys_to_archive.add(str(index.key_to_doc_key(k)))
 
-decisions_to_archive = {dk: all_decisions[dk] for dk in doc_keys_to_archive if dk in all_decisions}
+decisions_to_archive = {doc_key: all_decisions[doc_key] for doc_key in doc_keys_to_archive if doc_key in all_decisions}
 
 decisions_by_doc = {DocumentKey.parse(k): v for k, v in decisions_to_archive.items() if DocumentKey.parse(k)}
 records_expanded = {
@@ -81,21 +81,21 @@ non_archived = [b for b in scan_index.batches if not b.archived]
 all_complete = len(complete_batches) == len(non_archived) and len(non_archived) > 0
 
 n_documents = len(doc_keys_to_archive)
-n_multipage = sum(1 for dk in doc_keys_to_archive if (p := DocumentKey.parse(dk)) and len(index.keys_for_doc(p)) > 1)
+n_multipage = sum(1 for doc_key in doc_keys_to_archive if (p := DocumentKey.parse(doc_key)) and len(index.keys_for_doc(p)) > 1)
 
-accepted_doc_keys = [dk for dk, dec in decisions_to_archive.items() if dec.verdict == "accepted"]
-marked_doc_keys = [dk for dk, dec in decisions_to_archive.items() if dec.verdict == "marked"]
-tossed_doc_keys = [dk for dk, dec in decisions_to_archive.items() if dec.verdict not in ("accepted", "marked")]
+accepted_doc_keys = [doc_key for doc_key, decision in decisions_to_archive.items() if decision.verdict == "accepted"]
+marked_doc_keys = [doc_key for doc_key, decision in decisions_to_archive.items() if decision.verdict == "marked"]
+tossed_doc_keys = [doc_key for doc_key, decision in decisions_to_archive.items() if decision.verdict not in ("accepted", "marked")]
 
-accepted_decisions = {DocumentKey.parse(dk): decisions_to_archive[dk] for dk in accepted_doc_keys if DocumentKey.parse(dk)}
+accepted_decisions = {DocumentKey.parse(doc_key): decisions_to_archive[doc_key] for doc_key in accepted_doc_keys if DocumentKey.parse(doc_key)}
 accepted_records = {
     k: v for k, v in index.expand_decisions(accepted_decisions).items()
     if k in key_to_filename and key_to_filename[k] not in organized
 }
 
 n_accepted = len(accepted_records)
-n_marked = sum(len(index.keys_for_doc(DocumentKey.parse(dk) or DocumentKey.from_group([dk]))) for dk in marked_doc_keys)
-n_tossed = sum(len(index.keys_for_doc(DocumentKey.parse(dk) or DocumentKey.from_group([dk]))) for dk in tossed_doc_keys)
+n_marked = sum(len(index.keys_for_doc(DocumentKey.parse(doc_key) or DocumentKey.from_group([doc_key]))) for doc_key in marked_doc_keys)
+n_tossed = sum(len(index.keys_for_doc(DocumentKey.parse(doc_key) or DocumentKey.from_group([doc_key]))) for doc_key in tossed_doc_keys)
 
 c0, c1, c2, _ = st.columns(4)
 c0.metric("Batches complete", f"{len(complete_batches)} / {len(non_archived)}")
@@ -122,14 +122,14 @@ file_destinations = plan_accepted_destinations(
     key_to_filename=key_to_filename,
     key_to_sort={k: (parse_batch_serial_key(k) or (0, 0)) for k in accepted_records},
 )
-for dk in marked_doc_keys:
-    dk_parsed = DocumentKey.parse(dk) or DocumentKey.from_group([dk])
-    for key in index.keys_for_doc(dk_parsed):
+for doc_key in marked_doc_keys:
+    doc_key_parsed = DocumentKey.parse(doc_key) or DocumentKey.from_group([doc_key])
+    for key in index.keys_for_doc(doc_key_parsed):
         if key in key_to_filename and key_to_filename[key] not in organized:
             file_destinations[key] = f"marked/{key_to_filename[key]}"
-for dk in tossed_doc_keys:
-    dk_parsed = DocumentKey.parse(dk) or DocumentKey.from_group([dk])
-    for key in index.keys_for_doc(dk_parsed):
+for doc_key in tossed_doc_keys:
+    doc_key_parsed = DocumentKey.parse(doc_key) or DocumentKey.from_group([doc_key])
+    for key in index.keys_for_doc(doc_key_parsed):
         if key in key_to_filename and key_to_filename[key] not in organized:
             file_destinations[key] = f"tossed/{key_to_filename[key]}"
 
@@ -151,31 +151,31 @@ if st.button("Archive", width="stretch", type="primary"):
         shutil.copy(str(src), str(dst))
 
         doc_key = str(index.key_to_doc_key(key))
-        dec = decisions_to_archive[doc_key]
+        decision = decisions_to_archive[doc_key]
         parsed = parse_batch_serial_key(key)
         doc_key_obj = index.key_to_doc_key(key)
-        sc = Sidecar(
+        sidecar = Sidecar(
             original_filename=fn,
             batch_id=parsed[0] if parsed else None,
             serial=parsed[1] if parsed else None,
-            review=dec,
+            review=decision,
             document_key=doc_key if doc_key_obj.is_multi_page else None,
             ocr=ocr_by_key.get(key),
             extraction=extractions.get(doc_key),
         )
-        write_sidecar(dst, sc)
+        write_sidecar(dst, sidecar)
 
     name_cache = load_name_cache(output_path)
     for doc_key in doc_keys_to_archive:
-        ext = extractions.get(doc_key)
-        dec = decisions_to_archive[doc_key]
-        if isinstance(ext, ReceiptResult):
-            extracted = ext.name
-        elif isinstance(ext, OtherResult):
-            extracted = ext.title
+        extraction = extractions.get(doc_key)
+        decision = decisions_to_archive[doc_key]
+        if isinstance(extraction, ReceiptResult):
+            extracted = extraction.name
+        elif isinstance(extraction, OtherResult):
+            extracted = extraction.title
         else:
             extracted = ""
-        name_cache[doc_key] = {"extracted": extracted, "confirmed": dec.name}
+        name_cache[doc_key] = {"extracted": extracted, "confirmed": decision.name}
     save_name_cache(output_path, name_cache)
 
     for batch in complete_batches:

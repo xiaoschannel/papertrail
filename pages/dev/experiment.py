@@ -151,18 +151,18 @@ if st.button("Run Parse"):
     with st.spinner("Extracting..."):
         st.session_state.exp_extraction = EXTRACTORS[extractor_name](ocr_text, has_boxes=has_boxes)
 
-ext = st.session_state.get("exp_extraction")
-if not ext:
+extraction = st.session_state.get("exp_extraction")
+if not extraction:
     st.stop()
 
 col_viz, col_json = st.columns(2)
 with col_viz:
     st.markdown("**Visualization**")
-    field_sources = getattr(ext, "field_sources", {})
+    field_sources = getattr(extraction, "field_sources", {})
     if has_boxes and field_sources:
         st.image(draw_field_boxes(image, 1, parse_boxes, field_sources), width="stretch")
     else:
         st.image(image, width="stretch")
 with col_json:
     st.markdown("**Extraction Result**")
-    st.json(ext.model_dump(), expanded=True)
+    st.json(extraction.model_dump(), expanded=True)

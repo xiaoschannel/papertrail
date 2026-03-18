@@ -166,8 +166,8 @@ def _group_containing(idx: int, keys: list[str], links: list[bool]) -> tuple[int
 
 
 def _batch_id_from_key(key: str) -> int | None:
-    dk = DocumentKey.parse(key)
-    return dk.batch_id if dk else None
+    doc_key = DocumentKey.parse(key)
+    return doc_key.batch_id if doc_key else None
 
 
 def _build_display_keys(filtered_groups: list[list[str]], batch_keys: list[str], tossed_set: set[str]) -> list[str]:
@@ -269,17 +269,17 @@ if non_archived:
     st.caption("Link adjacent pages to group them into one document. Use ⇄ to swap order within a group.")
 
     batch_options = [(b.batch_id, f"Batch {b.batch_id} — {len(b.files)} files — {b.start_datetime} to {b.end_datetime}") for b in non_archived]
-    selected_batch_id = st.selectbox("Batch", options=[opt[0] for opt in batch_options], format_func=lambda x: next(label for bid, label in batch_options if bid == x))
+    selected_batch_id = st.selectbox("Batch", options=[option[0] for option in batch_options], format_func=lambda x: next(label for batch_id, label in batch_options if batch_id == x))
 
     selected_batch = next(b for b in non_archived if b.batch_id == selected_batch_id)
-    batch_keys = [batch_serial_key(selected_batch.batch_id, ser) for ser, _ in sorted(selected_batch.files.items())]
+    batch_keys = [batch_serial_key(selected_batch.batch_id, serial) for serial, _ in sorted(selected_batch.files.items())]
     batch_keys_sig = frozenset(batch_keys)
 
     decisions = load_decisions(output_path)
     index = build_document_index(output_path, batch_keys_sig)
     tossed_set = {
         k for k in batch_keys
-        if (dk := index.key_to_doc_key(k)) and decisions.get(str(dk)) and decisions[str(dk)].verdict == "tossed"
+        if (doc_key := index.key_to_doc_key(k)) and decisions.get(str(doc_key)) and decisions[str(doc_key)].verdict == "tossed"
     }
 
     existing_doc = load_document_groups(output_path)
@@ -302,8 +302,8 @@ if non_archived:
     active_keys = [k for k in keys if k not in tossed_set]
 
     key_to_item = {}
-    for ser, fn in selected_batch.files.items():
-        key_to_item[batch_serial_key(selected_batch.batch_id, ser)] = (selected_batch.batch_id, ser, fn)
+    for serial, fn in selected_batch.files.items():
+        key_to_item[batch_serial_key(selected_batch.batch_id, serial)] = (selected_batch.batch_id, serial, fn)
 
     rerun = False
     COLS = [3, 1, 3, 1, 3, 1, 3, 1, 3, 1, 3, 1]
@@ -322,7 +322,7 @@ if non_archived:
         cols = st.columns(COLS)
         for j, i in enumerate(range(row_start, min(row_start + 6, len(keys)))):
             key = keys[i]
-            bid, ser, fn = key_to_item[key]
+            batch_id, serial, fn = key_to_item[key]
             img_path = input_path / fn
             with cols[2 * j]:
                 if img_path.exists():
@@ -338,18 +338,18 @@ if non_archived:
                         is_tossed = key in tossed_set
                         if is_tossed:
                             if img_btn_cols[3].button("↩", key=f"recover_{selected_batch_id}_{key}"):
-                                dk = index.key_to_doc_key(key)
-                                if dk and str(dk) in decisions:
-                                    del decisions[str(dk)]
+                                doc_key = index.key_to_doc_key(key)
+                                if doc_key and str(doc_key) in decisions:
+                                    del decisions[str(doc_key)]
                                     save_decisions(output_path, decisions)
                                 st.session_state.doc_grouping_keys_by_batch.pop(selected_batch_id, None)
                                 st.session_state.doc_grouping_links_by_batch.pop(selected_batch_id, None)
                                 rerun = True
                         else:
                             if img_btn_cols[3].button("X", key=f"toss_{selected_batch_id}_{key}"):
-                                dk = index.key_to_doc_key(key)
-                                if dk:
-                                    decisions[str(dk)] = ReviewDecision(verdict="tossed", document_type="corrupted", name="", date="", time="", cost=0.0, currency="")
+                                doc_key = index.key_to_doc_key(key)
+                                if doc_key:
+                                    decisions[str(doc_key)] = ReviewDecision(verdict="tossed", document_type="corrupted", name="", date="", time="", cost=0.0, currency="")
                                     save_decisions(output_path, decisions)
                                 st.session_state.doc_grouping_keys_by_batch.pop(selected_batch_id, None)
                                 st.session_state.doc_grouping_links_by_batch.pop(selected_batch_id, None)
@@ -391,8 +391,8 @@ if non_archived:
     has_changes = new_multi != batch_groups
     if groups_preview:
         doc_keys = [str(DocumentKey.from_group(g)) for g in groups_preview]
-        multi = [dk for dk in doc_keys if "-" in dk]
-        single = [dk for dk in doc_keys if "-" not in dk]
+        multi = [doc_key for doc_key in doc_keys if "-" in doc_key]
+        single = [doc_key for doc_key in doc_keys if "-" not in doc_key]
         parts = []
         if single:
             parts.append(f"{len(single)} single-page")

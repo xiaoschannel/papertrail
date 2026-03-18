@@ -26,10 +26,10 @@ def _build_document_timeline(
     decisions: dict[str, ReviewDecision],
 ) -> list[tuple[str, datetime]]:
     documents: list[tuple[str, datetime]] = []
-    for fn, dec in decisions.items():
-        if dec.verdict == "tossed" or dec.document_type != "receipt":
+    for fn, decision in decisions.items():
+        if decision.verdict == "tossed" or decision.document_type != "receipt":
             continue
-        dt = parse_verdict_datetime(dec.date, dec.time)
+        dt = parse_verdict_datetime(decision.date, decision.time)
         if dt is not None:
             documents.append((fn, dt))
     documents.sort(key=lambda x: x[1])
@@ -79,13 +79,13 @@ def find_adjacent_documents(
         return []
 
     adjacent: list[tuple[str, datetime]] = []
-    for fn, dec in decisions.items():
+    for fn, decision in decisions.items():
         if fn == exclude_fn:
             continue
-        if dec.verdict == "tossed" or dec.document_type != "receipt":
+        if decision.verdict == "tossed" or decision.document_type != "receipt":
             continue
-        dt = parse_verdict_datetime(dec.date, dec.time)
-        if dt is not None and abs(dt - target_dt) <= MAX_GAP and dec.cost == cost:
+        dt = parse_verdict_datetime(decision.date, decision.time)
+        if dt is not None and abs(dt - target_dt) <= MAX_GAP and decision.cost == cost:
             adjacent.append((fn, dt))
 
     adjacent.sort(key=lambda x: abs(x[1] - target_dt))
@@ -106,10 +106,10 @@ def get_receipts_in_week(
     lo = target_dt - WEEK_WINDOW
     hi = target_dt + WEEK_WINDOW
     documents: list[tuple[str, datetime]] = []
-    for fn, dec in decisions.items():
-        if dec.verdict == "tossed" or dec.document_type != "receipt":
+    for fn, decision in decisions.items():
+        if decision.verdict == "tossed" or decision.document_type != "receipt":
             continue
-        dt = parse_verdict_datetime(dec.date, dec.time)
+        dt = parse_verdict_datetime(decision.date, decision.time)
         if dt is not None and lo <= dt <= hi:
             documents.append((fn, dt))
     if include_fn and include_date and include_time:

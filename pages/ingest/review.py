@@ -3,6 +3,7 @@ from pathlib import Path
 import streamlit as st
 from PIL import Image
 
+from box_drawing import draw_field_boxes
 from data import (
     build_document_index,
     load_decisions,
@@ -11,7 +12,6 @@ from data import (
     load_ocr_results,
     save_decisions,
 )
-from box_drawing import draw_field_boxes
 from models import (
     VERDICT_COLORS,
     VERDICT_LABELS,
@@ -48,8 +48,8 @@ if not index_file.exists():
     st.stop()
 
 scan_index = load_scan_index(output_path)
-indexed_keys = {batch_serial_key(bid, ser) for bid, ser, _ in iter_indexed_files(scan_index, include_archived=False)}
-key_to_filename = {batch_serial_key(bid, ser): fn for bid, ser, fn in iter_indexed_files(scan_index, include_archived=False)}
+indexed_keys = {batch_serial_key(batch_id, serial) for batch_id, serial, _ in iter_indexed_files(scan_index, include_archived=False)}
+key_to_filename = {batch_serial_key(batch_id, serial): fn for batch_id, serial, fn in iter_indexed_files(scan_index, include_archived=False)}
 loaded = load_ocr_results(output_path)
 ocr_by_key = {k: r.markdown for k, r in loaded.items() if r.succeeded}
 extractions = load_extractions(output_path)
@@ -64,28 +64,28 @@ if not extracted_doc_keys:
 HINT_RULES: list[HintRule] = [date_check, cost_zero_check, cost_large_check, currency_uncommon_check]
 
 name_pairs: dict[str, tuple[str, str]] = {}
-for doc_key, dec in decisions.items():
-    if dec.verdict == "accepted" and doc_key in extractions:
+for doc_key, decision in decisions.items():
+    if decision.verdict == "accepted" and doc_key in extractions:
         ext_i = extractions[doc_key]
         if isinstance(ext_i, ReceiptResult):
-            name_pairs[doc_key] = (ext_i.name, dec.name)
+            name_pairs[doc_key] = (ext_i.name, decision.name)
         elif isinstance(ext_i, OtherResult):
-            name_pairs[doc_key] = (ext_i.title, dec.name)
+            name_pairs[doc_key] = (ext_i.title, decision.name)
 name_cache = load_name_cache(output_path)
 for doc_key, entry in name_cache.items():
     name_pairs[doc_key] = (entry["extracted"], entry["confirmed"])
 
 
 def _review_sort_key(doc_key: str):
-    ext = extractions[doc_key]
-    if isinstance(ext, ReceiptResult):
-        return (2, ext.name.lower())
-    elif isinstance(ext, OtherResult):
-        return (1, (ext.title or "").lower())
+    extraction = extractions[doc_key]
+    if isinstance(extraction, ReceiptResult):
+        return (2, extraction.name.lower())
+    elif isinstance(extraction, OtherResult):
+        return (1, (extraction.title or "").lower())
     return (0, "")
 
 
-to_review = sorted((dk for dk in extracted_doc_keys if dk not in decisions), key=_review_sort_key)
+to_review = sorted((doc_key for doc_key in extracted_doc_keys if doc_key not in decisions), key=_review_sort_key)
 total = len(extracted_doc_keys)
 
 verdict_counts = {v: 0 for v in VERDICT_LABELS}
@@ -145,20 +145,20 @@ if nav_cols[1].button("Next →", disabled=(st.session_state.review_idx >= len(t
     st.rerun()
 nav_cols[2].markdown(f"**{st.session_state.review_idx + 1} / {len(to_review)}** — {selected}")
 
-ext = extractions[selected]
+extraction = extractions[selected]
 
-if isinstance(ext, ReceiptResult):
+if isinstance(extraction, ReceiptResult):
     default_doc_type = "receipt"
-    default_name = ext.name or "Receipt"
-    default_date = ext.date
-    default_time = ext.time
-    default_cost = ext.cost
-    default_currency = ext.currency
-elif isinstance(ext, OtherResult):
+    default_name = extraction.name or "Receipt"
+    default_date = extraction.date
+    default_time = extraction.time
+    default_cost = extraction.cost
+    default_currency = extraction.currency
+elif isinstance(extraction, OtherResult):
     default_doc_type = "other"
-    default_name = ext.title or "Document"
-    default_date = ext.date
-    default_time = ext.time
+    default_name = extraction.title or "Document"
+    default_date = extraction.date
+    default_time = extraction.time
     default_cost = 0.0
     default_currency = ""
 else:
@@ -179,7 +179,7 @@ with ocr_col:
     st.markdown(ocr_text.replace("\n", "  \n"), unsafe_allow_html=True)
 
 with image_col:
-    field_sources = getattr(ext, "field_sources", {})
+    field_sources = getattr(extraction, "field_sources", {})
     if img_dir:
         for i, k in enumerate(selected_keys):
             fn = key_to_filename.get(k, k)
@@ -255,19 +255,19 @@ with result_col:
     if doc_type == "receipt":
         live_ext = ReceiptResult(
             document_type="receipt",
-            language=ext.language if isinstance(ext, ReceiptResult) else "",
+            language=extraction.language if isinstance(extraction, ReceiptResult) else "",
             date=date_val,
             time=time_val,
             name=name,
             currency=final_currency_live,
-            location=ext.location if isinstance(ext, ReceiptResult) else "",
-            items=ext.items if isinstance(ext, ReceiptResult) else [],
+            location=extraction.location if isinstance(extraction, ReceiptResult) else "",
+            items=extraction.items if isinstance(extraction, ReceiptResult) else [],
             cost=parsed_cost_live,
         )
     elif doc_type == "other":
         live_ext = OtherResult(
             document_type="other",
-            language=ext.language if isinstance(ext, OtherResult) else "",
+            language=extraction.language if isinstance(extraction, OtherResult) else "",
             date=date_val,
             time=time_val,
             title=name,

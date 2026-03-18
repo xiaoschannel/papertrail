@@ -166,7 +166,7 @@ def iter_indexed_files(index: "ScanIndex", include_archived: bool = True) -> lis
 
 
 def filename_to_batch_serial(index: "ScanIndex") -> dict[str, tuple[int, int]]:
-    return {fn: (bid, ser) for bid, ser, fn in iter_indexed_files(index)}
+    return {fn: (batch_id, serial) for batch_id, serial, fn in iter_indexed_files(index)}
 
 
 class FileKey:
@@ -203,8 +203,8 @@ def batch_serial_key(batch_id: int, serial: int) -> str:
 
 
 def parse_batch_serial_key(key: str) -> tuple[int, int] | None:
-    fk = FileKey.parse(key)
-    return (fk.batch_id, fk.serial) if fk else None
+    file_key = FileKey.parse(key)
+    return (file_key.batch_id, file_key.serial) if file_key else None
 
 
 class DocumentKey:
@@ -281,9 +281,9 @@ class DocumentIndex:
     def __init__(self, doc_to_keys: dict[DocumentKey, list[str]]):
         self._doc_to_keys = doc_to_keys
         self._key_to_doc: dict[str, DocumentKey] = {}
-        for dk, keys in doc_to_keys.items():
+        for doc_key, keys in doc_to_keys.items():
             for k in keys:
-                self._key_to_doc[k] = dk
+                self._key_to_doc[k] = doc_key
 
     @classmethod
     def from_raw_groups(
@@ -300,15 +300,15 @@ class DocumentIndex:
         doc_to_keys: dict[DocumentKey, list[str]] = {}
         for g in valid_groups:
             if g:
-                dk = DocumentKey.from_group(g)
-                doc_to_keys[dk] = g
+                doc_key = DocumentKey.from_group(g)
+                doc_to_keys[doc_key] = g
         keys_in_groups = {k for keys in doc_to_keys.values() for k in keys}
         for k in indexed_keys:
             if k not in keys_in_groups:
                 if ocr_keys is not None and k not in ocr_keys:
                     continue
-                dk = DocumentKey.parse(k) or DocumentKey.from_group([k])
-                doc_to_keys[dk] = [k]
+                doc_key = DocumentKey.parse(k) or DocumentKey.from_group([k])
+                doc_to_keys[doc_key] = [k]
         return cls(doc_to_keys)
 
     def key_to_doc_key(self, file_key: str) -> DocumentKey:
@@ -321,7 +321,7 @@ class DocumentIndex:
         return list(self._doc_to_keys)
 
     def doc_keys_with_ocr(self, ocr_by_key: dict[str, str]) -> list[DocumentKey]:
-        return [dk for dk, keys in self._doc_to_keys.items() if all(k in ocr_by_key for k in keys)]
+        return [doc_key for doc_key, keys in self._doc_to_keys.items() if all(k in ocr_by_key for k in keys)]
 
     def concat_ocr(self, doc_key: DocumentKey, ocr_by_key: dict[str, str]) -> str:
         parts = []
@@ -352,7 +352,7 @@ class DocumentIndex:
 
     def expand_decisions(self, decisions: dict[DocumentKey, T]) -> dict[str, T]:
         result: dict[str, T] = {}
-        for dk, val in decisions.items():
-            for k in self.keys_for_doc(dk):
+        for doc_key, val in decisions.items():
+            for k in self.keys_for_doc(doc_key):
                 result[k] = val
         return result

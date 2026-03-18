@@ -39,9 +39,9 @@ def load_viz_records(output_path_str: str) -> pd.DataFrame:
     _tossed, accepted_metadata = load_reorganized_state(output_path)
 
     doc_groups: dict[str, list[tuple[str, Sidecar]]] = {}
-    for fn, (sc, rel_path) in accepted_metadata.items():
-        doc_id = sc.document_key or fn
-        doc_groups.setdefault(doc_id, []).append((rel_path, sc))
+    for fn, (sidecar, rel_path) in accepted_metadata.items():
+        doc_id = sidecar.document_key or fn
+        doc_groups.setdefault(doc_id, []).append((rel_path, sidecar))
 
     records = []
     for doc_id, pages in doc_groups.items():
@@ -51,9 +51,9 @@ def load_viz_records(output_path_str: str) -> pd.DataFrame:
         review = first_sc.review
         extraction = first_sc.extraction
         ocr_parts = []
-        for _, sc in pages:
-            if sc.ocr and sc.ocr.markdown:
-                ocr_parts.append(sc.ocr.markdown)
+        for _, sidecar in pages:
+            if sidecar.ocr and sidecar.ocr.markdown:
+                ocr_parts.append(sidecar.ocr.markdown)
         items = getattr(extraction, "items", [])
         records.append({
             "filename": doc_id,

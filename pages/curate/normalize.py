@@ -39,8 +39,8 @@ distinct_pairs = load_distinct_pairs(output_path)
 
 decision_names: set[str] = set()
 name_to_filenames: dict[str, list[str]] = {}
-for fn, (sc, _path) in accepted_metadata.items():
-    name = sc.review.name
+for fn, (sidecar, _path) in accepted_metadata.items():
+    name = sidecar.review.name
     if name:
         decision_names.add(name)
         name_to_filenames.setdefault(name, []).append(fn)
@@ -132,17 +132,17 @@ else:
                         meta = accepted_metadata.get(fn)
                         if not meta or not meta[1]:
                             continue
-                        sc = read_sidecar(output_path / meta[1])
-                        if sc:
-                            updated_review = sc.review.model_copy(update={"name": target})
-                            write_sidecar(output_path / meta[1], sc.model_copy(update={"review": updated_review}))
+                        sidecar = read_sidecar(output_path / meta[1])
+                        if sidecar:
+                            updated_review = sidecar.review.model_copy(update={"name": target})
+                            write_sidecar(output_path / meta[1], sidecar.model_copy(update={"review": updated_review}))
                 save_name_normalizations(output_path, normalizations)
 
                 decisions = load_decisions(output_path)
-                for fn, dec in decisions.items():
-                    new_name = normalizations.get(dec.name, dec.name)
-                    if new_name != dec.name:
-                        decisions[fn] = dec.model_copy(update={"name": new_name})
+                for fn, decision in decisions.items():
+                    new_name = normalizations.get(decision.name, decision.name)
+                    if new_name != decision.name:
+                        decisions[fn] = decision.model_copy(update={"name": new_name})
                 if decisions:
                     save_decisions(output_path, decisions)
 
