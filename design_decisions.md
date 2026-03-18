@@ -6,3 +6,5 @@ This is more of an AI(both LLM and classic ML)-assisted manual workflow due to t
 The repo has multi-provider setup for flexibility. In my testing, Deepseek OCR 2 and gpt5.4 for batch processing, and for receipts that Deepseek OCR 2 failed, GLM-OCR can often get it right. Qwen3-8b is usable if you want to process everything fully locally, but gpt5.4's better accuracy really cuts down the manual re-editing.
 
 I also experimented with Datalab's Chandra, but it was too slow to host locally even at int4 (on a GeForce RTX 4070 Super(12GB VRAM)). The accuracy was very good, but it also do not handle half-width katakana well, so the subscription felt too expensive to justify.
+
+For deepseek ocr structured, I chose to run a structured pass IN ADDITION to the plain pass despite the added compute cost. This is because while bounding boxes enable grounding for review, the plain pass have better text. While multistage OCR pipeline may alleviate this problem, we opt to ensamble the two passes for accuracy.

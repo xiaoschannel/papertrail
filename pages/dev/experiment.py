@@ -7,21 +7,27 @@ import numpy as np
 import streamlit as st
 from PIL import Image, ImageEnhance
 
+from box_drawing import draw_all_boxes, draw_field_boxes
+from extraction import EXTRACTORS, build_extraction_prompt
 from ocr_providers import OCR_PROVIDERS, run_ocr
+from ocr_providers.deepseek import _GROUNDING_RE, parse_grounding_output
 
-st.title("OCR Experiment")
+st.title("Experiment")
 
-ocr_provider = st.selectbox("OCR Model", list(OCR_PROVIDERS.keys()))
 uploaded = st.file_uploader("Upload an image", type=["png", "jpg", "jpeg", "webp"])
 
 if not uploaded:
     st.stop()
 
-if st.session_state.get("explorer_file") != uploaded.name:
-    st.session_state.explorer_file = uploaded.name
-    st.session_state.pop("explorer_ocr", None)
+if st.session_state.get("exp_file") != uploaded.name:
+    st.session_state.exp_file = uploaded.name
+    for k in ["exp_plain", "exp_structured_md", "exp_structured_raw", "exp_boxes", "exp_extraction"]:
+        st.session_state.pop(k, None)
 
 original = Image.open(uploaded).convert("RGB")
+
+# ─── Preprocess ───────────────────────────────────────────────
+st.header("Preprocess")
 
 enhance = st.checkbox("Enhance image before OCR")
 
@@ -66,28 +72,107 @@ else:
     st.image(original, caption="Uploaded", width=200)
     image = original
 
+# ─── OCR ──────────────────────────────────────────────────────
+st.header("OCR")
+
+ocr_provider = st.selectbox("OCR Model", list(OCR_PROVIDERS.keys()))
+is_deepseek = "DeepSeek" in ocr_provider
+
 if st.button("Run OCR"):
     fd, tmp_str = tempfile.mkstemp(suffix=".png")
     os.close(fd)
     tmp_path = Path(tmp_str)
     image.save(tmp_path)
-    with st.spinner("Running OCR..."):
-        st.session_state.explorer_ocr = run_ocr(tmp_path, provider=ocr_provider)
+    with st.spinner("Running plain OCR..."):
+        st.session_state.exp_plain = run_ocr(tmp_path, provider=ocr_provider, structured=False)
+    if is_deepseek:
+        with st.spinner("Running structured OCR..."):
+            raw_structured = run_ocr(tmp_path, provider=ocr_provider, structured=True)
+        st.session_state.exp_structured_raw = raw_structured
+        if _GROUNDING_RE.search(raw_structured):
+            md, boxes = parse_grounding_output(raw_structured)
+            st.session_state.exp_structured_md = md
+            st.session_state.exp_boxes = boxes
+        else:
+            st.session_state.exp_structured_md = raw_structured
+            st.session_state.exp_boxes = None
+    st.session_state.pop("exp_extraction", None)
     tmp_path.unlink()
 
-if "explorer_ocr" not in st.session_state:
+has_plain = "exp_plain" in st.session_state
+has_structured = "exp_structured_md" in st.session_state
+if not has_plain:
     st.stop()
 
-st.divider()
-col_img, col_text = st.columns(2)
+if has_structured:
+    col_boxes, col_structured, col_plain = st.columns(3)
+    with col_boxes:
+        st.markdown("**Structured — Boxes**")
+        boxes = st.session_state.get("exp_boxes")
+        if boxes:
+            st.image(draw_all_boxes(image, boxes), caption="Detected boxes", width="stretch")
+        else:
+            st.image(image, caption="No boxes detected", width="stretch")
+    with col_structured:
+        st.markdown("**Structured — Markdown**")
+        display_s = st.radio("Display", ["Markdown", "Raw"], horizontal=True, key="disp_structured")
+        if display_s == "Raw":
+            st.text_area("Structured raw", st.session_state.exp_structured_raw, height=600, label_visibility="collapsed")
+        else:
+            st.markdown(st.session_state.exp_structured_md.replace("\n", "  \n"), unsafe_allow_html=True)
+    with col_plain:
+        st.markdown("**Plain — Markdown**")
+        display_p = st.radio("Display", ["Markdown", "Raw"], horizontal=True, key="disp_plain")
+        if display_p == "Raw":
+            st.text_area("Plain raw", st.session_state.exp_plain, height=600, label_visibility="collapsed")
+        else:
+            st.markdown(st.session_state.exp_plain.replace("\n", "  \n"), unsafe_allow_html=True)
+else:
+    col_img, col_text = st.columns(2)
+    with col_img:
+        st.image(image, caption="Image", width="stretch")
+    with col_text:
+        ocr_text = st.session_state.exp_plain
+        display = st.radio("Display", ["Markdown", "Raw"], horizontal=True)
+        if display == "Raw":
+            st.text_area("OCR output", ocr_text, height=600, label_visibility="collapsed")
+        else:
+            st.markdown(ocr_text.replace("\n", "  \n"), unsafe_allow_html=True)
 
-with col_img:
-    st.image(image, caption="Image", width="stretch")
+# ─── Parse ────────────────────────────────────────────────────
+st.header("Parse")
 
-with col_text:
-    ocr_text = st.session_state.explorer_ocr
-    display = st.radio("Display", ["Markdown", "Raw"], horizontal=True)
-    if display == "Raw":
-        st.text_area("OCR output", ocr_text, height=600, label_visibility="collapsed")
+plain_text = st.session_state.exp_plain
+parse_boxes = st.session_state.get("exp_boxes")
+
+ocr_text = f"--- Page 1 ---\n{plain_text}"
+has_boxes = bool(parse_boxes)
+if has_boxes:
+    box_lines = [f"[P1-BOX-{idx}] {box.text}" for idx, box in enumerate(parse_boxes)]
+    ocr_text += "\n--- Page 1 Grounding Boxes ---\n" + "\n".join(box_lines)
+
+extractor_name = st.selectbox("Extractor", list(EXTRACTORS.keys()))
+
+prompt = build_extraction_prompt(ocr_text, has_boxes=has_boxes)
+with st.expander("Extraction prompt"):
+    st.text(prompt)
+
+if st.button("Run Parse"):
+    with st.spinner("Extracting..."):
+        st.session_state.exp_extraction = EXTRACTORS[extractor_name](ocr_text, has_boxes=has_boxes)
+
+ext = st.session_state.get("exp_extraction")
+if not ext:
+    st.stop()
+
+col_viz, col_json = st.columns(2)
+with col_viz:
+    st.markdown("**Visualization**")
+    field_sources = getattr(ext, "field_sources", {})
+    if has_boxes and field_sources:
+        st.image(draw_field_boxes(image, 1, parse_boxes, field_sources), width="stretch")
     else:
-        st.markdown(ocr_text, unsafe_allow_html=True)
+        st.image(image, width="stretch")
+with col_json:
+    st.markdown("**Extraction Result**")
+    st.json(ext.model_dump(), expanded=True)

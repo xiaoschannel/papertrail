@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import streamlit as st
+from PIL import Image
 
 from data import (
     build_document_index,
@@ -10,6 +11,7 @@ from data import (
     load_ocr_results,
     save_decisions,
 )
+from box_drawing import draw_field_boxes
 from models import (
     VERDICT_COLORS,
     VERDICT_LABELS,
@@ -177,12 +179,21 @@ with ocr_col:
     st.markdown(ocr_text.replace("\n", "  \n"), unsafe_allow_html=True)
 
 with image_col:
+    field_sources = getattr(ext, "field_sources", {})
     if img_dir:
         for i, k in enumerate(selected_keys):
             fn = key_to_filename.get(k, k)
             img_path = img_dir / fn
-            if img_path.exists():
-                st.image(str(img_path), caption=f"Page {i + 1}: {fn}", width="stretch")
+            if not img_path.exists():
+                continue
+            page_num = i + 1
+            ocr_r = loaded.get(k)
+            if field_sources and ocr_r and ocr_r.boxes:
+                pil_img = Image.open(str(img_path)).convert("RGB")
+                annotated = draw_field_boxes(pil_img, page_num, ocr_r.boxes, field_sources)
+                st.image(annotated, caption=f"Page {page_num}: {fn}", width="stretch")
+            else:
+                st.image(str(img_path), caption=f"Page {page_num}: {fn}", width="stretch")
 
 with result_col:
     best_label = f" — {best_sim:.0%}" if best_sim is not None else ""

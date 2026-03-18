@@ -17,9 +17,11 @@ from data import (
 )
 from dedupe_candidates import get_receipts_in_week
 from extraction import EXTRACTORS
+from box_drawing import draw_field_boxes
 from models import (
     VERDICT_COLORS,
     CorruptedResult,
+    DetectedBox,
     DocumentExtractionAdapter,
     OtherResult,
     ReceiptResult,
@@ -30,6 +32,7 @@ from models import (
 )
 from name_similarity import get_smart_match_suggestions
 from ocr_providers import OCR_PROVIDERS, run_ocr
+from ocr_providers.deepseek import _GROUNDING_RE, parse_grounding_output
 from organize_utils import move_to_accepted_destination
 from rules.cost_large_check import cost_large_check
 from rules.cost_zero_check import cost_zero_check
@@ -100,6 +103,7 @@ if ws_key not in st.session_state:
     st.session_state[ws_key] = {
         "rotation": 0,
         "ocr_text": None,
+        "ocr_boxes": None,
         "extraction": None,
     }
 
@@ -122,7 +126,11 @@ sidecar = read_sidecar(marked_dir / selected)
 sidecar_ext = None
 if sidecar.get("extraction"):
     sidecar_ext = DocumentExtractionAdapter.validate_python(sidecar["extraction"])
-sidecar_ocr_text = sidecar.get("ocr", {}).get("markdown", "")
+sidecar_ocr_data = sidecar.get("ocr", {})
+sidecar_ocr_text = sidecar_ocr_data.get("markdown", "")
+sidecar_ocr_boxes: list[DetectedBox] | None = None
+if sidecar_ocr_data.get("boxes"):
+    sidecar_ocr_boxes = [DetectedBox.model_validate(b) for b in sidecar_ocr_data["boxes"]]
 
 ext = ws.get("extraction") or sidecar_ext
 
@@ -214,7 +222,12 @@ with orig_col:
 # Column 2: Working image + rotate/enhance/reprocess
 with work_col:
     st.markdown("**Working Image**")
-    st.image(working_image, width="stretch")
+    active_boxes = ws.get("ocr_boxes") or sidecar_ocr_boxes
+    field_sources = getattr(ext, "field_sources", {}) if ext else {}
+    if active_boxes and field_sources:
+        st.image(draw_field_boxes(working_image, 1, active_boxes, field_sources), width="stretch")
+    else:
+        st.image(working_image, width="stretch")
 
     ocr_provider = st.selectbox("OCR", list(OCR_PROVIDERS.keys()), key="workshop_ocr")
     extractor_name = st.selectbox("Extractor", list(EXTRACTORS.keys()), key="workshop_extractor")
@@ -225,12 +238,25 @@ with work_col:
         tmp_path = Path(tmp_str)
         working_image.save(tmp_path)
         with st.spinner("Running OCR..."):
-            new_ocr = run_ocr(tmp_path, provider=ocr_provider)
+            raw_ocr = run_ocr(tmp_path, provider=ocr_provider, structured=cfg.get("extract_structured", True))
         tmp_path.unlink()
-        ws["ocr_text"] = new_ocr
+        if _GROUNDING_RE.search(raw_ocr):
+            clean_text, boxes = parse_grounding_output(raw_ocr)
+            ws["ocr_text"] = clean_text
+            ws["ocr_boxes"] = boxes
+            annotated_lines = ["--- Page 1 ---"]
+            for idx, box in enumerate(boxes):
+                annotated_lines.append(f"[P1-BOX-{idx}] {box.text}")
+            extractor_input = "\n".join(annotated_lines)
+            has_boxes = True
+        else:
+            ws["ocr_text"] = raw_ocr
+            ws["ocr_boxes"] = None
+            extractor_input = raw_ocr
+            has_boxes = False
         extract_fn = EXTRACTORS[extractor_name]
         with st.spinner("Extracting..."):
-            new_ext = extract_fn(new_ocr)
+            new_ext = extract_fn(extractor_input, has_boxes=has_boxes)
         ws["extraction"] = new_ext
         st.rerun()
 
@@ -379,7 +405,10 @@ with review_col:
                 }
                 final_ocr = sidecar.get("ocr")
                 if ws.get("ocr_text"):
-                    entry["ocr"] = {"markdown": ws["ocr_text"]}
+                    ocr_entry: dict = {"markdown": ws["ocr_text"]}
+                    if ws.get("ocr_boxes"):
+                        ocr_entry["boxes"] = [b.model_dump() for b in ws["ocr_boxes"]]
+                    entry["ocr"] = ocr_entry
                 elif final_ocr:
                     entry["ocr"] = final_ocr
                 final_ext = ws.get("extraction") or sidecar_ext

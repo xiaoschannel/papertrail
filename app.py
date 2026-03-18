@@ -26,7 +26,7 @@ pg = st.navigation({
         st.Page("pages/visualize/calendar.py", title="Calendar", icon=":material/calendar_month:", url_path="calendar"),
     ],
     "Dev": [
-        st.Page("pages/dev/ocr_experiment.py", title="OCR Experiment", icon=":material/science:"),
+        st.Page("pages/dev/experiment.py", title="Experiment", icon=":material/science:"),
         st.Page("pages/dev/sanity_check.py", title="Sanity Check", icon=":material/vital_signs:"),
     ],
     "": [
