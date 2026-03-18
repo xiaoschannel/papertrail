@@ -18,12 +18,12 @@ from data import (
 )
 from normalize_engines import ENGINES
 from organize_utils import apply_reorganize
-from settings import get_config
+from settings import get_config, update_config
 
 st.title("Normalize")
 
 cfg = get_config()
-batch_dir = cfg.get("batch_output_path", "")
+batch_dir = cfg.batch_output_path
 
 if not batch_dir:
     st.stop()
@@ -56,11 +56,24 @@ if not all_names:
 
 engine_ids = list(ENGINES.keys())
 engine_labels = [ENGINES[eid].label for eid in engine_ids]
-selected_label = st.radio("Engine", engine_labels, horizontal=True)
+default_engine_idx = engine_ids.index(cfg.normalize_engine) if cfg.normalize_engine in engine_ids else 0
+
+def _save_normalize_engine():
+    update_config(normalize_engine=engine_ids[engine_labels.index(st.session_state["normalize_engine_radio"])])
+
+selected_label = st.radio("Engine", engine_labels, index=default_engine_idx, horizontal=True, key="normalize_engine_radio", on_change=_save_normalize_engine)
 selected_engine_id = engine_ids[engine_labels.index(selected_label)]
 engine = ENGINES[selected_engine_id]
 
-eps = engine.render_slider(st, f"threshold_{selected_engine_id}")
+threshold_key = f"threshold_{selected_engine_id}"
+if selected_engine_id == "embedding":
+    def _save_embedding_threshold():
+        update_config(normalize_embedding_threshold=st.session_state[threshold_key])
+    eps = engine.render_slider(st, threshold_key, default=cfg.normalize_embedding_threshold, on_change=_save_embedding_threshold)
+else:
+    def _save_string_similarity():
+        update_config(normalize_string_similarity=st.session_state[threshold_key])
+    eps = engine.render_slider(st, threshold_key, default=cfg.normalize_string_similarity, on_change=_save_string_similarity)
 with st.spinner("Running..."):
     cluster_map = engine.run(output_path, all_names, eps)
 

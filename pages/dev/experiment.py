@@ -11,6 +11,7 @@ from box_drawing import draw_all_boxes, draw_field_boxes
 from extraction import EXTRACTORS, build_extraction_prompt
 from ocr_providers import OCR_PROVIDERS, run_ocr
 from ocr_providers.deepseek import parse_grounding_output
+from settings import get_config, update_config
 
 st.title("Experiment")
 
@@ -75,7 +76,14 @@ else:
 # ─── OCR ──────────────────────────────────────────────────────
 st.header("OCR")
 
-ocr_provider = st.selectbox("OCR Model", list(OCR_PROVIDERS.keys()))
+cfg = get_config()
+ocr_providers = list(OCR_PROVIDERS.keys())
+default_exp_ocr_idx = ocr_providers.index(cfg.ocr_model) if cfg.ocr_model in ocr_providers else 0
+
+def _save_exp_ocr():
+    update_config(ocr_model=st.session_state["exp_ocr"])
+
+ocr_provider = st.selectbox("OCR Model", ocr_providers, index=default_exp_ocr_idx, key="exp_ocr", on_change=_save_exp_ocr)
 is_deepseek = "DeepSeek" in ocr_provider
 
 if st.button("Run OCR"):
@@ -141,7 +149,13 @@ if has_boxes:
     box_lines = [f"[P1-BOX-{idx}] {box.text}" for idx, box in enumerate(parse_boxes)]
     ocr_text += "\n--- Page 1 Grounding Boxes ---\n" + "\n".join(box_lines)
 
-extractor_name = st.selectbox("Extractor", list(EXTRACTORS.keys()))
+extractors = list(EXTRACTORS.keys())
+default_exp_extractor_idx = extractors.index(cfg.extractor_model) if cfg.extractor_model in extractors else 0
+
+def _save_exp_extractor():
+    update_config(extractor_model=st.session_state["exp_extractor"])
+
+extractor_name = st.selectbox("Extractor", extractors, index=default_exp_extractor_idx, key="exp_extractor", on_change=_save_exp_extractor)
 
 prompt = build_extraction_prompt(ocr_text, has_boxes=has_boxes)
 with st.expander("Extraction prompt"):

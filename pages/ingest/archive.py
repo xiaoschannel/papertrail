@@ -30,8 +30,8 @@ from settings import get_config
 st.title("Archive")
 
 cfg = get_config()
-batch_dir = cfg.get("batch_output_path", "")
-image_dir = cfg.get("input_image_path", "")
+batch_dir = cfg.batch_output_path
+image_dir = cfg.input_image_path
 
 if not batch_dir or not image_dir:
     st.info("Set input image path and batch output path in Config first.")
