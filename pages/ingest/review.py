@@ -35,8 +35,8 @@ from validation import HintRule, is_date_time_safe_for_archive
 st.title("Review")
 
 cfg = get_config()
-batch_dir = cfg.get("batch_output_path", "")
-image_dir = cfg.get("input_image_path", "")
+batch_dir = cfg.batch_output_path
+image_dir = cfg.input_image_path
 
 if not batch_dir:
     st.stop()

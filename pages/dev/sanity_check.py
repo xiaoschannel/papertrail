@@ -9,8 +9,8 @@ from settings import get_config
 st.title("Sanity Check")
 
 cfg = get_config()
-batch_dir = cfg.get("batch_output_path", "")
-input_dir = cfg.get("input_image_path", "")
+batch_dir = cfg.batch_output_path
+input_dir = cfg.input_image_path
 
 if not batch_dir:
     st.info("Set batch output path in Config first.")

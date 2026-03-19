@@ -12,13 +12,13 @@ from data import (
 )
 from extraction import EXTRACTORS
 from models import OcrResult, batch_serial_key, iter_indexed_files, load_scan_index
-from settings import get_config
+from settings import get_config, update_config
 from streamlit_progress import ProgressBar
 
 st.title("Parse")
 
 cfg = get_config()
-batch_dir = cfg.get("batch_output_path", "")
+batch_dir = cfg.batch_output_path
 
 if not batch_dir:
     st.stop()
@@ -39,7 +39,13 @@ index = build_document_index(output_path, indexed_keys, ocr_keys=set(ocr_by_key)
 doc_keys_with_ocr = index.doc_keys_with_ocr(ocr_by_key)
 extractions = {k: v for k, v in load_extractions(output_path).items() if k in {str(doc_key) for doc_key in doc_keys_with_ocr}}
 
-extractor_name = st.selectbox("Model", list(EXTRACTORS.keys()))
+extractors = list(EXTRACTORS.keys())
+default_extractor_idx = extractors.index(cfg.extractor_model) if cfg.extractor_model in extractors else 0
+
+def _save_extractor():
+    update_config(extractor_model=st.session_state["parse_extractor"])
+
+extractor_name = st.selectbox("Model", extractors, index=default_extractor_idx, key="parse_extractor", on_change=_save_extractor)
 
 mode = st.radio("Mode", ["Process new only", "Reprocess all"], horizontal=True)
 if mode == "Reprocess all":

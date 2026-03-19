@@ -22,13 +22,13 @@ from models import (
     filename_to_batch_serial,
     load_scan_index,
 )
-from settings import IMAGE_EXTENSIONS, get_config
+from settings import IMAGE_EXTENSIONS, get_config, update_config
 
 st.title("File Index")
 
 cfg = get_config()
-input_dir = cfg.get("input_image_path", "")
-output_dir = cfg.get("batch_output_path", "")
+input_dir = cfg.input_image_path
+output_dir = cfg.batch_output_path
 
 if not input_dir or not output_dir:
     st.info("Set input image path and batch output path in Config first.")
@@ -64,9 +64,18 @@ if not unindexed_filenames and not has_batches:
     st.stop()
 
 if unindexed_filenames:
+    scheme_options = list(SCHEMES.keys())
+    default_scheme_idx = scheme_options.index(cfg.indexing_scheme) if cfg.indexing_scheme in scheme_options else 0
+
+    def _save_indexing_scheme():
+        update_config(indexing_scheme=st.session_state["file_index_scheme"])
+
     scheme_name = st.selectbox(
         "Indexing scheme",
-        options=list(SCHEMES.keys()),
+        options=scheme_options,
+        index=default_scheme_idx,
+        key="file_index_scheme",
+        on_change=_save_indexing_scheme,
         help="Only unindexed files are passed to the scheme. Already-indexed files are never reassigned.",
     )
     scheme = SCHEMES[scheme_name]

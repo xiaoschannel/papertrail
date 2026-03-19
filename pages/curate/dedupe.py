@@ -11,7 +11,7 @@ from settings import get_config
 st.title("Dedupe")
 
 cfg = get_config()
-batch_dir = cfg.get("batch_output_path", "")
+batch_dir = cfg.batch_output_path
 
 if not batch_dir:
     st.stop()
