@@ -347,12 +347,19 @@ if non_archived:
                                 rerun = True
                         else:
                             if img_btn_cols[3].button("X", key=f"toss_{selected_batch_id}_{key}"):
+                                should_reset_grouping_state = False
+                                if key in active_keys:
+                                    _, group_indices = _group_containing(active_keys.index(key), active_keys, active_links)
+                                    should_reset_grouping_state = len(group_indices) > 1
+
                                 doc_key = index.key_to_doc_key(key)
                                 if doc_key:
                                     decisions[str(doc_key)] = ReviewDecision(verdict="tossed", document_type="corrupted", name="", date="", time="", cost=0.0, currency="")
                                     save_decisions(output_path, decisions)
-                                st.session_state.doc_grouping_keys_by_batch.pop(selected_batch_id, None)
-                                st.session_state.doc_grouping_links_by_batch.pop(selected_batch_id, None)
+
+                                if should_reset_grouping_state:
+                                    st.session_state.doc_grouping_keys_by_batch.pop(selected_batch_id, None)
+                                    st.session_state.doc_grouping_links_by_batch.pop(selected_batch_id, None)
                                 rerun = True
 
                         st.image(img, caption=f"{key} {fn}", width="stretch")
