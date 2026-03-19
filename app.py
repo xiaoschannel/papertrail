@@ -29,7 +29,6 @@ pg = st.navigation({
         st.Page("pages/dev/experiment.py", title="Experiment", icon=":material/science:"),
         st.Page("pages/dev/sanity_check.py", title="Sanity Check", icon=":material/vital_signs:"),
         st.Page("pages/dev/index_audit.py", title="Index Audit", icon=":material/inventory:"),
-        st.Page("pages/dev/migrate_smart_match_cache.py", title="Migrate Smart Match Cache", icon=":material/sync_alt:"),
     ],
     "": [
         st.Page("pages/config.py", title="Config", icon=":material/settings:"),
