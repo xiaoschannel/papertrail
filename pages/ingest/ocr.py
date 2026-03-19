@@ -32,6 +32,7 @@ scan_index = load_scan_index(output_path)
 indexed_items = iter_indexed_files(scan_index, include_archived=False)
 loaded = load_ocr_results(output_path)
 results_file = output_path / "ocr.json"
+non_archived_batches = [batch for batch in scan_index.batches if not batch.archived]
 
 providers = list(OCR_PROVIDERS.keys())
 default_ocr_idx = providers.index(cfg.ocr_model) if cfg.ocr_model in providers else 0
@@ -40,22 +41,52 @@ def _save_ocr_model():
     update_config(ocr_model=st.session_state["ocr_provider"])
 
 ocr_provider = st.selectbox("OCR Model", providers, index=default_ocr_idx, key="ocr_provider", on_change=_save_ocr_model)
-mode = st.radio("Mode", ["Process new only", "Reprocess all", "Run failed"], horizontal=True)
+mode = st.radio(
+    "Mode",
+    ["Process new only", "Reprocess all", "Run failed", "Process prearchive batch only"],
+    horizontal=True,
+)
+
+if mode == "Process prearchive batch only":
+    if not non_archived_batches:
+        st.info("No prearchive batches available.")
+        st.stop()
+    batch_options = [
+        (batch.batch_id, f"Batch {batch.batch_id} - {len(batch.files)} files - {batch.start_datetime} to {batch.end_datetime}")
+        for batch in non_archived_batches
+    ]
+    selected_batch_id = st.selectbox(
+        "Prearchive batch",
+        options=[batch_id for batch_id, _ in batch_options],
+        index=0,
+        format_func=lambda x: next(label for batch_id, label in batch_options if batch_id == x),
+    )
+    scoped_items = [(batch_id, serial, fn) for batch_id, serial, fn in indexed_items if batch_id == selected_batch_id]
+else:
+    scoped_items = indexed_items
 
 if mode == "Reprocess all":
-    to_process = [(batch_serial_key(batch_id, serial), input_path / fn) for batch_id, serial, fn in indexed_items if (input_path / fn).exists()]
+    to_process = [(batch_serial_key(batch_id, serial), input_path / fn) for batch_id, serial, fn in scoped_items if (input_path / fn).exists()]
     existing = {}
 elif mode == "Run failed":
     failed_keys = {k for k, r in loaded.items() if not r.succeeded}
-    to_process = [(k, input_path / fn) for batch_id, serial, fn in indexed_items if (k := batch_serial_key(batch_id, serial)) in failed_keys and (input_path / fn).exists()]
+    to_process = [(k, input_path / fn) for batch_id, serial, fn in scoped_items if (k := batch_serial_key(batch_id, serial)) in failed_keys and (input_path / fn).exists()]
     existing = {k: r for k, r in loaded.items() if r.succeeded}
+elif mode == "Process prearchive batch only":
+    existing = dict(loaded)
+    to_process = [
+        (k, input_path / fn)
+        for batch_id, serial, fn in scoped_items
+        if (k := batch_serial_key(batch_id, serial)) not in existing and (input_path / fn).exists()
+    ]
 else:
     existing = dict(loaded)
-    to_process = [(k, input_path / fn) for batch_id, serial, fn in indexed_items if (k := batch_serial_key(batch_id, serial)) not in existing and (input_path / fn).exists()]
+    to_process = [(k, input_path / fn) for batch_id, serial, fn in scoped_items if (k := batch_serial_key(batch_id, serial)) not in existing and (input_path / fn).exists()]
 
-n_total = len(indexed_items)
-n_processed = sum(1 for r in loaded.values() if r.succeeded)
-n_failed = sum(1 for r in loaded.values() if not r.succeeded)
+scoped_keys = {batch_serial_key(batch_id, serial) for batch_id, serial, _ in scoped_items}
+n_total = len(scoped_items)
+n_processed = sum(1 for k, r in loaded.items() if k in scoped_keys and r.succeeded)
+n_failed = sum(1 for k, r in loaded.items() if k in scoped_keys and not r.succeeded)
 n_new = len(to_process)
 
 col0, col1, col2, col3 = st.columns(4)
