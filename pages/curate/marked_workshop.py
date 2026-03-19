@@ -38,7 +38,7 @@ from rules.cost_large_check import cost_large_check
 from rules.cost_zero_check import cost_zero_check
 from rules.currency_uncommon_check import currency_uncommon_check
 from rules.date_check import date_check
-from settings import get_config
+from settings import get_config, update_config
 from validation import HintRule, is_date_time_safe_for_archive
 
 HINT_RULES: list[HintRule] = [date_check, cost_zero_check, cost_large_check, currency_uncommon_check]
@@ -46,7 +46,7 @@ HINT_RULES: list[HintRule] = [date_check, cost_zero_check, cost_large_check, cur
 st.title("Marked Workshop")
 
 cfg = get_config()
-batch_dir = cfg.get("batch_output_path", "")
+batch_dir = cfg.batch_output_path
 
 if not batch_dir:
     st.stop()
@@ -223,15 +223,27 @@ with work_col:
     else:
         st.image(working_image, width="stretch")
 
-    ocr_provider = st.selectbox("OCR", list(OCR_PROVIDERS.keys()), key="workshop_ocr")
-    extractor_name = st.selectbox("Extractor", list(EXTRACTORS.keys()), key="workshop_extractor")
+    ocr_providers = list(OCR_PROVIDERS.keys())
+    default_workshop_ocr_idx = ocr_providers.index(cfg.workshop_ocr_model) if cfg.workshop_ocr_model in ocr_providers else 0
+
+    def _save_workshop_ocr():
+        update_config(workshop_ocr_model=st.session_state["workshop_ocr"])
+
+    extractors = list(EXTRACTORS.keys())
+    default_workshop_extractor_idx = extractors.index(cfg.workshop_extractor_model) if cfg.workshop_extractor_model in extractors else 0
+
+    def _save_workshop_extractor():
+        update_config(workshop_extractor_model=st.session_state["workshop_extractor"])
+
+    ocr_provider = st.selectbox("OCR", ocr_providers, index=default_workshop_ocr_idx, key="workshop_ocr", on_change=_save_workshop_ocr)
+    extractor_name = st.selectbox("Extractor", extractors, index=default_workshop_extractor_idx, key="workshop_extractor", on_change=_save_workshop_extractor)
 
     if st.button("Reprocess", type="primary", width="stretch"):
         fd, tmp_str = tempfile.mkstemp(suffix=".png")
         os.close(fd)
         tmp_path = Path(tmp_str)
         working_image.save(tmp_path)
-        extract_structured = cfg.get("extract_structured", True)
+        extract_structured = cfg.extract_structured
         with st.spinner("Running OCR..."):
             plain_raw = run_ocr(tmp_path, provider=ocr_provider, structured=False)
         workshop_state["ocr_text"] = plain_raw

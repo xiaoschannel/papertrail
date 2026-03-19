@@ -8,14 +8,14 @@ from data import load_ocr_results, save_ocr_results
 from models import OcrResult, batch_serial_key, iter_indexed_files, load_scan_index
 from ocr_providers import OCR_PROVIDERS, teardown_ocr
 from ocr_providers.deepseek import parse_grounding_output
-from settings import get_config
+from settings import get_config, update_config
 from streamlit_progress import ProgressBar
 
 st.title("OCR")
 
 cfg = get_config()
-input_dir = cfg.get("input_image_path", "")
-output_dir = cfg.get("batch_output_path", "")
+input_dir = cfg.input_image_path
+output_dir = cfg.batch_output_path
 
 if not input_dir or not output_dir:
     st.info("Set input image path and batch output path in Config first.")
@@ -33,7 +33,13 @@ indexed_items = iter_indexed_files(scan_index, include_archived=False)
 loaded = load_ocr_results(output_path)
 results_file = output_path / "ocr.json"
 
-ocr_provider = st.selectbox("OCR Model", list(OCR_PROVIDERS.keys()))
+providers = list(OCR_PROVIDERS.keys())
+default_ocr_idx = providers.index(cfg.ocr_model) if cfg.ocr_model in providers else 0
+
+def _save_ocr_model():
+    update_config(ocr_model=st.session_state["ocr_provider"])
+
+ocr_provider = st.selectbox("OCR Model", providers, index=default_ocr_idx, key="ocr_provider", on_change=_save_ocr_model)
 mode = st.radio("Mode", ["Process new only", "Reprocess all", "Run failed"], horizontal=True)
 
 if mode == "Reprocess all":
@@ -87,7 +93,7 @@ for key, img_path in to_process:
     try:
         markdown = OCR_PROVIDERS[ocr_provider].run(img_path, structured=False)
         boxes = None
-        if cfg.get("extract_structured", True):
+        if cfg.extract_structured:
             structured_raw = OCR_PROVIDERS[ocr_provider].run(img_path, structured=True)
             boxes = parse_grounding_output(structured_raw)
         new_results[key] = OcrResult(markdown=markdown, boxes=boxes)

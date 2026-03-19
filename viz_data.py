@@ -11,7 +11,7 @@ from settings import get_config
 
 def get_output_path() -> Path | None:
     cfg = get_config()
-    batch_dir = cfg.get("batch_output_path", "")
+    batch_dir = cfg.batch_output_path
     if not batch_dir:
         return None
     return Path(batch_dir)

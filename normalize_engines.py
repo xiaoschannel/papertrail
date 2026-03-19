@@ -41,16 +41,17 @@ class EmbeddingEngine(NormalizeEngine):
         embedding_matrix = cached_matrix[indices]
         return cosine_distances(embedding_matrix)
 
-    def render_slider(self, st, key: str) -> float:
+    def render_slider(self, st, key: str, default: float = DEFAULT_THRESHOLD, on_change=None) -> float:
         step = DEFAULT_THRESHOLD / 20
         return float(
             st.slider(
                 "Distance threshold",
                 min_value=step,
                 max_value=step * 100,
-                value=DEFAULT_THRESHOLD,
+                value=default,
                 step=step,
                 key=key,
+                on_change=on_change,
             )
         )
 
@@ -68,14 +69,15 @@ class StringEngine(NormalizeEngine):
                 dist_matrix[j, i] = d
         return dist_matrix
 
-    def render_slider(self, st, key: str) -> float:
+    def render_slider(self, st, key: str, default: int = 80, on_change=None) -> float:
         pct = st.slider(
             "Min similarity (%)",
             min_value=50,
             max_value=100,
-            value=80,
+            value=default,
             step=1,
             key=key,
+            on_change=on_change,
         )
         return 1.0 - pct / 100.0
 

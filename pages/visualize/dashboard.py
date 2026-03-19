@@ -1,6 +1,7 @@
 import plotly.express as px
 import streamlit as st
 
+from settings import get_config, update_config
 from viz_data import get_output_path, load_viz_records, merchant_url
 
 st.title("Spending Dashboard")
@@ -60,7 +61,14 @@ with col2:
 # === Top Merchants ===
 if not receipts.empty:
     st.subheader("Top Merchants")
-    rank_by = st.radio("Rank by", ["Total Spend", "Visit Count"], horizontal=True, key="dash_rank")
+    rank_options = ["Total Spend", "Visit Count"]
+    cfg = get_config()
+    default_rank_idx = rank_options.index(cfg.dashboard_rank_by) if cfg.dashboard_rank_by in rank_options else 0
+
+    def _save_dashboard_rank():
+        update_config(dashboard_rank_by=st.session_state["dash_rank"])
+
+    rank_by = st.radio("Rank by", rank_options, index=default_rank_idx, horizontal=True, key="dash_rank", on_change=_save_dashboard_rank)
 
     col1, col2 = st.columns(2)
     with col1:

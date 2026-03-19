@@ -1,19 +1,42 @@
 import json
 from pathlib import Path
 
-CONFIG_PATH = Path(__file__).resolve().parent / "config.json"
+from pydantic import BaseModel
 
-DEFAULTS = {"input_image_path": "", "batch_output_path": "", "extract_structured": True}
+CONFIG_PATH = Path(__file__).resolve().parent / "config.json"
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 
 
-def get_config() -> dict:
+class AppConfig(BaseModel):
+    input_image_path: str = ""
+    batch_output_path: str = ""
+    extract_structured: bool = True
+    ocr_model: str = ""
+    workshop_ocr_model: str = ""
+    extractor_model: str = ""
+    workshop_extractor_model: str = ""
+    normalize_engine: str = "embedding"
+    normalize_embedding_threshold: float = 0.05
+    normalize_string_similarity: int = 80
+    indexing_scheme: str = ""
+    dashboard_rank_by: str = "Total Spend"
+
+
+def get_config() -> AppConfig:
     if not CONFIG_PATH.exists():
-        return DEFAULTS.copy()
+        return AppConfig()
     data = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-    return {**DEFAULTS, **data}
+    return AppConfig.model_validate({**AppConfig().model_dump(), **data})
 
 
-def save_config(data: dict) -> None:
-    CONFIG_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
+def save_config(cfg: AppConfig) -> None:
+    CONFIG_PATH.write_text(json.dumps(cfg.model_dump(), indent=2), encoding="utf-8")
+
+
+def update_config(**kwargs) -> None:
+    cfg = get_config()
+    for k, v in kwargs.items():
+        if hasattr(cfg, k):
+            setattr(cfg, k, v)
+    save_config(cfg)
