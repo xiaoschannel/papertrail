@@ -10,8 +10,11 @@ from models import (
     DocumentIndex,
     DocumentKey,
     OcrResult,
+    OtherResult,
+    ReceiptResult,
     ReviewDecision,
     Sidecar,
+    SmartMatchHistoryRow,
 )
 
 
@@ -95,6 +98,66 @@ def save_name_cache(output_path: Path, cache: dict[str, dict]):
     (output_path / "name_cache.json").write_text(
         json.dumps(cache, indent=2, ensure_ascii=False), encoding="utf-8"
     )
+
+
+def load_smart_match_cache(output_path: Path) -> dict[str, dict]:
+    cache_file = output_path / "smart_match_cache.json"
+    if not cache_file.exists():
+        return {}
+    return json.loads(cache_file.read_text(encoding="utf-8"))
+
+
+def save_smart_match_cache(output_path: Path, cache: dict[str, dict]):
+    (output_path / "smart_match_cache.json").write_text(
+        json.dumps(cache, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+
+
+def build_smart_match_history(
+    extractions: dict[str, DocumentExtraction],
+    decisions: dict[str, ReviewDecision],
+    smart_cache: dict[str, dict],
+) -> list[SmartMatchHistoryRow]:
+    rows: list[SmartMatchHistoryRow] = []
+    for doc_key, decision in decisions.items():
+        if decision.verdict != "accepted" or doc_key not in extractions:
+            continue
+        ext = extractions[doc_key]
+        if isinstance(ext, ReceiptResult):
+            rows.append(
+                SmartMatchHistoryRow(
+                    extracted=ext.name,
+                    extracted_phone=ext.phone,
+                    confirmed=decision.name,
+                )
+            )
+        elif isinstance(ext, OtherResult):
+            rows.append(
+                SmartMatchHistoryRow(
+                    extracted=ext.title,
+                    extracted_phone="",
+                    confirmed=decision.name,
+                )
+            )
+    for doc_key, entry in smart_cache.items():
+        if (
+            doc_key in extractions
+            and doc_key in decisions
+            and decisions[doc_key].verdict == "accepted"
+        ):
+            continue
+        ex = entry.get("extracted", "")
+        conf = entry.get("confirmed", "")
+        if not conf:
+            continue
+        rows.append(
+            SmartMatchHistoryRow(
+                extracted=ex,
+                extracted_phone=entry.get("extracted_phone", ""),
+                confirmed=conf,
+            )
+        )
+    return rows
 
 
 def load_name_normalizations(output_path: Path) -> dict[str, str]:

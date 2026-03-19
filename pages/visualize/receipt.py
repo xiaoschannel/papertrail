@@ -3,9 +3,9 @@ import pandas as pd
 import streamlit as st
 
 from data import (
-    load_name_cache,
+    load_smart_match_cache,
     read_sidecar,
-    save_name_cache,
+    save_smart_match_cache,
     write_sidecar,
 )
 from models import ReceiptResult, ReviewDecision, Sidecar, batch_serial_key
@@ -155,11 +155,16 @@ with col_meta:
                         })
                     updated_sc = sidecar.model_copy(update={"review": decision, "extraction": updated_ext})
                     write_sidecar(target_path, updated_sc)
-                    name_cache = load_name_cache(output_path)
+                    smart_match_cache = load_smart_match_cache(output_path)
                     ext_name = getattr(updated_ext, "name", "")
+                    ext_phone = getattr(updated_ext, "phone", "") if isinstance(updated_ext, ReceiptResult) else ""
                     cache_key = sidecar.document_key or (batch_serial_key(batch_id, serial) if (batch_id := sidecar.batch_id) is not None and (serial := sidecar.serial) is not None else selected)
-                    name_cache[cache_key] = {"extracted": ext_name, "confirmed": name}
-                    save_name_cache(output_path, name_cache)
+                    smart_match_cache[cache_key] = {
+                        "extracted": ext_name,
+                        "confirmed": name,
+                        "extracted_phone": ext_phone,
+                    }
+                    save_smart_match_cache(output_path, smart_match_cache)
                     load_viz_records.clear()
                     st.session_state.receipt_edit_file = None
                     st.rerun()

@@ -6,10 +6,11 @@ from PIL import Image
 from box_drawing import draw_field_boxes
 from data import (
     build_document_index,
+    build_smart_match_history,
     load_decisions,
     load_extractions,
-    load_name_cache,
     load_ocr_results,
+    load_smart_match_cache,
     save_decisions,
 )
 from models import (
@@ -24,7 +25,7 @@ from models import (
     iter_indexed_files,
     load_scan_index,
 )
-from name_similarity import get_smart_match_suggestions
+from name_similarity import get_smart_match_candidates, quick_apply_label
 from rules.cost_large_check import cost_large_check
 from rules.cost_zero_check import cost_zero_check
 from rules.currency_uncommon_check import currency_uncommon_check
@@ -63,17 +64,9 @@ if not extracted_doc_keys:
 
 HINT_RULES: list[HintRule] = [date_check, cost_zero_check, cost_large_check, currency_uncommon_check]
 
-name_pairs: dict[str, tuple[str, str]] = {}
-for doc_key, decision in decisions.items():
-    if decision.verdict == "accepted" and doc_key in extractions:
-        ext_i = extractions[doc_key]
-        if isinstance(ext_i, ReceiptResult):
-            name_pairs[doc_key] = (ext_i.name, decision.name)
-        elif isinstance(ext_i, OtherResult):
-            name_pairs[doc_key] = (ext_i.title, decision.name)
-name_cache = load_name_cache(output_path)
-for doc_key, entry in name_cache.items():
-    name_pairs[doc_key] = (entry["extracted"], entry["confirmed"])
+smart_cache = load_smart_match_cache(output_path)
+smart_history = build_smart_match_history(extractions, decisions, smart_cache)
+confirmed_names = {r.confirmed for r in smart_history}
 
 
 def _review_sort_key(doc_key: str):
@@ -169,7 +162,10 @@ else:
     default_cost = 0.0
     default_currency = ""
 
-suggestions, best_sim = get_smart_match_suggestions(default_name, name_pairs)
+default_query_phone = extraction.phone if isinstance(extraction, ReceiptResult) else ""
+smart_match_candidates = get_smart_match_candidates(default_name, default_query_phone, smart_history)
+quick_apply_list = [c for c in smart_match_candidates if c.quick_apply]
+best_name_sim = max((c.name_score for c in smart_match_candidates), default=None)
 
 ocr_col, image_col, result_col = st.columns([1, 1, 2])
 
@@ -196,10 +192,53 @@ with image_col:
                 st.image(str(img_path), caption=f"Page {page_num}: {fn}", width="stretch")
 
 with result_col:
-    best_label = f" — {best_sim:.0%}" if best_sim is not None else ""
-    smart_match_index = 1 if best_sim == 1.0 and suggestions else 0
-    smart_match = st.selectbox(f"Smart Match ({len(suggestions)}){best_label}", [""] + suggestions, index=smart_match_index)
-    effective_name = smart_match if smart_match else default_name
+    name_widget_key = f"review_name_{selected}"
+    name_track_key = "review_name_doc_track"
+    sm_sel_key = f"sm_sel_{selected}"
+    if st.session_state.get(name_track_key) != selected:
+        st.session_state[name_track_key] = selected
+        init_name = default_name
+        if (
+            smart_match_candidates
+            and abs(smart_match_candidates[0].name_score - 1.0) < 1e-9
+        ):
+            init_name = smart_match_candidates[0].confirmed_name
+        st.session_state[name_widget_key] = init_name
+        st.session_state.pop(sm_sel_key, None)
+
+    if quick_apply_list:
+        qa_cols = st.columns(min(3, len(quick_apply_list)))
+        for i, cand in enumerate(quick_apply_list):
+            with qa_cols[i % len(qa_cols)]:
+                if st.button(
+                    quick_apply_label(cand),
+                    key=f"qa_{selected}_{i}_{cand.confirmed_name}",
+                    width="stretch",
+                ):
+                    st.session_state[name_widget_key] = cand.confirmed_name
+                    st.rerun()
+
+    opts = [""] + [c.confirmed_name for c in smart_match_candidates]
+    best_label = f" — {best_name_sim:.0%}" if best_name_sim is not None else ""
+    default_sm_idx = (
+        1
+        if smart_match_candidates
+        and abs(smart_match_candidates[0].name_score - 1.0) < 1e-9
+        else 0
+    )
+
+    def _sync_name_from_smart_pick():
+        v = st.session_state.get(sm_sel_key, "")
+        if v:
+            st.session_state[name_widget_key] = v
+
+    st.selectbox(
+        f"Smart Match ({len(smart_match_candidates)}){best_label}",
+        opts,
+        index=default_sm_idx,
+        key=sm_sel_key,
+        on_change=_sync_name_from_smart_pick,
+    )
 
     doc_type_options = ["receipt", "other", "corrupted"]
     doc_type = st.radio(
@@ -209,11 +248,10 @@ with result_col:
         horizontal=True,
         key=f"doc_type_{selected}",
     )
-    name = st.text_input("Name", value=effective_name, key=f"name_{selected}_{effective_name}")
+    name = st.text_input("Name", key=name_widget_key)
 
     PLACEHOLDER_NAMES = {"Receipt", "Document", "Corrupted"}
     if name.strip() and name not in PLACEHOLDER_NAMES:
-        confirmed_names = {confirmed for _, confirmed in name_pairs.values()}
         if name in confirmed_names:
             st.markdown(
                 '<span style="color:#28a745;font-weight:600;">Name previously approved</span>',
@@ -259,6 +297,7 @@ with result_col:
             date=date_val,
             time=time_val,
             name=name,
+            phone=extraction.phone if isinstance(extraction, ReceiptResult) else "",
             currency=final_currency_live,
             location=extraction.location if isinstance(extraction, ReceiptResult) else "",
             items=extraction.items if isinstance(extraction, ReceiptResult) else [],
@@ -284,7 +323,6 @@ with result_col:
             else:
                 st.markdown(f"**{result.message}**")
 
-    confirmed_names = {c for _, c in name_pairs.values()}
     name_previously_approved = name.strip() and name not in PLACEHOLDER_NAMES and name in confirmed_names
 
     parsed_cost = float(cost_str)
