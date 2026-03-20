@@ -8,6 +8,7 @@ import numpy as np
 import streamlit as st
 from PIL import Image, ImageEnhance
 
+from box_drawing import draw_all_boxes, draw_field_boxes
 from data import (
     build_smart_match_history,
     load_decisions,
@@ -20,7 +21,6 @@ from data import (
 )
 from dedupe_candidates import get_receipts_in_week
 from extraction import EXTRACTORS
-from box_drawing import draw_field_boxes
 from models import (
     VERDICT_COLORS,
     CorruptedResult,
@@ -81,15 +81,12 @@ if "workshop_idx" not in st.session_state or st.session_state.workshop_idx >= le
     st.session_state.workshop_idx = 0
 
 nav_cols = st.columns([1, 1, 6])
-leaving_key = f"workshop_state_{marked_files[st.session_state.workshop_idx]}"
 leaving_ctx_key = f"ctx_{marked_files[st.session_state.workshop_idx]}"
 if nav_cols[0].button("← Prev", disabled=(st.session_state.workshop_idx == 0)):
-    st.session_state.pop(leaving_key, None)
     st.session_state.pop(leaving_ctx_key, None)
     st.session_state.workshop_idx -= 1
     st.rerun()
 if nav_cols[1].button("Next →", disabled=(st.session_state.workshop_idx >= len(marked_files) - 1)):
-    st.session_state.pop(leaving_key, None)
     st.session_state.pop(leaving_ctx_key, None)
     st.session_state.workshop_idx += 1
     st.rerun()
@@ -129,27 +126,12 @@ sidecar_ocr = sidecar.ocr if sidecar else None
 
 extraction = workshop_state.get("extraction") or sidecar_ext
 
-if isinstance(extraction, ReceiptResult):
-    default_doc_type = "receipt"
-    default_name = extraction.name or "Receipt"
-    default_date = extraction.date
-    default_time = extraction.time
-    default_cost = extraction.cost
-    default_currency = extraction.currency
-elif isinstance(extraction, OtherResult):
-    default_doc_type = "other"
-    default_name = extraction.title or "Document"
-    default_date = extraction.date
-    default_time = extraction.time
-    default_cost = 0.0
-    default_currency = ""
-else:
-    default_doc_type = "corrupted"
-    default_name = "Corrupted"
-    default_date = ""
-    default_time = ""
-    default_cost = 0.0
-    default_currency = ""
+extraction_name = (
+    (extraction.name or "Receipt") if isinstance(extraction, ReceiptResult)
+    else (extraction.title or "Document") if isinstance(extraction, OtherResult)
+    else "Corrupted"
+)
+extraction_phone = extraction.phone if isinstance(extraction, ReceiptResult) else ""
 
 batch_extractions = load_extractions(output_path)
 batch_decisions = load_decisions(output_path)
@@ -157,15 +139,50 @@ smart_cache_data = load_smart_match_cache(output_path)
 workshop_smart_history = build_smart_match_history(
     batch_extractions, batch_decisions, smart_cache_data
 )
-default_query_phone_ws = extraction.phone if isinstance(extraction, ReceiptResult) else ""
 workshop_candidates = get_smart_match_candidates(
-    default_name, default_query_phone_ws, workshop_smart_history
+    extraction_name, extraction_phone, workshop_smart_history
 )
 workshop_quick = [c for c in workshop_candidates if c.quick_apply]
 workshop_confirmed_names = {r.confirmed for r in workshop_smart_history}
 workshop_best_name_sim = max(
     (c.name_score for c in workshop_candidates), default=None
 )
+
+
+def _init_form_widgets(sel, ext, candidates):
+    if isinstance(ext, ReceiptResult):
+        nm = ext.name or "Receipt"
+        st.session_state[f"wshop_doctype_{sel}"] = "receipt"
+        st.session_state[f"wshop_date_{sel}"] = ext.date
+        st.session_state[f"wshop_time_{sel}"] = ext.time
+        cost = ext.cost
+        st.session_state[f"wshop_cost_{sel}"] = str(int(cost)) if cost == int(cost) else str(cost)
+        st.session_state[f"wshop_currency_{sel}"] = ext.currency
+        st.session_state[f"wshop_jpy_{sel}"] = ext.currency.upper() == "JPY"
+    elif isinstance(ext, OtherResult):
+        nm = ext.title or "Document"
+        st.session_state[f"wshop_doctype_{sel}"] = "other"
+        st.session_state[f"wshop_date_{sel}"] = ext.date
+        st.session_state[f"wshop_time_{sel}"] = ext.time
+        st.session_state[f"wshop_cost_{sel}"] = "0"
+        st.session_state[f"wshop_currency_{sel}"] = ""
+        st.session_state[f"wshop_jpy_{sel}"] = False
+    else:
+        nm = "Corrupted"
+        st.session_state[f"wshop_doctype_{sel}"] = "corrupted"
+        st.session_state[f"wshop_date_{sel}"] = ""
+        st.session_state[f"wshop_time_{sel}"] = ""
+        st.session_state[f"wshop_cost_{sel}"] = "0"
+        st.session_state[f"wshop_currency_{sel}"] = ""
+        st.session_state[f"wshop_jpy_{sel}"] = False
+    if candidates and abs(candidates[0].name_score - 1.0) < 1e-9:
+        nm = candidates[0].confirmed_name
+    st.session_state[f"wshop_name_{sel}"] = nm
+    st.session_state.pop(f"wshop_sm_sel_{sel}", None)
+
+
+if f"wshop_name_{selected}" not in st.session_state:
+    _init_form_widgets(selected, extraction, workshop_candidates)
 
 
 def _find_image(fn: str) -> Path | None:
@@ -238,8 +255,11 @@ with work_col:
     st.markdown("**Working Image**")
     active_boxes = workshop_state.get("ocr_boxes") or (sidecar_ocr.boxes if sidecar_ocr else None)
     field_sources = getattr(extraction, "field_sources", {}) if extraction else {}
-    if active_boxes and field_sources:
-        st.image(draw_field_boxes(working_image, 1, active_boxes, field_sources), width="stretch")
+    if active_boxes:
+        if field_sources:
+            st.image(draw_field_boxes(working_image, 1, active_boxes, field_sources), width="stretch")
+        else:
+            st.image(draw_all_boxes(working_image, active_boxes), width="stretch")
     else:
         st.image(working_image, width="stretch")
 
@@ -290,6 +310,16 @@ with work_col:
         with st.spinner("Extracting..."):
             new_ext = extract_fn(extractor_input, has_boxes=has_boxes)
         workshop_state["extraction"] = new_ext
+        reprocess_name = (
+            (new_ext.name or "Receipt") if isinstance(new_ext, ReceiptResult)
+            else (new_ext.title or "Document") if isinstance(new_ext, OtherResult)
+            else "Corrupted"
+        )
+        reprocess_phone = new_ext.phone if isinstance(new_ext, ReceiptResult) else ""
+        new_candidates = get_smart_match_candidates(
+            reprocess_name, reprocess_phone, workshop_smart_history
+        )
+        _init_form_widgets(selected, new_ext, new_candidates)
         st.rerun()
 
 # Column 3: OCR Text
@@ -306,18 +336,7 @@ with review_col:
     st.markdown("**Review**")
 
     ws_name_key = f"wshop_name_{selected}"
-    ws_track_key = "wshop_name_doc_track"
     ws_sel_key = f"wshop_sm_sel_{selected}"
-    if st.session_state.get(ws_track_key) != selected:
-        st.session_state[ws_track_key] = selected
-        ws_init = default_name
-        if (
-            workshop_candidates
-            and abs(workshop_candidates[0].name_score - 1.0) < 1e-9
-        ):
-            ws_init = workshop_candidates[0].confirmed_name
-        st.session_state[ws_name_key] = ws_init
-        st.session_state.pop(ws_sel_key, None)
 
     if workshop_quick:
         wsq_cols = st.columns(min(3, len(workshop_quick)))
@@ -357,9 +376,8 @@ with review_col:
     doc_type = st.radio(
         "Type",
         doc_type_options,
-        index=doc_type_options.index(default_doc_type),
         horizontal=True,
-        key=f"doc_type_{selected}_{default_doc_type}",
+        key=f"wshop_doctype_{selected}",
     )
     name = st.text_input("Name", key=ws_name_key)
 
@@ -377,15 +395,14 @@ with review_col:
             )
 
     dt_cols = st.columns(2)
-    date_val = dt_cols[0].text_input("Date", value=default_date, key=f"date_{selected}_{default_date}")
-    time_val = dt_cols[1].text_input("Time", value=default_time, key=f"time_{selected}_{default_time}")
+    date_val = dt_cols[0].text_input("Date", key=f"wshop_date_{selected}")
+    time_val = dt_cols[1].text_input("Time", key=f"wshop_time_{selected}")
 
     if doc_type == "receipt":
         cost_cols = st.columns([2, 1, 1])
-        cost_display = str(int(default_cost)) if default_cost == int(default_cost) else str(default_cost)
-        cost_str = cost_cols[0].text_input("Cost", value=cost_display, key=f"cost_{selected}_{cost_display}")
-        currency_val = cost_cols[1].text_input("Currency", value=default_currency, key=f"currency_{selected}_{default_currency}")
-        jpy_checked = cost_cols[2].checkbox("JPY", value=(default_currency.upper() == "JPY"), key=f"jpy_{selected}_{default_currency}")
+        cost_str = cost_cols[0].text_input("Cost", key=f"wshop_cost_{selected}")
+        currency_val = cost_cols[1].text_input("Currency", key=f"wshop_currency_{selected}")
+        jpy_checked = cost_cols[2].checkbox("JPY", key=f"wshop_jpy_{selected}")
         st.markdown(
             "<style>[data-testid='stHorizontalBlock'] [data-testid='stCheckbox']{padding-top:2.1rem;}</style>",
             unsafe_allow_html=True,
