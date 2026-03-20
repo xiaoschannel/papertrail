@@ -52,6 +52,7 @@ If document_type is "receipt", output:
   - Example: "Subway at King Station", "セブン-イレブン 新宿駅前店".
   - Place a space character between the chain and the branch name for languages that do not use a separator.
     - Example: "セブン-イレブン新宿駅前店" -> "セブン-イレブン 新宿駅前店"
+- phone: Store or merchant telephone if printed. Normalize to digits with the same separators/spacing style as on the receipt (spaces, hyphens, parentheses, slashes). Do not convert to E.164 or country-code minimal form. Empty string if absent.
 - currency: ISO 4217 code (e.g. USD, CNY, JPY). Leave empty if not present.
 - location: If the receipt has a detailed address (not part of the branch name), include it here.
   - Example: "123 Main St, Anytown, USA", "東京都新宿区新宿1-2-3"
@@ -84,7 +85,7 @@ For example: "field_sources": {{"name": ["1:0"], "date": ["1:2"], "cost": ["2:1"
 - Use the page number and box index from the tag, e.g. [P1-BOX-3] becomes "1:3".
 - A field may cite multiple boxes if its value spans several regions.
 - Only cite boxes that directly contain the field's value.
-- Only provide sources for: name, title, date, time, cost, location, and items.
+- Only provide sources for: name, title, date, time, cost, location, phone, and items.
 - Do NOT provide sources for document_type, language, or currency.
 
 Note the grounding boxes are a separate OCR pass from the original image -- They are variations from the same ground truth.

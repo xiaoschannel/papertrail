@@ -31,6 +31,7 @@ class ReceiptResult(BaseModel):
     date: str
     time: str
     name: str
+    phone: str = ""
     currency: str
     location: str
     items: list[ReceiptItem] = []
@@ -71,6 +72,7 @@ class ExtractionFlat(BaseModel):
     time: str = ""
     name: str = ""
     title: str = ""
+    phone: str = ""
     currency: str = ""
     location: str = ""
     items: list[ReceiptItem] = []
@@ -96,6 +98,7 @@ class ExtractionFlat(BaseModel):
             date=self.date,
             time=self.time,
             name=self.name,
+            phone=self.phone,
             currency=self.currency,
             location=self.location,
             items=self.items,
@@ -127,6 +130,20 @@ class ReviewDecision(BaseModel):
     time: str
     cost: float = 0.0
     currency: str = ""
+
+
+class SmartMatchHistoryRow(BaseModel):
+    extracted: str
+    extracted_phone: str
+    confirmed: str
+
+
+class SmartMatchCandidate(BaseModel):
+    confirmed_name: str
+    name_score: float
+    phone_score: float
+    combined_score: float
+    quick_apply: bool
 
 
 class Sidecar(BaseModel):

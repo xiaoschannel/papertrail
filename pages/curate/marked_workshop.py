@@ -9,10 +9,13 @@ import streamlit as st
 from PIL import Image, ImageEnhance
 
 from data import (
-    load_name_cache,
+    build_smart_match_history,
+    load_decisions,
+    load_extractions,
     load_reorganized_state,
+    load_smart_match_cache,
     read_sidecar,
-    save_name_cache,
+    save_smart_match_cache,
     write_sidecar,
 )
 from dedupe_candidates import get_receipts_in_week
@@ -30,7 +33,7 @@ from models import (
     filename_to_batch_serial,
     load_scan_index,
 )
-from name_similarity import get_smart_match_suggestions
+from name_similarity import get_smart_match_candidates, quick_apply_label
 from ocr_providers import OCR_PROVIDERS, run_ocr
 from ocr_providers.deepseek import parse_grounding_output
 from organize_utils import move_to_accepted_destination
@@ -147,6 +150,23 @@ else:
     default_time = ""
     default_cost = 0.0
     default_currency = ""
+
+batch_extractions = load_extractions(output_path)
+batch_decisions = load_decisions(output_path)
+smart_cache_data = load_smart_match_cache(output_path)
+workshop_smart_history = build_smart_match_history(
+    batch_extractions, batch_decisions, smart_cache_data
+)
+default_query_phone_ws = extraction.phone if isinstance(extraction, ReceiptResult) else ""
+workshop_candidates = get_smart_match_candidates(
+    default_name, default_query_phone_ws, workshop_smart_history
+)
+workshop_quick = [c for c in workshop_candidates if c.quick_apply]
+workshop_confirmed_names = {r.confirmed for r in workshop_smart_history}
+workshop_best_name_sim = max(
+    (c.name_score for c in workshop_candidates), default=None
+)
+
 
 def _find_image(fn: str) -> Path | None:
     p = marked_dir / fn
@@ -282,17 +302,56 @@ with ocr_col:
         st.caption("(Run Reprocess for OCR)")
 
 # Column 4: Review (Smart Match, form, validation, Accept/Toss)
-name_cache = load_name_cache(output_path)
-name_pairs = {fn: (e["extracted"], e["confirmed"]) for fn, e in name_cache.items()}
-suggestions, best_sim = get_smart_match_suggestions(default_name, name_pairs)
-
 with review_col:
     st.markdown("**Review**")
 
-    best_label = f" — {best_sim:.0%}" if best_sim is not None else ""
-    smart_match_index = 1 if best_sim == 1.0 and suggestions else 0
-    smart_match = st.selectbox(f"Smart Match ({len(suggestions)}){best_label}", [""] + suggestions, index=smart_match_index, key=f"sm_{selected}")
-    effective_name = smart_match if smart_match else default_name
+    ws_name_key = f"wshop_name_{selected}"
+    ws_track_key = "wshop_name_doc_track"
+    ws_sel_key = f"wshop_sm_sel_{selected}"
+    if st.session_state.get(ws_track_key) != selected:
+        st.session_state[ws_track_key] = selected
+        ws_init = default_name
+        if (
+            workshop_candidates
+            and abs(workshop_candidates[0].name_score - 1.0) < 1e-9
+        ):
+            ws_init = workshop_candidates[0].confirmed_name
+        st.session_state[ws_name_key] = ws_init
+        st.session_state.pop(ws_sel_key, None)
+
+    if workshop_quick:
+        wsq_cols = st.columns(min(3, len(workshop_quick)))
+        for i, cand in enumerate(workshop_quick):
+            with wsq_cols[i % len(wsq_cols)]:
+                if st.button(
+                    quick_apply_label(cand),
+                    key=f"wqa_{selected}_{i}_{cand.confirmed_name}",
+                    width="stretch",
+                ):
+                    st.session_state[ws_name_key] = cand.confirmed_name
+                    st.rerun()
+
+    ws_opts = [""] + [c.confirmed_name for c in workshop_candidates]
+    ws_best_label = f" — {workshop_best_name_sim:.0%}" if workshop_best_name_sim is not None else ""
+    ws_default_idx = (
+        1
+        if workshop_candidates
+        and abs(workshop_candidates[0].name_score - 1.0) < 1e-9
+        else 0
+    )
+
+    def _wshop_sync_smart_pick():
+        v = st.session_state.get(ws_sel_key, "")
+        if v:
+            st.session_state[ws_name_key] = v
+
+    st.selectbox(
+        f"Smart Match ({len(workshop_candidates)}){ws_best_label}",
+        ws_opts,
+        index=ws_default_idx,
+        key=ws_sel_key,
+        on_change=_wshop_sync_smart_pick,
+    )
 
     doc_type_options = ["receipt", "other", "corrupted"]
     doc_type = st.radio(
@@ -302,12 +361,11 @@ with review_col:
         horizontal=True,
         key=f"doc_type_{selected}_{default_doc_type}",
     )
-    name = st.text_input("Name", value=effective_name, key=f"name_{selected}_{effective_name}")
+    name = st.text_input("Name", key=ws_name_key)
 
     PLACEHOLDER_NAMES = {"Receipt", "Document", "Corrupted"}
     if name.strip() and name not in PLACEHOLDER_NAMES:
-        confirmed_names = {confirmed for _, confirmed in name_pairs.values()}
-        if name in confirmed_names:
+        if name in workshop_confirmed_names:
             st.markdown(
                 '<span style="color:#28a745;font-weight:600;">Name previously approved</span>',
                 unsafe_allow_html=True,
@@ -349,6 +407,7 @@ with review_col:
             date=date_val,
             time=time_val,
             name=name,
+            phone=extraction.phone if isinstance(extraction, ReceiptResult) else "",
             currency=final_currency_live,
             location=extraction.location if isinstance(extraction, ReceiptResult) else "",
             items=extraction.items if isinstance(extraction, ReceiptResult) else [],
@@ -423,17 +482,24 @@ with review_col:
                     extraction=final_ext,
                 )
                 write_sidecar(dst, new_sidecar)
-                name_cache = load_name_cache(output_path)
+                smart_match_cache = load_smart_match_cache(output_path)
                 if isinstance(final_ext, ReceiptResult):
                     extracted_name = final_ext.name
+                    extracted_phone = final_ext.phone
                 elif isinstance(final_ext, OtherResult):
                     extracted_name = final_ext.title
+                    extracted_phone = ""
                 else:
                     extracted_name = ""
+                    extracted_phone = ""
                 batch_id, serial = new_sidecar.batch_id, new_sidecar.serial
                 cache_key = batch_serial_key(batch_id, serial) if batch_id is not None and serial is not None else selected
-                name_cache[cache_key] = {"extracted": extracted_name, "confirmed": decision.name}
-                save_name_cache(output_path, name_cache)
+                smart_match_cache[cache_key] = {
+                    "extracted": extracted_name,
+                    "confirmed": decision.name,
+                    "extracted_phone": extracted_phone,
+                }
+                save_smart_match_cache(output_path, smart_match_cache)
                 st.session_state.pop(workshop_state_key, None)
                 st.success(f"Accepted → {dest_rel}")
                 st.rerun()

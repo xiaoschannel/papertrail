@@ -6,14 +6,14 @@ import streamlit as st
 from data import (
     load_decisions,
     load_distinct_pairs,
-    load_name_cache,
     load_name_normalizations,
     load_reorganized_state,
+    load_smart_match_cache,
     read_sidecar,
     save_decisions,
     save_distinct_pairs,
-    save_name_cache,
     save_name_normalizations,
+    save_smart_match_cache,
     write_sidecar,
 )
 from normalize_engines import ENGINES
@@ -159,14 +159,14 @@ else:
                 if decisions:
                     save_decisions(output_path, decisions)
 
-                name_cache = load_name_cache(output_path)
-                for fn, entry in name_cache.items():
+                smart_match_cache = load_smart_match_cache(output_path)
+                for fn, entry in smart_match_cache.items():
                     conf = entry.get("confirmed", "")
                     new_conf = normalizations.get(conf, conf)
                     if new_conf != conf:
-                        name_cache[fn] = {**entry, "confirmed": new_conf}
-                if name_cache:
-                    save_name_cache(output_path, name_cache)
+                        smart_match_cache[fn] = {**entry, "confirmed": new_conf}
+                if smart_match_cache:
+                    save_smart_match_cache(output_path, smart_match_cache)
 
                 moves = apply_reorganize(output_path)
                 if moves:

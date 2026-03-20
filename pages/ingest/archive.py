@@ -7,9 +7,9 @@ from data import (
     build_document_index,
     load_decisions,
     load_extractions,
-    load_name_cache,
     load_ocr_results,
-    save_name_cache,
+    load_smart_match_cache,
+    save_smart_match_cache,
     scan_organized_filenames,
     write_sidecar,
 )
@@ -165,18 +165,24 @@ if st.button("Archive", width="stretch", type="primary"):
         )
         write_sidecar(dst, sidecar)
 
-    name_cache = load_name_cache(output_path)
+    smart_match_cache = load_smart_match_cache(output_path)
     for doc_key in doc_keys_to_archive:
         extraction = extractions.get(doc_key)
         decision = decisions_to_archive[doc_key]
+        extracted_phone = ""
         if isinstance(extraction, ReceiptResult):
             extracted = extraction.name
+            extracted_phone = extraction.phone
         elif isinstance(extraction, OtherResult):
             extracted = extraction.title
         else:
             extracted = ""
-        name_cache[doc_key] = {"extracted": extracted, "confirmed": decision.name}
-    save_name_cache(output_path, name_cache)
+        smart_match_cache[doc_key] = {
+            "extracted": extracted,
+            "confirmed": decision.name,
+            "extracted_phone": extracted_phone,
+        }
+    save_smart_match_cache(output_path, smart_match_cache)
 
     for batch in complete_batches:
         batch.archived = True
