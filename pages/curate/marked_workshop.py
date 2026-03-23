@@ -430,7 +430,7 @@ with review_col:
             name=name,
             phone=extraction.phone if isinstance(extraction, ReceiptResult) else "",
             currency=final_currency_live,
-            location=extraction.location if isinstance(extraction, ReceiptResult) else "",
+            address=extraction.address if isinstance(extraction, ReceiptResult) else "",
             items=extraction.items if isinstance(extraction, ReceiptResult) else [],
             cost=parsed_cost_live,
         )

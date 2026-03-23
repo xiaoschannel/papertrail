@@ -65,7 +65,7 @@ def load_viz_records(output_path_str: str) -> pd.DataFrame:
             "time": review.time,
             "cost": float(review.cost),
             "currency": review.currency,
-            "location": getattr(extraction, "location", ""),
+            "address": getattr(extraction, "address", ""),
             "language": getattr(extraction, "language", ""),
             "items": [item.model_dump() for item in items] if items else [],
             "ocr_markdown": "\n\n--- Page break ---\n\n".join(ocr_parts),

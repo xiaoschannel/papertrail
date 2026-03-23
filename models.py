@@ -33,7 +33,7 @@ class ReceiptResult(BaseModel):
     name: str
     phone: str = ""
     currency: str
-    location: str
+    address: str
     items: list[ReceiptItem] = []
     cost: float
     field_sources: dict[str, list[str]] = {}
@@ -74,7 +74,7 @@ class ExtractionFlat(BaseModel):
     title: str = ""
     phone: str = ""
     currency: str = ""
-    location: str = ""
+    address: str = ""
     items: list[ReceiptItem] = []
     cost: float = 0.0
     field_sources: list[FieldSourceEntry] = []
@@ -100,7 +100,7 @@ class ExtractionFlat(BaseModel):
             name=self.name,
             phone=self.phone,
             currency=self.currency,
-            location=self.location,
+            address=self.address,
             items=self.items,
             cost=self.cost,
             field_sources=sources,
