@@ -45,7 +45,20 @@ default_extractor_idx = extractors.index(cfg.extractor_model) if cfg.extractor_m
 def _save_extractor():
     update_config(extractor_model=st.session_state["parse_extractor"])
 
+
+def _save_parse_custom_instruction():
+    update_config(parse_custom_instruction=st.session_state["parse_custom_instruction"])
+
+
 extractor_name = st.selectbox("Model", extractors, index=default_extractor_idx, key="parse_extractor", on_change=_save_extractor)
+
+st.text_area(
+    "Custom instructions (optional)",
+    value=cfg.parse_custom_instruction,
+    height=160,
+    key="parse_custom_instruction",
+    on_change=_save_parse_custom_instruction,
+)
 
 mode = st.radio("Mode", ["Process new only", "Reprocess all"], horizontal=True)
 if mode == "Reprocess all":
@@ -79,6 +92,9 @@ if run_clicked and to_process:
     if mode == "Reprocess all":
         extractions.clear()
 
+    parse_custom_instruction = st.session_state.get(
+        "parse_custom_instruction", cfg.parse_custom_instruction
+    )
     random.shuffle(to_process)
     bar = ProgressBar(len(to_process))
     failed: list[str] = []
@@ -87,7 +103,11 @@ if run_clicked and to_process:
     for doc_key in to_process:
         ocr_text, has_boxes = index.concat_ocr_with_boxes(doc_key, ocr_results_by_key)
         try:
-            extractions[str(doc_key)] = EXTRACTORS[extractor_name](ocr_text, has_boxes=has_boxes)
+            extractions[str(doc_key)] = EXTRACTORS[extractor_name](
+                ocr_text,
+                has_boxes=has_boxes,
+                custom_instruction=parse_custom_instruction,
+            )
             bar.tick(True)
         except Exception:
             failed.append(str(doc_key))

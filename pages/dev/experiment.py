@@ -157,13 +157,19 @@ def _save_exp_extractor():
 
 extractor_name = st.selectbox("Extractor", extractors, index=default_exp_extractor_idx, key="exp_extractor", on_change=_save_exp_extractor)
 
-prompt = build_extraction_prompt(ocr_text, has_boxes=has_boxes)
+prompt = build_extraction_prompt(
+    ocr_text, has_boxes=has_boxes, custom_instruction=cfg.parse_custom_instruction
+)
 with st.expander("Extraction prompt"):
     st.text(prompt)
 
 if st.button("Run Parse"):
     with st.spinner("Extracting..."):
-        st.session_state.exp_extraction = EXTRACTORS[extractor_name](ocr_text, has_boxes=has_boxes)
+        st.session_state.exp_extraction = EXTRACTORS[extractor_name](
+            ocr_text,
+            has_boxes=has_boxes,
+            custom_instruction=cfg.parse_custom_instruction,
+        )
 
 extraction = st.session_state.get("exp_extraction")
 if not extraction:

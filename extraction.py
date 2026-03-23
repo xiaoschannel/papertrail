@@ -74,7 +74,7 @@ If document_type is "other", output:
     - Do not force this if nothing appears to make sense immediately.
   - In the above case the title should be "Business Card - John Doe"
 
-OCR text:
+{optional_custom}OCR text:
 {ocr_text}"""
 
 FIELD_SOURCES_ADDENDUM = """
@@ -93,13 +93,17 @@ Both can be unreliable, but they can be used as additional cues for inference-ba
 """
 
 
-def build_extraction_prompt(ocr_text: str, has_boxes: bool = False) -> str:
-    base = EXTRACTION_PROMPT.format(ocr_text=ocr_text)
+def build_extraction_prompt(ocr_text: str, has_boxes: bool = False, custom_instruction: str = "") -> str:
+    stripped = custom_instruction.strip()
+    optional_custom = (
+        f"Additional instructions:\n{stripped}\n\n" if stripped else ""
+    )
+    base = EXTRACTION_PROMPT.format(optional_custom=optional_custom, ocr_text=ocr_text)
     return base + FIELD_SOURCES_ADDENDUM if has_boxes else base
 
 
-def extract_ollama(ocr_text: str, has_boxes: bool = False) -> DocumentExtraction:
-    prompt = build_extraction_prompt(ocr_text, has_boxes)
+def extract_ollama(ocr_text: str, has_boxes: bool = False, custom_instruction: str = "") -> DocumentExtraction:
+    prompt = build_extraction_prompt(ocr_text, has_boxes, custom_instruction=custom_instruction)
     response = chat(
         model=OLLAMA_MODEL,
         messages=[{"role": "user", "content": prompt}],
@@ -109,9 +113,9 @@ def extract_ollama(ocr_text: str, has_boxes: bool = False) -> DocumentExtraction
     return DocumentExtractionAdapter.validate_json(response.message.content)
 
 
-def extract_openai(ocr_text: str, has_boxes: bool = False) -> DocumentExtraction:
+def extract_openai(ocr_text: str, has_boxes: bool = False, custom_instruction: str = "") -> DocumentExtraction:
     client = OpenAI()
-    prompt = build_extraction_prompt(ocr_text, has_boxes)
+    prompt = build_extraction_prompt(ocr_text, has_boxes, custom_instruction=custom_instruction)
     response = client.chat.completions.parse(
         model=OPENAI_MODEL,
         messages=[{"role": "user", "content": prompt}],

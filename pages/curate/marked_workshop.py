@@ -308,7 +308,11 @@ with work_col:
         tmp_path.unlink()
         extract_fn = EXTRACTORS[extractor_name]
         with st.spinner("Extracting..."):
-            new_ext = extract_fn(extractor_input, has_boxes=has_boxes)
+            new_ext = extract_fn(
+                extractor_input,
+                has_boxes=has_boxes,
+                custom_instruction=cfg.parse_custom_instruction,
+            )
         workshop_state["extraction"] = new_ext
         reprocess_name = (
             (new_ext.name or "Receipt") if isinstance(new_ext, ReceiptResult)
