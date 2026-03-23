@@ -16,6 +16,7 @@ class AppConfig(BaseModel):
     workshop_ocr_model: str = ""
     extractor_model: str = ""
     workshop_extractor_model: str = ""
+    parse_custom_instruction: str = ""
     normalize_engine: str = "embedding"
     normalize_embedding_threshold: float = 0.05
     normalize_string_similarity: int = 80

@@ -42,6 +42,12 @@ with st.form("preferences_form"):
         extractor_model = st.selectbox("Extractor Model", extractors, index=default_extractor_idx)
         default_workshop_extractor_idx = extractors.index(cfg.workshop_extractor_model) if cfg.workshop_extractor_model in extractors else 0
         workshop_extractor_model = st.selectbox("Workshop Extractor", extractors, index=default_workshop_extractor_idx)
+        st.markdown("**Parse**")
+        parse_custom_instruction = st.text_area(
+            "Custom instructions (optional)",
+            value=cfg.parse_custom_instruction,
+            height=120,
+        )
     with col2:
         st.markdown("**Normalization**")
         default_engine_idx = engine_ids.index(cfg.normalize_engine) if cfg.normalize_engine in engine_ids else 0
@@ -60,6 +66,7 @@ with st.form("preferences_form"):
             "workshop_ocr_model": workshop_ocr_model,
             "extractor_model": extractor_model,
             "workshop_extractor_model": workshop_extractor_model,
+            "parse_custom_instruction": parse_custom_instruction,
             "normalize_engine": normalize_engine,
             "normalize_embedding_threshold": normalize_embedding_threshold,
             "normalize_string_similarity": normalize_string_similarity,
