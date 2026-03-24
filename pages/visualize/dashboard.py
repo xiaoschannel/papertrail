@@ -66,9 +66,24 @@ if not receipts.empty:
     def _save_dashboard_rank():
         update_config(dashboard_rank_by=st.session_state["dash_rank"])
 
-    rank_by = st.radio("Rank by", rank_options, index=default_rank_idx, horizontal=True, key="dash_rank", on_change=_save_dashboard_rank)
-
-    group_mode = st.radio("Group by", ["Merchant name", "Brand"], horizontal=True, key="dash_group")
+    control_col1, control_col2, control_col3, control_col4 = st.columns(4)
+    with control_col1:
+        rank_by = st.radio(
+            "Rank by",
+            rank_options,
+            index=default_rank_idx,
+            horizontal=True,
+            key="dash_rank",
+            on_change=_save_dashboard_rank,
+        )
+    with control_col2:
+        group_mode = st.radio(
+            "Group by",
+            ["Merchant name", "Brand"],
+            index=1,
+            horizontal=True,
+            key="dash_group",
+        )
     key_col = "merchant_group" if group_mode == "Brand" else "name"
     label_col = "Brand" if group_mode == "Brand" else "Merchant"
 

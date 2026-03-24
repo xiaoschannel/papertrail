@@ -34,7 +34,7 @@ bd = load_brand_directory()
 brand_ids = [b.id for b in bd.brands]
 id_to_label = {b.id: b.label for b in bd.brands}
 
-match_options = ["Brand", "Exact name", "Prefix"]
+match_options = ["Brand", "Exact name"]
 match_mode = st.radio("Match by", match_options, horizontal=True, key="viz_merchant_match")
 
 if match_mode == "Brand":
@@ -53,25 +53,9 @@ if match_mode == "Brand":
         st.warning("No receipts match this brand.")
         st.stop()
 else:
-    if match_mode == "Exact name":
-        sync_query_param("name", "viz_merchant_name", merchant_names)
-        selected = st.selectbox("Merchant", merchant_names, key="viz_merchant_name")
-        merchant_df = receipts[receipts["name"] == selected].copy()
-    else:
-        prefix = st.text_input("Merchant name prefix", key="viz_merchant_prefix", placeholder="e.g. Star")
-        prefix_clean = (prefix or "").strip()
-        if not prefix_clean:
-            merchant_df = pd.DataFrame()
-            st.info("Enter a prefix to match merchant names.")
-        else:
-            mask = receipts["name"].str.lower().str.startswith(prefix_clean.lower())
-            merchant_df = receipts[mask].copy()
-            selected = prefix_clean
-            if merchant_df.empty:
-                st.warning(f"No receipts match prefix \"{prefix_clean}\".")
-            else:
-                matched_names = merchant_df["name"].unique().tolist()
-                st.caption(f"Matches {len(matched_names)} merchant(s): {', '.join(matched_names[:5])}{'…' if len(matched_names) > 5 else ''}")
+    sync_query_param("name", "viz_merchant_name", merchant_names)
+    selected = st.selectbox("Merchant", merchant_names, key="viz_merchant_name")
+    merchant_df = receipts[receipts["name"] == selected].copy()
 
 if merchant_df.empty:
     st.stop()
