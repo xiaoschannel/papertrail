@@ -4,6 +4,7 @@ from urllib.parse import quote
 import pandas as pd
 import streamlit as st
 
+from brand_registry import brand_registry_mtime, enrich_receipt_brand_columns, load_brand_directory
 from data import load_reorganized_state
 from models import Sidecar
 from settings import get_config
@@ -17,8 +18,12 @@ def get_output_path() -> Path | None:
     return Path(batch_dir)
 
 
-def merchant_url(name: str) -> str:
-    return f"/merchant?name={quote(name)}"
+def merchant_url(name: str | None = None, *, brand_id: str | None = None) -> str:
+    if brand_id:
+        return f"/merchant?brand={quote(brand_id)}"
+    if name is not None:
+        return f"/merchant?name={quote(name)}"
+    return "/merchant"
 
 
 def receipt_url(filename: str) -> str:
@@ -33,8 +38,14 @@ def sync_query_param(param_name: str, widget_key: str, valid_values: list[str]):
         st.session_state[tracker_key] = param_value
 
 
-@st.cache_data(ttl=120)
 def load_viz_records(output_path_str: str) -> pd.DataFrame:
+    mt = brand_registry_mtime()
+    return _load_viz_records_cached(output_path_str, mt)
+
+
+@st.cache_data(ttl=120)
+def _load_viz_records_cached(output_path_str: str, brand_registry_mtime: float) -> pd.DataFrame:
+    _ = brand_registry_mtime
     output_path = Path(output_path_str)
     _tossed, accepted_metadata = load_reorganized_state(output_path)
 
@@ -76,11 +87,24 @@ def load_viz_records(output_path_str: str) -> pd.DataFrame:
         df["parsed_date"] = pd.to_datetime(df["date"], format="%Y-%m-%d", errors="coerce")
         df["year"] = df["parsed_date"].dt.year
         df["month"] = df["parsed_date"].dt.month
+    directory = load_brand_directory()
+    df = enrich_receipt_brand_columns(df, directory)
     return df
 
 
-@st.cache_data(ttl=120)
+def clear_viz_data_cache() -> None:
+    _load_viz_records_cached.clear()
+    _load_viz_items_cached.clear()
+
+
 def load_viz_items(output_path_str: str) -> pd.DataFrame:
+    mt = brand_registry_mtime()
+    return _load_viz_items_cached(output_path_str, mt)
+
+
+@st.cache_data(ttl=120)
+def _load_viz_items_cached(output_path_str: str, brand_registry_mtime: float) -> pd.DataFrame:
+    _ = brand_registry_mtime
     df = load_viz_records(output_path_str)
     if df.empty:
         return pd.DataFrame()
@@ -92,6 +116,7 @@ def load_viz_items(output_path_str: str) -> pd.DataFrame:
             rows.append({
                 "filename": r["filename"],
                 "merchant": r["name"],
+                "merchant_group": r.get("merchant_group", r["name"]),
                 "receipt_date": r["date"],
                 "parsed_date": r["parsed_date"],
                 "item_name": item.get("name", ""),

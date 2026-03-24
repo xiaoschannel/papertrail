@@ -17,6 +17,7 @@ pg = st.navigation({
         st.Page("pages/curate/marked_workshop.py", title="Marked Workshop", icon=":material/build:"),
         st.Page("pages/curate/dedupe.py", title="Dedupe", icon=":material/compare:"),
         st.Page("pages/curate/normalize.py", title="Normalize", icon=":material/edit:"),
+        st.Page("pages/curate/brand_registry.py", title="Brand registry", icon=":material/storefront:"),
     ],
     "Visualize": [
         st.Page("pages/visualize/dashboard.py", title="Dashboard", icon=":material/bar_chart:", url_path="dashboard"),

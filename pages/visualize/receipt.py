@@ -173,6 +173,12 @@ with col_meta:
         st.markdown(f"**Time:** {record['time']}")
         if record["document_type"] == "receipt":
             st.markdown(f"**Cost:** {record['cost']:,.2f} {record['currency']}")
+            bid = record.get("brand_id")
+            if bid is not None and not pd.isna(bid) and str(bid).strip():
+                st.markdown(f"**Brand:** {record.get('brand_label') or bid}")
+            bl = record.get("brand_location")
+            if bl is not None and str(bl).strip():
+                st.markdown(f"**Location:** {bl}")
         if record["address"]:
             st.markdown(f"**Address:** {record['address']}")
         if record["language"]:
@@ -184,7 +190,11 @@ with col_meta:
         else:
             st.markdown(f"**Original file:** `{record['filename']}`")
         if record["document_type"] == "receipt" and record["name"]:
-            st.markdown(f"[View Merchant Profile →]({merchant_url(record['name'])})")
+            bid = record.get("brand_id")
+            if bid is not None and not pd.isna(bid) and str(bid).strip():
+                st.markdown(f"[View Merchant Profile →]({merchant_url(brand_id=str(bid))})")
+            else:
+                st.markdown(f"[View Merchant Profile →]({merchant_url(record['name'])})")
 
 if record["document_type"] == "receipt" and record["items"]:
     st.subheader("Line Items")

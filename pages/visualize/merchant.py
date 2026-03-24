@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+from brand_registry import load_brand_directory
 from viz_data import (
     get_output_path,
     load_viz_items,
@@ -29,32 +30,57 @@ if not merchant_names:
     st.info("No receipt data found.")
     st.stop()
 
-match_mode = st.radio("Match by", ["Exact name", "Prefix"], horizontal=True, key="viz_merchant_match")
-if match_mode == "Exact name":
-    sync_query_param("name", "viz_merchant_name", merchant_names)
-    selected = st.selectbox("Merchant", merchant_names, key="viz_merchant_name")
-    merchant_df = receipts[receipts["name"] == selected].copy()
+bd = load_brand_directory()
+brand_ids = [b.id for b in bd.brands]
+id_to_label = {b.id: b.label for b in bd.brands}
+
+match_options = ["Brand", "Exact name", "Prefix"]
+match_mode = st.radio("Match by", match_options, horizontal=True, key="viz_merchant_match")
+
+if match_mode == "Brand":
+    if not brand_ids:
+        st.info("Add brands in Brand registry (Config).")
+        st.stop()
+    sync_query_param("brand", "viz_merchant_brand_select", brand_ids)
+    selected = st.selectbox(
+        "Brand",
+        brand_ids,
+        key="viz_merchant_brand_select",
+        format_func=lambda i: f"{id_to_label.get(i, i)} ({i})",
+    )
+    merchant_df = receipts[receipts["brand_id"] == selected].copy()
+    if merchant_df.empty:
+        st.warning("No receipts match this brand.")
+        st.stop()
 else:
-    prefix = st.text_input("Merchant name prefix", key="viz_merchant_prefix", placeholder="e.g. Star")
-    prefix_clean = (prefix or "").strip()
-    if not prefix_clean:
-        merchant_df = pd.DataFrame()
-        st.info("Enter a prefix to match merchant names.")
+    if match_mode == "Exact name":
+        sync_query_param("name", "viz_merchant_name", merchant_names)
+        selected = st.selectbox("Merchant", merchant_names, key="viz_merchant_name")
+        merchant_df = receipts[receipts["name"] == selected].copy()
     else:
-        mask = receipts["name"].str.lower().str.startswith(prefix_clean.lower())
-        merchant_df = receipts[mask].copy()
-        selected = prefix_clean
-        if merchant_df.empty:
-            st.warning(f"No receipts match prefix \"{prefix_clean}\".")
+        prefix = st.text_input("Merchant name prefix", key="viz_merchant_prefix", placeholder="e.g. Star")
+        prefix_clean = (prefix or "").strip()
+        if not prefix_clean:
+            merchant_df = pd.DataFrame()
+            st.info("Enter a prefix to match merchant names.")
         else:
-            matched_names = merchant_df["name"].unique().tolist()
-            st.caption(f"Matches {len(matched_names)} merchant(s): {', '.join(matched_names[:5])}{'…' if len(matched_names) > 5 else ''}")
+            mask = receipts["name"].str.lower().str.startswith(prefix_clean.lower())
+            merchant_df = receipts[mask].copy()
+            selected = prefix_clean
+            if merchant_df.empty:
+                st.warning(f"No receipts match prefix \"{prefix_clean}\".")
+            else:
+                matched_names = merchant_df["name"].unique().tolist()
+                st.caption(f"Matches {len(matched_names)} merchant(s): {', '.join(matched_names[:5])}{'…' if len(matched_names) > 5 else ''}")
 
 if merchant_df.empty:
     st.stop()
+
+if match_mode == "Brand":
+    st.caption(f"Brand: **{id_to_label.get(selected, selected)}** — {len(merchant_df)} receipt(s)")
+
 dated = merchant_df[merchant_df["parsed_date"].notna()].sort_values("parsed_date")
 
-# --- Header Stats ---
 total_spend = merchant_df["cost"].sum()
 visit_count = len(merchant_df)
 avg_ticket = total_spend / visit_count if visit_count else 0
@@ -79,6 +105,13 @@ c4.metric("First Visit", str(first_visit.date()) if pd.notna(first_visit) else "
 c5.metric("Last Visit", str(last_visit.date()) if pd.notna(last_visit) else "—")
 c6.metric("Avg Days Between Visits", f"{avg_gap:.0f}" if avg_gap is not None else "—")
 
+if match_mode == "Brand":
+    st.subheader("Locations")
+    loc_series = merchant_df["brand_location"].fillna("").replace("", "(no remainder)")
+    loc_counts = loc_series.value_counts().reset_index()
+    loc_counts.columns = ["Location", "receipts"]
+    st.dataframe(loc_counts, hide_index=True, width="stretch")
+
 c1, c2 = st.columns(2)
 with c1:
     if not dated.empty:
@@ -102,7 +135,6 @@ with c2:
         fig2.update_layout(xaxis_title="", yaxis_title="Days Since Last Visit")
         st.plotly_chart(fig2, width="stretch")
 
-# --- Item Breakdown ---
 items_df = load_viz_items(str(output_path))
 matched_names_set = set(merchant_df["name"].unique())
 merchant_items = items_df[items_df["merchant"].isin(matched_names_set)] if not items_df.empty else pd.DataFrame()
@@ -126,7 +158,6 @@ if not merchant_items.empty:
         width="stretch",
     )
 
-# --- Receipt Gallery ---
 st.subheader("Receipts")
 sorted_receipts = merchant_df.sort_values("parsed_date", ascending=False)
 per_page = 20
@@ -136,6 +167,7 @@ st.session_state["viz_gallery_page"] = page
 start = page * per_page
 gallery_df = sorted_receipts.iloc[start : start + per_page]
 end = start + len(gallery_df)
+
 
 def pagination_ui(suffix: str):
     col_prev, col_info, col_next = st.columns([1, 3, 1])
@@ -150,6 +182,7 @@ def pagination_ui(suffix: str):
             st.session_state["viz_gallery_page"] = page + 1
             st.rerun()
 
+
 pagination_ui("top")
 cols_per_row = 5
 gallery_rows = list(gallery_df.iterrows())
@@ -161,6 +194,9 @@ for i in range(0, len(gallery_rows), cols_per_row):
                 img_path = output_path / row["path"]
                 if img_path.exists():
                     st.image(str(img_path))
-            st.caption(f"{row['date']} — {row['cost']:,.0f} {currency}")
+            cap = f"{row['date']} — {row['cost']:,.0f} {currency}"
+            if match_mode == "Brand" and str(row.get("brand_location") or "").strip():
+                cap += f"\n{row['brand_location']}"
+            st.caption(cap)
             st.markdown(f"[Detail]({receipt_url(row['filename'])})")
 pagination_ui("bottom")
