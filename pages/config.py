@@ -60,6 +60,11 @@ with st.form("preferences_form"):
         indexing_scheme = st.selectbox("Indexing scheme", scheme_options, index=default_scheme_idx)
         default_rank_idx = rank_options.index(cfg.dashboard_rank_by) if cfg.dashboard_rank_by in rank_options else 0
         dashboard_rank_by = st.selectbox("Dashboard rank by", rank_options, index=default_rank_idx)
+        st.markdown("**Brand suggestions**")
+        prefix_suggestion_boundary_only = st.checkbox("Boundary-only prefix suggestions", value=cfg.prefix_suggestion_boundary_only)
+        prefix_suggestion_max_length = st.number_input("Prefix max length", min_value=4, max_value=80, value=cfg.prefix_suggestion_max_length, step=1)
+        prefix_suggestion_min_length = st.number_input("Prefix min length", min_value=1, max_value=24, value=cfg.prefix_suggestion_min_length, step=1)
+        prefix_suggestion_min_count = st.number_input("Prefix min count", min_value=1, max_value=50, value=cfg.prefix_suggestion_min_count, step=1)
     if st.form_submit_button("Save preferences"):
         updated = cfg.model_copy(update={
             "ocr_model": ocr_model,
@@ -72,6 +77,10 @@ with st.form("preferences_form"):
             "normalize_string_similarity": normalize_string_similarity,
             "indexing_scheme": indexing_scheme,
             "dashboard_rank_by": dashboard_rank_by,
+            "prefix_suggestion_boundary_only": bool(prefix_suggestion_boundary_only),
+            "prefix_suggestion_max_length": int(prefix_suggestion_max_length),
+            "prefix_suggestion_min_length": int(prefix_suggestion_min_length),
+            "prefix_suggestion_min_count": int(prefix_suggestion_min_count),
         })
         save_config(updated)
         st.rerun()

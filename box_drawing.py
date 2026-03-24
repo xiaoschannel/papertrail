@@ -14,7 +14,7 @@ FIELD_COLORS: dict[str, tuple[int, int, int]] = {
 
 DEFAULT_FIELD_COLOR = (120, 120, 120)
 
-EXCLUDED_SOURCE_FIELDS = {"document_type", "language", "currency", "items", "location", "phone"}
+EXCLUDED_SOURCE_FIELDS = {"document_type", "language", "currency", "items", "address", "phone"}
 
 _CJK_FONT_CANDIDATES = [
     Path("C:/Windows/Fonts/msyh.ttc"),

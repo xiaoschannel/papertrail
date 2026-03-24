@@ -10,3 +10,4 @@ openai
 rapidfuzz
 scikit-learn
 plotly
+pytest

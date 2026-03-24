@@ -80,7 +80,7 @@ with col_meta:
         default_time = review.time or record["time"] or ""
         default_cost = float(review.cost or record.get("cost", 0))
         default_currency = review.currency or record.get("currency", "")
-        default_location = getattr(extraction, "location", "") or record.get("location", "")
+        default_address = getattr(extraction, "address", "") or record.get("address", "")
         default_language = getattr(extraction, "language", "") or record.get("language", "")
 
         doc_type_options = ["receipt", "other", "corrupted"]
@@ -106,13 +106,13 @@ with col_meta:
                 "<style>[data-testid='stHorizontalBlock'] [data-testid='stCheckbox']{padding-top:2.1rem;}</style>",
                 unsafe_allow_html=True,
             )
-            location_val = st.text_input("Location", value=default_location, key="receipt_location")
+            address_val = st.text_input("Address", value=default_address, key="receipt_address")
             language_val = st.text_input("Language", value=default_language, key="receipt_language")
         else:
             cost_str = "0"
             currency_val = ""
             jpy_checked = False
-            location_val = default_location
+            address_val = default_address
             language_val = default_language
 
         if btn_save:
@@ -149,7 +149,7 @@ with col_meta:
                     updated_ext = sidecar.extraction
                     if doc_type == "receipt" and isinstance(updated_ext, ReceiptResult):
                         updated_ext = updated_ext.model_copy(update={
-                            "location": location_val, "language": language_val,
+                            "address": address_val, "language": language_val,
                             "name": name, "date": date_val, "time": time_val,
                             "cost": parsed_cost, "currency": final_currency,
                         })
@@ -173,8 +173,14 @@ with col_meta:
         st.markdown(f"**Time:** {record['time']}")
         if record["document_type"] == "receipt":
             st.markdown(f"**Cost:** {record['cost']:,.2f} {record['currency']}")
-        if record["location"]:
-            st.markdown(f"**Location:** {record['location']}")
+            bid = record.get("brand_id")
+            if bid is not None and not pd.isna(bid) and str(bid).strip():
+                st.markdown(f"**Brand:** {record.get('brand_label') or bid}")
+            bl = record.get("brand_location")
+            if bl is not None and str(bl).strip():
+                st.markdown(f"**Location:** {bl}")
+        if record["address"]:
+            st.markdown(f"**Address:** {record['address']}")
         if record["language"]:
             st.markdown(f"**Language:** {record['language']}")
         st.markdown(f"**Type:** {record['document_type']}")
@@ -184,7 +190,11 @@ with col_meta:
         else:
             st.markdown(f"**Original file:** `{record['filename']}`")
         if record["document_type"] == "receipt" and record["name"]:
-            st.markdown(f"[View Merchant Profile →]({merchant_url(record['name'])})")
+            bid = record.get("brand_id")
+            if bid is not None and not pd.isna(bid) and str(bid).strip():
+                st.markdown(f"[View Merchant Profile →]({merchant_url(brand_id=str(bid))})")
+            else:
+                st.markdown(f"[View Merchant Profile →]({merchant_url(record['name'])})")
 
 if record["document_type"] == "receipt" and record["items"]:
     st.subheader("Line Items")

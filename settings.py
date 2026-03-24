@@ -22,6 +22,10 @@ class AppConfig(BaseModel):
     normalize_string_similarity: int = 80
     indexing_scheme: str = ""
     dashboard_rank_by: str = "Total Spend"
+    prefix_suggestion_boundary_only: bool = True
+    prefix_suggestion_max_length: int = 24
+    prefix_suggestion_min_length: int = 3
+    prefix_suggestion_min_count: int = 2
 
 
 def get_config() -> AppConfig:
