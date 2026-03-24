@@ -141,6 +141,10 @@ else:
             if st.button("Normalize", key=f"norm_btn_{cid}"):
                 for variant in to_merge:
                     normalizations[variant] = target
+                    for source, normalized_to in list(normalizations.items()):
+                        if normalized_to == variant:
+                            normalizations[source] = target
+                    normalizations.pop(target, None)
                     for fn in name_to_filenames.get(variant, []):
                         meta = accepted_metadata.get(fn)
                         if not meta or not meta[1]:
