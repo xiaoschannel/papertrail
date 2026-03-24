@@ -30,7 +30,7 @@ from rules.cost_large_check import cost_large_check
 from rules.cost_zero_check import cost_zero_check
 from rules.currency_uncommon_check import currency_uncommon_check
 from rules.date_check import date_check
-from settings import get_config
+from settings import get_config, update_config
 from validation import HintRule, is_date_time_safe_for_archive
 
 st.title("Review")
@@ -63,6 +63,11 @@ if not extracted_doc_keys:
     st.stop()
 
 HINT_RULES: list[HintRule] = [date_check, cost_zero_check, cost_large_check, currency_uncommon_check]
+
+
+def _save_parse_custom_instruction():
+    update_config(parse_custom_instruction=st.session_state["parse_custom_instruction"])
+
 
 smart_cache = load_smart_match_cache(output_path)
 smart_history = build_smart_match_history(extractions, decisions, smart_cache)
@@ -390,3 +395,11 @@ with result_col:
                 )
                 save_decisions(output_path, decisions)
                 st.rerun()
+
+    st.text_area(
+        "Custom instructions (optional)",
+        value=cfg.parse_custom_instruction,
+        height=160,
+        key="parse_custom_instruction",
+        on_change=_save_parse_custom_instruction,
+    )
