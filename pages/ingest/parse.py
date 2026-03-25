@@ -6,6 +6,7 @@ import streamlit as st
 
 from data import (
     build_document_index,
+    load_decisions,
     load_extractions,
     load_ocr_results,
     save_extractions,
@@ -36,7 +37,13 @@ ocr_by_key = {k: r.markdown for k, r in loaded.items() if r.succeeded and k in i
 ocr_results_by_key: dict[str, OcrResult] = {k: r for k, r in loaded.items() if r.succeeded and k in indexed_keys}
 
 index = build_document_index(output_path, indexed_keys, ocr_keys=set(ocr_by_key))
-doc_keys_with_ocr = index.doc_keys_with_ocr(ocr_by_key)
+raw_doc_keys_with_ocr = index.doc_keys_with_ocr(ocr_by_key)
+decisions = load_decisions(output_path)
+doc_keys_with_ocr = [
+    dk
+    for dk in raw_doc_keys_with_ocr
+    if not (decisions.get(str(dk)) and decisions[str(dk)].verdict == "tossed")
+]
 extractions = {k: v for k, v in load_extractions(output_path).items() if k in {str(doc_key) for doc_key in doc_keys_with_ocr}}
 
 extractors = list(EXTRACTORS.keys())
@@ -68,18 +75,20 @@ else:
     existing_extractions = dict(extractions)
     to_process = [doc_key for doc_key in doc_keys_with_ocr if str(doc_key) not in existing_extractions]
 
-n_total = len(doc_keys_with_ocr)
+n_total = len(raw_doc_keys_with_ocr)
+n_tossed = n_total - len(doc_keys_with_ocr)
 n_processed = len(extractions)
-n_new = len(to_process)
+n_to_process = len(doc_keys_with_ocr) - n_processed
 
 batch_limit = st.number_input("Batch size (0 = all)", min_value=0, value=0, step=1)
 if batch_limit > 0:
     to_process = to_process[:batch_limit]
 
-col0, col1, col2 = st.columns(3)
-col0.metric("Total", n_total)
+col0, col1, col2, col3 = st.columns(4)
+col0.metric("Total Documents", n_total)
 col1.metric("Processed", n_processed)
-col2.metric("New", n_new)
+col2.metric("Tossed", n_tossed)
+col3.metric("To process", n_to_process)
 
 if mode == "Reprocess all":
     st.warning("This will replace all existing extractions. This cannot be undone.")
@@ -124,5 +133,5 @@ if run_clicked and to_process:
 if run_clicked and not to_process:
     st.info("No items to process.")
 
-if not doc_keys_with_ocr:
+if not raw_doc_keys_with_ocr:
     st.info("No OCR results. Run OCR first.")
