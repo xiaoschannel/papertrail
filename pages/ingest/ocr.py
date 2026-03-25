@@ -43,20 +43,20 @@ def _save_ocr_model():
 ocr_provider = st.selectbox("OCR Model", providers, index=default_ocr_idx, key="ocr_provider", on_change=_save_ocr_model)
 mode = st.radio(
     "Mode",
-    ["Process new only", "Reprocess all", "Run failed", "Process prearchive batch only"],
+    ["Process all", "Clear results and reprocess", "Process by batch"],
     horizontal=True,
 )
 
-if mode == "Process prearchive batch only":
+if mode == "Process by batch":
     if not non_archived_batches:
-        st.info("No prearchive batches available.")
+        st.info("No non-archived batches available.")
         st.stop()
     batch_options = [
         (batch.batch_id, f"Batch {batch.batch_id} - {len(batch.files)} files - {batch.start_datetime} to {batch.end_datetime}")
         for batch in non_archived_batches
     ]
     selected_batch_id = st.selectbox(
-        "Prearchive batch",
+        "Batch",
         options=[batch_id for batch_id, _ in batch_options],
         index=0,
         format_func=lambda x: next(label for batch_id, label in batch_options if batch_id == x),
@@ -65,41 +65,37 @@ if mode == "Process prearchive batch only":
 else:
     scoped_items = indexed_items
 
-if mode == "Reprocess all":
+if mode == "Clear results and reprocess":
     to_process = [(batch_serial_key(batch_id, serial), input_path / fn) for batch_id, serial, fn in scoped_items if (input_path / fn).exists()]
     existing = {}
-elif mode == "Run failed":
-    failed_keys = {k for k, r in loaded.items() if not r.succeeded}
-    to_process = [(k, input_path / fn) for batch_id, serial, fn in scoped_items if (k := batch_serial_key(batch_id, serial)) in failed_keys and (input_path / fn).exists()]
-    existing = {k: r for k, r in loaded.items() if r.succeeded}
-elif mode == "Process prearchive batch only":
-    existing = dict(loaded)
-    to_process = [
-        (k, input_path / fn)
-        for batch_id, serial, fn in scoped_items
-        if (k := batch_serial_key(batch_id, serial)) not in existing and (input_path / fn).exists()
-    ]
 else:
-    existing = dict(loaded)
-    to_process = [(k, input_path / fn) for batch_id, serial, fn in scoped_items if (k := batch_serial_key(batch_id, serial)) not in existing and (input_path / fn).exists()]
+    existing = {k: r for k, r in loaded.items() if r.succeeded}
+    to_process = []
+    for batch_id, serial, fn in scoped_items:
+        if not (input_path / fn).exists():
+            continue
+        k = batch_serial_key(batch_id, serial)
+        r = loaded.get(k)
+        if r is None or not r.succeeded:
+            to_process.append((k, input_path / fn))
 
 scoped_keys = {batch_serial_key(batch_id, serial) for batch_id, serial, _ in scoped_items}
 n_total = len(scoped_items)
 n_processed = sum(1 for k, r in loaded.items() if k in scoped_keys and r.succeeded)
 n_failed = sum(1 for k, r in loaded.items() if k in scoped_keys and not r.succeeded)
-n_new = len(to_process)
+n_to_process = n_total - n_processed - n_failed
 
 col0, col1, col2, col3 = st.columns(4)
 col0.metric("Total", n_total)
 col1.metric("Processed", n_processed)
-col2.metric("New", n_new)
-col3.metric("Failed", n_failed)
+col2.metric("Failed", n_failed)
+col3.metric("To process", n_to_process)
 
 batch_limit = st.number_input("Batch size (0 = all)", min_value=0, value=0, step=1)
 if batch_limit > 0:
     to_process = to_process[:batch_limit]
 
-if mode == "Reprocess all":
+if mode == "Clear results and reprocess":
     st.warning("This will replace all existing OCR results. This cannot be undone.")
     reprocess_confirmed = st.checkbox("I understand, proceed with reprocess")
     start_clicked = st.button("Start Batch Processing", disabled=not reprocess_confirmed)
@@ -139,6 +135,6 @@ teardown_ocr(ocr_provider)
 
 n_fails_total = sum(1 for r in new_results.values() if not r.succeeded)
 st.success(
-    f"Done! Processed {len(new_results)} new images "
-    f"({len(existing) + len(new_results)} total, {n_fails_total} failed). Saved to {results_file}"
+    f"Done! Ran OCR on {len(new_results)} image(s) "
+    f"({len(existing) + len(new_results)} in merged results, {n_fails_total} failed this run). Saved to {results_file}"
 )

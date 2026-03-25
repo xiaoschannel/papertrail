@@ -67,8 +67,8 @@ st.text_area(
     on_change=_save_parse_custom_instruction,
 )
 
-mode = st.radio("Mode", ["Process new only", "Reprocess all"], horizontal=True)
-if mode == "Reprocess all":
+mode = st.radio("Mode", ["Process all", "Clear results and reprocess"], horizontal=True)
+if mode == "Clear results and reprocess":
     to_process = list(doc_keys_with_ocr)
     existing_extractions = {}
 else:
@@ -90,7 +90,7 @@ col1.metric("Processed", n_processed)
 col2.metric("Tossed", n_tossed)
 col3.metric("To process", n_to_process)
 
-if mode == "Reprocess all":
+if mode == "Clear results and reprocess":
     st.warning("This will replace all existing extractions. This cannot be undone.")
     reprocess_confirmed = st.checkbox("I understand, proceed with reprocess")
     run_clicked = st.button("Run Extraction", width="stretch", type="primary", disabled=not reprocess_confirmed)
@@ -98,7 +98,7 @@ else:
     run_clicked = st.button("Run Extraction", width="stretch", type="primary")
 
 if run_clicked and to_process:
-    if mode == "Reprocess all":
+    if mode == "Clear results and reprocess":
         extractions.clear()
 
     parse_custom_instruction = st.session_state.get(
