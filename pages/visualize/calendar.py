@@ -3,7 +3,9 @@ from pathlib import Path
 
 import pandas as pd
 import streamlit as st
+from PIL import Image
 
+from settings import get_config, update_config
 from viz_data import get_output_path, load_viz_records, receipt_url
 
 WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
@@ -38,6 +40,37 @@ def records_in_range(
     return out
 
 
+@st.cache_data
+def _image_aspect(path_str: str) -> float:
+    img = Image.open(path_str)
+    w, h = img.size
+    img.close()
+    return h / max(w, 1)
+
+
+def estimate_card_height(row: dict, output_path: Path) -> float:
+    base = 3.0
+    if row.get("path"):
+        img_path = output_path / row["path"]
+        if img_path.exists():
+            base += _image_aspect(str(img_path)) * 10
+    return base
+
+
+def assign_to_columns(records: list[dict], output_path: Path) -> tuple[list, list]:
+    col1, col2 = [], []
+    h1, h2 = 0.0, 0.0
+    for row in records:
+        card_h = estimate_card_height(row, output_path)
+        if h1 <= h2:
+            col1.append(row)
+            h1 += card_h
+        else:
+            col2.append(row)
+            h2 += card_h
+    return col1, col2
+
+
 def render_receipt_card(row: dict, output_path: Path) -> None:
     if row.get("path"):
         img_path = output_path / row["path"]
@@ -66,30 +99,17 @@ if dated.empty:
     st.stop()
 
 today = date.today()
-period_param = st.query_params.get("period", "week")
-date_param = st.query_params.get("date", "")
-if period_param not in ("week", "month"):
-    period_param = "week"
+cfg = get_config()
+
 if "cal_view_date" not in st.session_state:
-    try:
-        if date_param:
-            parsed = date.fromisoformat(date_param)
-            anchor = monday_of_week(parsed) if period_param == "week" else first_of_month(parsed)
-        else:
-            anchor = monday_of_week(today) if period_param == "week" else first_of_month(today)
-    except ValueError:
-        anchor = monday_of_week(today) if period_param == "week" else first_of_month(today)
-    st.session_state["cal_view_period"] = period_param
+    saved_period = cfg.calendar_period if cfg.calendar_period in ("week", "month") else "week"
+    if cfg.calendar_date:
+        parsed = date.fromisoformat(cfg.calendar_date)
+        anchor = monday_of_week(parsed) if saved_period == "week" else first_of_month(parsed)
+    else:
+        anchor = monday_of_week(today) if saved_period == "week" else first_of_month(today)
+    st.session_state["cal_view_period"] = saved_period
     st.session_state["cal_view_date"] = anchor.isoformat()
-elif date_param:
-    try:
-        parsed = date.fromisoformat(date_param)
-        anchor = monday_of_week(parsed) if period_param == "week" else first_of_month(parsed)
-        if st.session_state["cal_view_date"] != anchor.isoformat() or st.session_state["cal_view_period"] != period_param:
-            st.session_state["cal_view_period"] = period_param
-            st.session_state["cal_view_date"] = anchor.isoformat()
-    except ValueError:
-        pass
 
 data_min = date(dated["parsed_date"].min().year, dated["parsed_date"].min().month, dated["parsed_date"].min().day)
 data_max = date(dated["parsed_date"].max().year, dated["parsed_date"].max().month, dated["parsed_date"].max().day)
@@ -101,13 +121,15 @@ period_param = st.session_state["cal_view_period"]
 
 period = st.radio("View", ["week", "month"], horizontal=True, index=0 if period_param == "week" else 1, key="cal_period")
 if period != period_param:
+    new_anchor = monday_of_week(current_date) if period == "week" else first_of_month(current_date)
     st.session_state["cal_view_period"] = period
-    st.session_state["cal_view_date"] = (
-        monday_of_week(current_date).isoformat()
-        if period == "week"
-        else first_of_month(current_date).isoformat()
-    )
+    st.session_state["cal_view_date"] = new_anchor.isoformat()
+    st.session_state["_cal_pending_go_date"] = min(max(new_anchor, data_min), data_max)
+    update_config(calendar_period=period, calendar_date=new_anchor.isoformat())
     st.rerun()
+
+if "_cal_pending_go_date" in st.session_state:
+    st.session_state["cal_go_date"] = st.session_state.pop("_cal_pending_go_date")
 
 _default = current_date if period == "week" else first_of_month(current_date)
 go_date = st.date_input(
@@ -117,13 +139,11 @@ go_date = st.date_input(
     max_value=data_max,
     key="cal_go_date",
 )
-if period == "week":
-    target = monday_of_week(go_date)
-else:
-    target = first_of_month(go_date)
+target = monday_of_week(go_date) if period == "week" else first_of_month(go_date)
 if target != current_date:
     st.session_state["cal_view_date"] = target.isoformat()
     st.session_state["cal_view_period"] = period
+    update_config(calendar_period=period, calendar_date=target.isoformat())
     st.rerun()
 
 if period == "week":
@@ -137,8 +157,6 @@ else:
 
 by_date = records_in_range(dated, range_start, range_end)
 
-prev_date: date
-next_date: date
 if period == "week":
     prev_date = current_date - timedelta(days=7)
     next_date = current_date + timedelta(days=7)
@@ -150,15 +168,23 @@ else:
     )
     next_date = first_of_next_month(current_date)
 
-nav_cols = st.columns([1, 2, 1])
+nav_cols = st.columns([3, 4, 3])
 with nav_cols[0]:
-    prev_url = f"/calendar?period={period}&date={prev_date.isoformat()}"
-    st.link_button("← Prev", prev_url)
+    if st.button("← Prev", width="stretch"):
+        st.session_state["cal_view_date"] = prev_date.isoformat()
+        st.session_state["cal_view_period"] = period
+        st.session_state["_cal_pending_go_date"] = min(max(prev_date, data_min), data_max)
+        update_config(calendar_period=period, calendar_date=prev_date.isoformat())
+        st.rerun()
 with nav_cols[1]:
-    st.markdown(f"**{period_label}**")
+    st.markdown(f"**{period_label}**", text_alignment="center")
 with nav_cols[2]:
-    next_url = f"/calendar?period={period}&date={next_date.isoformat()}"
-    st.link_button("Next →", next_url)
+    if st.button("Next →", width="stretch"):
+        st.session_state["cal_view_date"] = next_date.isoformat()
+        st.session_state["cal_view_period"] = period
+        st.session_state["_cal_pending_go_date"] = min(max(next_date, data_min), data_max)
+        update_config(calendar_period=period, calendar_date=next_date.isoformat())
+        st.rerun()
 
 st.divider()
 
@@ -186,9 +212,18 @@ else:
                 if range_start <= cell_date < range_end:
                     st.markdown(f"**{cell_date.day}**")
                     day_records = by_date.get(cell_date, [])
-                    for row in day_records:
-                        render_receipt_card(row, output_path)
-                    if not day_records:
+                    if len(day_records) >= 2:
+                        col1_items, col2_items = assign_to_columns(day_records, output_path)
+                        sub_cols = st.columns(2)
+                        with sub_cols[0]:
+                            for row in col1_items:
+                                render_receipt_card(row, output_path)
+                        with sub_cols[1]:
+                            for row in col2_items:
+                                render_receipt_card(row, output_path)
+                    elif day_records:
+                        render_receipt_card(day_records[0], output_path)
+                    else:
                         st.caption("—")
                 else:
                     st.caption("")

@@ -84,3 +84,8 @@ with st.form("preferences_form"):
         })
         save_config(updated)
         st.rerun()
+
+st.divider()
+st.subheader("State (read-only)")
+st.text_input("Calendar period", value=cfg.calendar_period, disabled=True)
+st.text_input("Calendar date", value=cfg.calendar_date or "(not set)", disabled=True)

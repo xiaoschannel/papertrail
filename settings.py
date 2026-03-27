@@ -26,6 +26,8 @@ class AppConfig(BaseModel):
     prefix_suggestion_max_length: int = 24
     prefix_suggestion_min_length: int = 3
     prefix_suggestion_min_count: int = 2
+    calendar_period: str = "week"
+    calendar_date: str = ""
 
 
 def get_config() -> AppConfig:
