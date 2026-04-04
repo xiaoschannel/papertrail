@@ -8,7 +8,7 @@ from data import (
     save_smart_match_cache,
     write_sidecar,
 )
-from models import ReceiptResult, ReviewDecision, Sidecar, batch_serial_key
+from models import ReceiptResult, ReviewDecision, batch_serial_key
 from organize_utils import move_to_accepted_destination
 from validation import is_date_time_safe_for_archive
 from viz_data import (
@@ -82,6 +82,7 @@ with col_meta:
         default_currency = review.currency or record.get("currency", "")
         default_address = getattr(extraction, "address", "") or record.get("address", "")
         default_language = getattr(extraction, "language", "") or record.get("language", "")
+        default_comment = review.comment
 
         doc_type_options = ["receipt", "other", "corrupted"]
         doc_type = st.radio(
@@ -115,6 +116,8 @@ with col_meta:
             address_val = default_address
             language_val = default_language
 
+        comment_val = st.text_area("Comment", value=default_comment, height=100, key="receipt_comment")
+
         if btn_save:
             try:
                 parsed_cost = float(cost_str)
@@ -144,6 +147,7 @@ with col_meta:
                         time=time_val,
                         cost=parsed_cost,
                         currency=final_currency,
+                        comment=comment_val,
                     )
                     target_path = move_to_accepted_destination(output_path, sidecar.original_filename, data_file, decision)
                     updated_ext = sidecar.extraction
@@ -183,6 +187,12 @@ with col_meta:
             st.markdown(f"**Address:** {record['address']}")
         if record["language"]:
             st.markdown(f"**Language:** {record['language']}")
+        vc = sidecar.review.comment if sidecar else ""
+        if not vc.strip() and "comment" in record.index:
+            raw_c = record["comment"]
+            vc = "" if pd.isna(raw_c) else str(raw_c)
+        if vc.strip():
+            st.markdown(f"**Comment:** {vc}")
         st.markdown(f"**Type:** {record['document_type']}")
         n_pages = len(record.get("paths", [record["path"]] if record["path"] else []))
         if n_pages > 1:

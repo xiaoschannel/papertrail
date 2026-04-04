@@ -4,7 +4,11 @@ from urllib.parse import quote
 import pandas as pd
 import streamlit as st
 
-from brand_registry import brand_registry_mtime, enrich_receipt_brand_columns, load_brand_directory
+from brand_registry import (
+    brand_registry_mtime,
+    enrich_receipt_brand_columns,
+    load_brand_directory,
+)
 from data import load_reorganized_state
 from models import Sidecar
 from settings import get_config
@@ -76,6 +80,7 @@ def _load_viz_records_cached(output_path_str: str, brand_registry_mtime: float) 
             "time": review.time,
             "cost": float(review.cost),
             "currency": review.currency,
+            "comment": review.comment,
             "address": getattr(extraction, "address", ""),
             "language": getattr(extraction, "language", ""),
             "items": [item.model_dump() for item in items] if items else [],

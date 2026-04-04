@@ -200,6 +200,7 @@ with result_col:
     name_widget_key = f"review_name_{selected}"
     name_track_key = "review_name_doc_track"
     sm_sel_key = f"sm_sel_{selected}"
+    comment_widget_key = f"review_comment_{selected}"
     if st.session_state.get(name_track_key) != selected:
         st.session_state[name_track_key] = selected
         init_name = default_name
@@ -209,6 +210,7 @@ with result_col:
         ):
             init_name = smart_match_candidates[0].confirmed_name
         st.session_state[name_widget_key] = init_name
+        st.session_state[comment_widget_key] = ""
         st.session_state.pop(sm_sel_key, None)
 
     if quick_apply_list:
@@ -290,6 +292,9 @@ with result_col:
         currency_val = ""
         jpy_checked = False
 
+    st.text_area("Comment", key=comment_widget_key, height=100)
+    comment_val = st.session_state.get(comment_widget_key, "")
+
     try:
         parsed_cost_live = float(cost_str)
     except ValueError:
@@ -354,6 +359,7 @@ with result_col:
             time=time_val,
             cost=parsed_cost,
             currency=final_currency,
+            comment=comment_val,
         )
         save_decisions(output_path, decisions)
         st.rerun()
@@ -392,6 +398,7 @@ with result_col:
                     time=time_val,
                     cost=parsed_cost,
                     currency=final_currency,
+                    comment=comment_val,
                 )
                 save_decisions(output_path, decisions)
                 st.rerun()

@@ -130,6 +130,7 @@ class ReviewDecision(BaseModel):
     time: str
     cost: float = 0.0
     currency: str = ""
+    comment: str = ""
 
 
 class SmartMatchHistoryRow(BaseModel):

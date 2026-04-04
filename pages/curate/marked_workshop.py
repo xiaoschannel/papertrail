@@ -486,6 +486,7 @@ with review_col:
                     time=time_val,
                     cost=parsed_cost,
                     currency=final_currency,
+                    comment=sidecar.review.comment if sidecar else "",
                 )
                 dst = move_to_accepted_destination(output_path, selected, marked_dir / selected, decision)
                 dest_rel = dst.relative_to(output_path).as_posix()
