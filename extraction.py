@@ -15,7 +15,7 @@ If a field is not present, corrupted or unreadable, use empty string.
 First, determine the document_type:
 - "receipt" if this is a receipt or invoice.
 - "other" if you can tell this is a document but it's not a receipt.
-- "corrupted" if the OCR text is empty or gibberish.
+- "corrupted" if the OCR text is empty, gibberish, or contains large chunks of repeated/garbled text despite the rest is readable.
 
 For corrupted documents, output only: {{"document_type": "corrupted"}}
 
