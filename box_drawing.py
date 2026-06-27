@@ -70,10 +70,8 @@ def draw_field_boxes(
             continue
         color = FIELD_COLORS.get(fields[0], DEFAULT_FIELD_COLOR)
         for coords in boxes[box_idx].coords:
-            x1 = int(coords[0] / 1000 * w)
-            y1 = int(coords[1] / 1000 * h)
-            x2 = int(coords[2] / 1000 * w)
-            y2 = int(coords[3] / 1000 * h)
+            x1, x2 = sorted((int(coords[0] / 1000 * w), int(coords[2] / 1000 * w)))
+            y1, y2 = sorted((int(coords[1] / 1000 * h), int(coords[3] / 1000 * h)))
             draw.rectangle([x1, y1, x2, y2], fill=(*color, 50), outline=(*color, 200), width=2)
             label = ", ".join(fields)
             draw.text((x1 + 2, y1 - 22 if y1 > 24 else y1 + 2), label, fill=(*color, 230), font=_LABEL_FONT)
@@ -105,10 +103,8 @@ def draw_all_boxes(img: Image.Image, boxes: list[DetectedBox]) -> Image.Image:
     for idx, box in enumerate(boxes):
         color = _BOX_COLORS[idx % len(_BOX_COLORS)]
         for coords in box.coords:
-            x1 = int(coords[0] / 1000 * w)
-            y1 = int(coords[1] / 1000 * h)
-            x2 = int(coords[2] / 1000 * w)
-            y2 = int(coords[3] / 1000 * h)
+            x1, x2 = sorted((int(coords[0] / 1000 * w), int(coords[2] / 1000 * w)))
+            y1, y2 = sorted((int(coords[1] / 1000 * h), int(coords[3] / 1000 * h)))
             draw.rectangle([x1, y1, x2, y2], fill=(*color, 50), outline=(*color, 200), width=2)
             label = box.text or f"BOX-{idx}"
             draw.text((x1 + 2, y1 - 22 if y1 > 24 else y1 + 2), label, fill=(*color, 230), font=_LABEL_FONT)
