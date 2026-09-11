@@ -61,3 +61,13 @@ def configured_archive(archive_dir: Path, tmp_path: Path, monkeypatch: pytest.Mo
     cfg_path.write_text(json.dumps(cfg.model_dump(), indent=2), encoding="utf-8")
     monkeypatch.setattr(settings, "CONFIG_PATH", cfg_path)
     return archive_dir
+
+
+@pytest.fixture
+def api_client(configured_archive: Path):
+    """FastAPI TestClient wired to the fixture archive via patched config."""
+    from fastapi.testclient import TestClient
+
+    from api.main import create_app
+
+    return TestClient(create_app())

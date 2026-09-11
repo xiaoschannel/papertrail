@@ -11,3 +11,6 @@ rapidfuzz
 scikit-learn
 plotly
 pytest
+fastapi
+uvicorn
+httpx

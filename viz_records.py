@@ -1,7 +1,7 @@
 """Streamlit-free construction of the visualization dataframes.
 
 This is the pure core that ``viz_data.py`` wraps with ``st.cache_data`` for the
-Streamlit pages, and that the future web API can call directly. It reads the
+Streamlit pages, and that the web API (``api/``) calls directly. It reads the
 archived state from disk and returns flat pandas frames; no ``streamlit`` import.
 """
 

@@ -1,7 +1,7 @@
 """Pure aggregation helpers for the visualization views.
 
 Extracted verbatim from the Streamlit pages so the same computations can be
-unit-tested and reused by the future web API. No ``streamlit`` import; every
+unit-tested and reused by the web API (``api/``). No ``streamlit`` import; every
 function takes/returns plain pandas/Python values.
 """
 
