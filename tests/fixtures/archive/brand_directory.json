@@ -1,0 +1,26 @@
+{
+  "brands": [
+    {
+      "id": "seven-eleven",
+      "label": "セブン-イレブン",
+      "prefixes": [
+        "セブン-イレブン",
+        "セブンイレブン"
+      ]
+    },
+    {
+      "id": "tealive",
+      "label": "Tealive",
+      "prefixes": [
+        "Tealive"
+      ]
+    },
+    {
+      "id": "biccamera",
+      "label": "ビックカメラ",
+      "prefixes": [
+        "ビックカメラ"
+      ]
+    }
+  ]
+}

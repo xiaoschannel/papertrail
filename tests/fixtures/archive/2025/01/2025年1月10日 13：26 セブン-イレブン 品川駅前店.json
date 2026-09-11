@@ -1,0 +1,57 @@
+{
+  "original_filename": "01102025132642_101.png",
+  "batch_id": 5,
+  "serial": 101,
+  "review": {
+    "verdict": "accepted",
+    "document_type": "receipt",
+    "name": "セブン-イレブン 品川駅前店",
+    "date": "2025-01-10",
+    "time": "13:26:42",
+    "cost": 1260.0,
+    "currency": "JPY",
+    "comment": ""
+  },
+  "ocr": {
+    "markdown": "セブン-イレブン 品川駅前店\n合計 ¥1,260",
+    "succeeded": true,
+    "boxes": [
+      {
+        "ref_type": "text",
+        "coords": [
+          [
+            80,
+            40,
+            880,
+            104
+          ]
+        ],
+        "text": "セブン-イレブン 品川駅前店"
+      }
+    ],
+    "filename": "01102025132642_101.png",
+    "raw": "セブン-イレブン 品川駅前店\n合計 ¥1,260"
+  },
+  "extraction": {
+    "document_type": "receipt",
+    "language": "ja",
+    "date": "2025-01-10",
+    "time": "13:26:42",
+    "name": "セブン-イレブン 品川駅前店",
+    "phone": "",
+    "currency": "JPY",
+    "address": "東京都品川区サンプル町1-2-3",
+    "items": [
+      {
+        "name": "おにぎり",
+        "total_price": 580.0
+      },
+      {
+        "name": "コーヒー",
+        "total_price": 680.0
+      }
+    ],
+    "cost": 1260.0,
+    "field_sources": {}
+  }
+}

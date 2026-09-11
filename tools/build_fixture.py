@@ -1,0 +1,459 @@
+"""Generate the sanitized test fixtures under ``tests/fixtures/``.
+
+This produces a small, fully-synthetic but *realistic* archive that mirrors the
+shape of a real Papertrail archive without containing any real data. It is the
+input for the characterization test suite (``tests/test_*.py``).
+
+Design notes
+------------
+- **No real data, no real images.** Every merchant name, phone number, address,
+  amount and OCR span here is invented. Image files are tiny 1x1 placeholder PNGs
+  so that ``Path.exists()``/PIL checks work without shipping real scans. The
+  fixture is therefore safe to commit and fully reproducible in CI.
+- **Modelled on real shapes.** Two archive states are emitted, matching the real
+  app's lifecycle:
+    * ``tests/fixtures/ingest/``  -- a mid-ingest, un-archived batch with
+      ``batches.json`` + ``ocr.json`` + ``extractions.json`` + ``decisions.json``
+      + ``documents.json`` keyed by file/doc keys.
+    * ``tests/fixtures/archive/`` -- an archived state with ``YYYY/MM`` +
+      ``YYYY/undated`` sidecar folders, ``tossed/`` + ``marked/``, and the root
+      registries (``brand_directory.json``, ``name_normalizations.json``,
+      ``distinct_pairs.json``, ``smart_match_cache.json``, ``documents.json``,
+      ``name_embeddings.npz``).
+- **Edge cases are deliberate.** JP/CN/EN docs; a multi-page document group; an
+  undated doc; a corrupted doc; tossed + marked docs; a dedupe pair (equal cost,
+  <5 min apart); a near-duplicate merchant name for normalization; a brand-prefix
+  family; a name-collision pair (suffixing); item totals that match AND mismatch
+  ``cost``; a large-cost doc; an uncommon currency. (Future-dated and very-old
+  dates are built inline in ``tests/test_rules.py``.)
+  Keep these intact when editing -- the tests assert against them.
+
+Run from the repo root::
+
+    python tools/build_fixture.py
+"""
+
+from __future__ import annotations
+
+import base64
+import json
+import sys
+from pathlib import Path
+
+import numpy as np
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+FIXTURES = REPO_ROOT / "tests" / "fixtures"
+
+# A minimal valid 1x1 transparent PNG (so PIL can open placeholders if needed).
+_PNG_1x1 = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/g7PAAAAAElFTkSuQmCC"
+)
+
+
+def _write_json(path: Path, obj) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(obj, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def _write_png(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(_PNG_1x1)
+
+
+# --------------------------------------------------------------------------- #
+# Small builders that emit dicts conforming to the pydantic models.
+# --------------------------------------------------------------------------- #
+def item(name: str, total_price: float, quantity=None, unit_price=None) -> dict:
+    d: dict = {"name": name, "total_price": total_price}
+    if quantity is not None:
+        d["quantity"] = quantity
+    if unit_price is not None:
+        d["unit_price"] = unit_price
+    return d
+
+
+def receipt_extraction(
+    *, language, date, time, name, currency, cost, items, phone="", address="", field_sources=None
+) -> dict:
+    return {
+        "document_type": "receipt",
+        "language": language,
+        "date": date,
+        "time": time,
+        "name": name,
+        "phone": phone,
+        "currency": currency,
+        "address": address,
+        "items": items,
+        "cost": cost,
+        "field_sources": field_sources or {},
+    }
+
+
+def other_extraction(*, language, date, time, title, field_sources=None) -> dict:
+    return {
+        "document_type": "other",
+        "language": language,
+        "date": date,
+        "time": time,
+        "title": title,
+        "field_sources": field_sources or {},
+    }
+
+
+def corrupted_extraction() -> dict:
+    return {"document_type": "corrupted"}
+
+
+def ocr_result(markdown: str, *, boxes=None, succeeded=True) -> dict:
+    d: dict = {"markdown": markdown, "succeeded": succeeded}
+    if boxes is not None:
+        d["boxes"] = boxes
+    return d
+
+
+def box(ref_type: str, coords, text: str) -> dict:
+    return {"ref_type": ref_type, "coords": coords, "text": text}
+
+
+def legacy_ocr_result(markdown: str, *, original_filename: str, boxes=None) -> dict:
+    """An OCR block in the older on-disk shape: the current {markdown, boxes,
+    succeeded} fields PLUS the legacy `filename` and `raw` keys that older
+    archived sidecars still carry. pydantic ignores the extras on load; the migration
+    must preserve that tolerance."""
+    d = ocr_result(markdown, boxes=boxes)
+    d["filename"] = original_filename
+    d["raw"] = markdown
+    return d
+
+
+def review(*, verdict, document_type, name, date, time, cost=0.0, currency="", comment="") -> dict:
+    return {
+        "verdict": verdict,
+        "document_type": document_type,
+        "name": name,
+        "date": date,
+        "time": time,
+        "cost": cost,
+        "currency": currency,
+        "comment": comment,
+    }
+
+
+def sidecar(*, original_filename, batch_id, serial, review_, extraction=None, ocr=None, document_key=None) -> dict:
+    d: dict = {
+        "original_filename": original_filename,
+        "batch_id": batch_id,
+        "serial": serial,
+        "review": review_,
+    }
+    if document_key is not None:
+        d["document_key"] = document_key
+    if ocr is not None:
+        d["ocr"] = ocr
+    if extraction is not None:
+        d["extraction"] = extraction
+    return d
+
+
+# --------------------------------------------------------------------------- #
+# Mid-ingest fixture: one un-archived Canon batch (batch_id = 1).
+# File keys are "1:<serial>"; the multi-page doc is grouped as "1:4-5".
+# --------------------------------------------------------------------------- #
+def build_ingest(root: Path) -> None:
+    files = {
+        1: "01102025132642_1.png",
+        2: "01102025133000_2.png",
+        3: "01102025140000_3.png",
+        4: "01102025141500_4.png",  # multi-page page 1
+        5: "01102025141600_5.png",  # multi-page page 2
+        6: "01102025142000_6.png",  # corrupted
+        7: "01102025142500_7.png",  # other (business card)
+        8: "01102025143000_8.png",  # tossed
+    }
+    batches = {
+        "batches": [
+            {
+                "batch_id": 1,
+                "start_datetime": "2025-01-10 13:26:42",
+                "end_datetime": "2025-01-10 14:30:00",
+                "files": files,
+                "archived": False,
+            }
+        ]
+    }
+
+    # OCR is keyed per *file* (page). One page carries grounding boxes.
+    ocr = {
+        "1:1": ocr_result(
+            "セブン-イレブン 品川駅前店\nおにぎり ¥580\nコーヒー ¥680\n合計 ¥1,260",
+            boxes=[
+                box("title", [[80, 40, 880, 104]], "セブン-イレブン 品川駅前店"),
+                box("text", [[80, 220, 470, 258]], "合計 ¥1,260"),
+            ],
+        ),
+        "1:2": ocr_result("セブン-イレブン 品川駅前店\nお茶 ¥1,260\n合計 ¥1,260"),
+        "1:3": ocr_result("上海小笼包馆\n小笼包 ¥500\n服务费 ¥20\n合计 ¥520"),
+        "1:4": ocr_result("Tealive KLCC\nBrown Sugar Boba RM15.90\n--- page 1 ---"),
+        "1:5": ocr_result("Tealive KLCC\nThank you\n--- page 2 ---"),
+        "1:6": ocr_result("@@@##garbled%%%\n\n\n###", succeeded=True),
+        "1:7": ocr_result("John Doe\nAcme Corp\nSenior Engineer"),
+        "1:8": ocr_result("(faded receipt)\n???"),
+    }
+
+    # Extractions are keyed per *document* (multi-page collapsed to "1:4-5").
+    extractions = {
+        "1:1": receipt_extraction(
+            language="ja", date="2025-01-10", time="13:26:42",
+            name="セブン-イレブン 品川駅前店", currency="JPY", cost=1260.0,
+            items=[item("おにぎり", 580.0), item("コーヒー", 680.0)],
+        ),
+        "1:2": receipt_extraction(
+            language="ja", date="2025-01-10", time="13:30:00",
+            name="セブン-イレブン 品川駅前店", currency="JPY", cost=1260.0,
+            items=[item("お茶", 1260.0)],
+        ),
+        "1:3": receipt_extraction(  # items (500) != cost (520) -> cost_check red
+            language="zh", date="2025-01-10", time="14:00:00",
+            name="上海小笼包馆", currency="CNY", cost=520.0,
+            items=[item("小笼包", 500.0)],
+        ),
+        "1:4-5": receipt_extraction(  # uncommon currency MYR
+            language="en", date="2025-01-10", time="14:16:00",
+            name="Tealive KLCC", currency="MYR", cost=15.90,
+            items=[item("Brown Sugar Boba", 15.90)],
+        ),
+        "1:6": corrupted_extraction(),
+        "1:7": other_extraction(language="en", date="", time="", title="Business Card - John Doe"),
+        "1:8": receipt_extraction(  # zero cost -> cost_zero red
+            language="ja", date="2025-01-10", time="14:30:00",
+            name="(unreadable)", currency="JPY", cost=0.0, items=[],
+        ),
+    }
+
+    # Decisions keyed per document. "1:1"/"1:2" are the dedupe pair
+    # (equal cost 1260, 13:26 vs 13:30 -> <5 min apart, both accepted receipts).
+    decisions = {
+        "1:1": review(verdict="accepted", document_type="receipt",
+                      name="セブン-イレブン 品川駅前店", date="2025-01-10", time="13:26:42",
+                      cost=1260.0, currency="JPY"),
+        "1:2": review(verdict="accepted", document_type="receipt",
+                      name="セブン-イレブン 品川駅前店", date="2025-01-10", time="13:30:00",
+                      cost=1260.0, currency="JPY"),
+        "1:3": review(verdict="accepted", document_type="receipt",
+                      name="上海小笼包馆", date="2025-01-10", time="14:00:00",
+                      cost=520.0, currency="CNY"),
+        "1:4-5": review(verdict="accepted", document_type="receipt",
+                        name="Tealive KLCC", date="2025-01-10", time="14:16:00",
+                        cost=15.90, currency="MYR"),
+        "1:6": review(verdict="tossed", document_type="corrupted",
+                      name="", date="", time=""),
+        "1:7": review(verdict="accepted", document_type="other",
+                      name="Business Card - John Doe", date="", time=""),
+        "1:8": review(verdict="tossed", document_type="receipt",
+                      name="(unreadable)", date="2025-01-10", time="14:30:00",
+                      cost=0.0, currency="JPY"),
+    }
+
+    documents = {"groups": [["1:4", "1:5"]]}
+
+    _write_json(root / "batches.json", batches)
+    _write_json(root / "ocr.json", ocr)
+    _write_json(root / "extractions.json", extractions)
+    _write_json(root / "decisions.json", decisions)
+    _write_json(root / "documents.json", documents)
+
+
+# --------------------------------------------------------------------------- #
+# Archived fixture: organized YYYY/MM sidecars + tossed/marked + registries.
+# Archived batch is batch_id = 5; serials 101..109 map to the sidecars'
+# original_filename values so the sanity/coverage checks line up.
+# --------------------------------------------------------------------------- #
+def build_archive(root: Path) -> None:
+    # (rel_folder, base_filename, sidecar dict)
+    docs: list[tuple[str, str, dict]] = []
+
+    def add(folder, base, sc):
+        docs.append((folder, base, sc))
+
+    # --- brand family: セブン-イレブン (two branches) + no-hyphen variant ---
+    add("2025/01", "2025年1月10日 13：26 セブン-イレブン 品川駅前店",
+        sidecar(original_filename="01102025132642_101.png", batch_id=5, serial=101,
+                review_=review(verdict="accepted", document_type="receipt",
+                               name="セブン-イレブン 品川駅前店", date="2025-01-10",
+                               time="13:26:42", cost=1260.0, currency="JPY"),
+                ocr=legacy_ocr_result(  # legacy superset shape (filename + raw extras)
+                    "セブン-イレブン 品川駅前店\n合計 ¥1,260",
+                    original_filename="01102025132642_101.png",
+                    boxes=[box("text", [[80, 40, 880, 104]], "セブン-イレブン 品川駅前店")]),
+                extraction=receipt_extraction(language="ja", date="2025-01-10", time="13:26:42",
+                                              name="セブン-イレブン 品川駅前店", currency="JPY",
+                                              cost=1260.0, address="東京都品川区サンプル町1-2-3",
+                                              items=[item("おにぎり", 580.0), item("コーヒー", 680.0)])))
+    add("2025/01", "2025年1月15日 09：05 セブン-イレブン 上野店",
+        sidecar(original_filename="01152025090500_102.png", batch_id=5, serial=102,
+                review_=review(verdict="accepted", document_type="receipt",
+                               name="セブン-イレブン 上野店", date="2025-01-15",
+                               time="09:05:00", cost=640.0, currency="JPY"),
+                ocr=ocr_result("セブン-イレブン 上野店\n合計 ¥640"),
+                extraction=receipt_extraction(language="ja", date="2025-01-15", time="09:05:00",
+                                              name="セブン-イレブン 上野店", currency="JPY",
+                                              cost=640.0, items=[item("パン", 640.0)])))
+    add("2025/02", "2025年2月20日 18：30 セブンイレブン 目黒店",
+        sidecar(original_filename="02202025183000_103.png", batch_id=5, serial=103,
+                review_=review(verdict="accepted", document_type="receipt",
+                               name="セブンイレブン 目黒店", date="2025-02-20",
+                               time="18:30:00", cost=980.0, currency="JPY"),
+                ocr=ocr_result("セブンイレブン 目黒店\n合計 ¥980"),
+                extraction=receipt_extraction(language="ja", date="2025-02-20", time="18:30:00",
+                                              name="セブンイレブン 目黒店", currency="JPY",
+                                              cost=980.0, items=[item("弁当", 980.0)])))
+
+    # --- CN, large cost (>= 450 CNY) ---
+    add("2024/11", "2024年11月3日 12：15 上海小笼包馆",
+        sidecar(original_filename="11032024121500_104.png", batch_id=5, serial=104,
+                review_=review(verdict="accepted", document_type="receipt",
+                               name="上海小笼包馆", date="2024-11-03",
+                               time="12:15:00", cost=520.0, currency="CNY"),
+                ocr=ocr_result("上海小笼包馆\n合计 ¥520"),
+                extraction=receipt_extraction(language="zh", date="2024-11-03", time="12:15:00",
+                                              name="上海小笼包馆", currency="CNY",
+                                              cost=520.0, items=[item("小笼包", 500.0), item("服务费", 20.0)])))
+
+    # --- EN, uncommon currency (MYR) ---
+    add("2023/05", "2023年5月18日 16：45 Tealive KLCC",
+        sidecar(original_filename="05182023164500_105.png", batch_id=5, serial=105,
+                review_=review(verdict="accepted", document_type="receipt",
+                               name="Tealive KLCC", date="2023-05-18",
+                               time="16:45:00", cost=15.90, currency="MYR"),
+                ocr=ocr_result("Tealive KLCC\nBrown Sugar Boba RM15.90"),
+                extraction=receipt_extraction(language="en", date="2023-05-18", time="16:45:00",
+                                              name="Tealive KLCC", currency="MYR",
+                                              cost=15.90, items=[item("Brown Sugar Boba", 15.90)])))
+
+    # --- multi-page archived doc (document_key "5:106-107") + name collision suffix ---
+    bic_ocr_1 = ocr_result("ビックカメラ 新宿店\nノートPC ¥98,000\n--- page 1 ---")
+    bic_ocr_2 = ocr_result("ビックカメラ 新宿店\nありがとうございました\n--- page 2 ---")
+    bic_ext = receipt_extraction(language="ja", date="2025-03-02", time="10:00:00",
+                                 name="ビックカメラ 新宿店", currency="JPY", cost=98000.0,
+                                 items=[item("ノートPC", 98000.0)])
+    add("2025/03", "2025年3月2日 10：00 ビックカメラ 新宿店",
+        sidecar(original_filename="03022025100000_106.png", batch_id=5, serial=106,
+                document_key="5:106-107",
+                review_=review(verdict="accepted", document_type="receipt",
+                               name="ビックカメラ 新宿店", date="2025-03-02",
+                               time="10:00:00", cost=98000.0, currency="JPY"),
+                ocr=bic_ocr_1, extraction=bic_ext))
+    add("2025/03", "2025年3月2日 10：00 ビックカメラ 新宿店 (2)",
+        sidecar(original_filename="03022025100000_107.png", batch_id=5, serial=107,
+                document_key="5:106-107",
+                review_=review(verdict="accepted", document_type="receipt",
+                               name="ビックカメラ 新宿店", date="2025-03-02",
+                               time="10:00:00", cost=98000.0, currency="JPY"),
+                ocr=bic_ocr_2, extraction=bic_ext))
+
+    # --- undated doc (-> YYYY/undated), document_type "other" ---
+    add("2025/undated", "2025年1月1日 14：20 ATM利用明細",
+        sidecar(original_filename="01012025142000_108.png", batch_id=5, serial=108,
+                review_=review(verdict="accepted", document_type="other",
+                               name="ATM利用明細", date="", time=""),
+                ocr=ocr_result("ATM利用明細\nお取扱い内容 お預入れ"),
+                extraction=other_extraction(language="ja", date="", time="", title="ATM利用明細")))
+
+    # --- another doc on Nov 03 in a different year (time-capsule match) ---
+    add("2023/11", "2023年11月3日 08：30 スターバックス 渋谷店",
+        sidecar(original_filename="11032023083000_109.png", batch_id=5, serial=109,
+                review_=review(verdict="accepted", document_type="receipt",
+                               name="スターバックス 渋谷店", date="2023-11-03",
+                               time="08:30:00", cost=540.0, currency="JPY"),
+                ocr=ocr_result("スターバックス 渋谷店\n合計 ¥540"),
+                extraction=receipt_extraction(language="ja", date="2023-11-03", time="08:30:00",
+                                              name="スターバックス 渋谷店", currency="JPY",
+                                              cost=540.0, items=[item("ラテ", 540.0)])))
+
+    archived_serials: dict[int, str] = {}
+    for folder, base, sc in docs:
+        d = root / folder
+        _write_png(d / f"{base}.png")
+        _write_json(d / f"{base}.json", sc)
+        archived_serials[sc["serial"]] = sc["original_filename"]
+
+    # --- tossed + marked (extra organized files, not part of the archived batch) ---
+    tossed_sc = sidecar(original_filename="08102025143000_201.png", batch_id=9, serial=201,
+                        review_=review(verdict="tossed", document_type="receipt",
+                                       name="(blank receipt)", date="2025-08-10",
+                                       time="14:30:00", cost=0.0, currency="JPY"),
+                        ocr=ocr_result("(blank)"))
+    _write_png(root / "tossed" / "08102025143000_201.png")
+    _write_json(root / "tossed" / "08102025143000_201.json", tossed_sc)
+
+    marked_sc = sidecar(original_filename="08102025142000_202.png", batch_id=9, serial=202,
+                        review_=review(verdict="marked", document_type="receipt",
+                                       name="ローソン 池袋店", date="2025-08-10",
+                                       time="14:20:00", cost=300.0, currency="JPY",
+                                       comment="needs re-OCR (half-width katakana)"),
+                        ocr=ocr_result("ﾛｰｿﾝ 池袋店\n合計 ¥300"))
+    _write_png(root / "marked" / "08102025142000_202.png")
+    _write_json(root / "marked" / "08102025142000_202.json", marked_sc)
+
+    # --- root: batches.json (archived batch 5) ---
+    _write_json(root / "batches.json", {
+        "batches": [
+            {
+                "batch_id": 5,
+                "start_datetime": "2023-05-18 16:45:00",
+                "end_datetime": "2025-03-02 10:00:00",
+                "files": dict(sorted(archived_serials.items())),
+                "archived": True,
+            }
+        ]
+    })
+
+    # --- root: documents.json (the multi-page group) ---
+    _write_json(root / "documents.json", {"groups": [["5:106", "5:107"]]})
+
+    # --- root: brand_directory.json ---
+    _write_json(root / "brand_directory.json", {
+        "brands": [
+            {"id": "seven-eleven", "label": "セブン-イレブン",
+             "prefixes": ["セブン-イレブン", "セブンイレブン"]},
+            {"id": "tealive", "label": "Tealive", "prefixes": ["Tealive"]},
+            {"id": "biccamera", "label": "ビックカメラ", "prefixes": ["ビックカメラ"]},
+        ]
+    })
+
+    # --- root: name_normalizations.json ---
+    _write_json(root / "name_normalizations.json",
+                {"セブンイレブン 目黒店": "セブン-イレブン 目黒店"})
+
+    # --- root: distinct_pairs.json (sorted list of sorted pairs) ---
+    _write_json(root / "distinct_pairs.json",
+                [sorted(["セブン-イレブン 品川駅前店", "上海小笼包馆"])])
+
+    # --- root: smart_match_cache.json ---
+    _write_json(root / "smart_match_cache.json", {
+        "5:104": {"extracted": "上海小笼包館", "extracted_phone": "", "confirmed": "上海小笼包馆"},
+    })
+
+    # --- root: name_embeddings.npz (tiny deterministic vectors) ---
+    emb_names = ["セブン-イレブン 品川駅前店", "セブン-イレブン 上野店", "上海小笼包馆"]
+    rng = np.random.default_rng(0)
+    matrix = rng.standard_normal((len(emb_names), 8)).astype(np.float32)
+    root.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(root / "name_embeddings.npz",
+                        names=np.array(emb_names), matrix=matrix)
+
+
+def main() -> int:
+    ingest_root = FIXTURES / "ingest"
+    archive_root = FIXTURES / "archive"
+    build_ingest(ingest_root)
+    build_archive(archive_root)
+    print(f"Wrote ingest fixture  -> {ingest_root}")
+    print(f"Wrote archive fixture -> {archive_root}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

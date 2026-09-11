@@ -1,0 +1,60 @@
+{
+  "1:1": {
+    "markdown": "セブン-イレブン 品川駅前店\nおにぎり ¥580\nコーヒー ¥680\n合計 ¥1,260",
+    "succeeded": true,
+    "boxes": [
+      {
+        "ref_type": "title",
+        "coords": [
+          [
+            80,
+            40,
+            880,
+            104
+          ]
+        ],
+        "text": "セブン-イレブン 品川駅前店"
+      },
+      {
+        "ref_type": "text",
+        "coords": [
+          [
+            80,
+            220,
+            470,
+            258
+          ]
+        ],
+        "text": "合計 ¥1,260"
+      }
+    ]
+  },
+  "1:2": {
+    "markdown": "セブン-イレブン 品川駅前店\nお茶 ¥1,260\n合計 ¥1,260",
+    "succeeded": true
+  },
+  "1:3": {
+    "markdown": "上海小笼包馆\n小笼包 ¥500\n服务费 ¥20\n合计 ¥520",
+    "succeeded": true
+  },
+  "1:4": {
+    "markdown": "Tealive KLCC\nBrown Sugar Boba RM15.90\n--- page 1 ---",
+    "succeeded": true
+  },
+  "1:5": {
+    "markdown": "Tealive KLCC\nThank you\n--- page 2 ---",
+    "succeeded": true
+  },
+  "1:6": {
+    "markdown": "@@@##garbled%%%\n\n\n###",
+    "succeeded": true
+  },
+  "1:7": {
+    "markdown": "John Doe\nAcme Corp\nSenior Engineer",
+    "succeeded": true
+  },
+  "1:8": {
+    "markdown": "(faded receipt)\n???",
+    "succeeded": true
+  }
+}
