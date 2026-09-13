@@ -54,13 +54,27 @@ def top_merchants_endpoint(
     return df_records(analytics.top_merchants(receipts, key_col, rank_by, top_n))
 
 
+def _timeline(records):
+    """(first, last) month of any dated document in the view — the shared
+    timeline for the Dashboard's side-by-side monthly charts."""
+    dated = records["parsed_date"].dropna() if not records.empty else None
+    if dated is None or dated.empty:
+        return None, None
+    return dated.min().to_period("M"), dated.max().to_period("M")
+
+
 @router.get("/analytics/monthly-spend")
 def monthly_spend_endpoint(
     year: int | None = None,
     output_path: Path = Depends(get_output_path),
 ):
-    receipts = _receipts(output_path, year)
-    return df_records(analytics.monthly_spend(receipts)) if not receipts.empty else []
+    records = _records(output_path, year)
+    receipts = records[records["document_type"] == "receipt"] if not records.empty else records
+    if receipts.empty:
+        return []
+    start, end = _timeline(records)
+    return df_records(analytics.complete_monthly_series(
+        analytics.monthly_spend(receipts), "spend", start=start, end=end))
 
 
 @router.get("/analytics/monthly-volume")
@@ -68,8 +82,12 @@ def monthly_volume_endpoint(
     year: int | None = None,
     output_path: Path = Depends(get_output_path),
 ):
-    df = _records(output_path, year)
-    return df_records(analytics.monthly_volume(df)) if not df.empty else []
+    records = _records(output_path, year)
+    if records.empty:
+        return []
+    start, end = _timeline(records)
+    return df_records(analytics.complete_monthly_series(
+        analytics.monthly_volume(records), "count", start=start, end=end))
 
 
 @router.get("/years")
@@ -145,7 +163,7 @@ def merchant_endpoint(
 
     return {
         "metrics": to_jsonable(analytics.merchant_metrics(subset)),
-        "trend": df_records(analytics.monthly_spend(dated)),
+        "trend": df_records(analytics.complete_monthly_series(analytics.monthly_spend(dated), "spend")),
         "cadence": df_records(analytics.visit_cadence(dated)) if len(dated) >= 2 else [],
         "items": df_records(analytics.item_breakdown(merchant_items)) if not merchant_items.empty else [],
         "receipts": df_records(gallery),

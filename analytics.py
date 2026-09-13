@@ -1,7 +1,8 @@
 """Pure aggregation helpers for the visualization views.
 
 Extracted verbatim from the Streamlit pages so the same computations can be
-unit-tested and reused by the web API (``api/``). No ``streamlit`` import; every
+unit-tested and reused by the web API (``api/``); ``complete_monthly_series``
+was added for the web charts. No ``streamlit`` import; every
 function takes/returns plain pandas/Python values.
 """
 
@@ -49,6 +50,46 @@ def monthly_volume(documents: pd.DataFrame) -> pd.DataFrame:
     vol.columns = ["period", "count"]
     vol["month_ts"] = vol["period"].dt.to_timestamp()
     return vol
+
+
+def complete_monthly_series(
+    monthly: pd.DataFrame,
+    value_col: str,
+    fill: float = 0,
+    start=None,
+    end=None,
+) -> pd.DataFrame:
+    """Give every month in the series' range a row.
+
+    REQUIREMENT: monthly charts must preserve the passage of time. Aggregations
+    only emit months that have documents, and a chart with a category x-axis then
+    silently drops the empty months — e.g. a years-long pause in archiving
+    collapses to nothing and the sense of time is lost. Missing months get
+    ``fill`` (0 spend / 0 documents), so gaps render as empty space.
+
+    ``start`` / ``end`` (anything ``pd.Period`` accepts) widen the range beyond
+    the data — used to put side-by-side charts on one shared timeline, so the same
+    month sits at the same position in each. They never narrow it.
+
+    Takes the shape produced by ``monthly_spend`` / ``monthly_volume`` (``period``,
+    ``<value_col>``, ``month_ts``) and returns the same columns, in order.
+    """
+    if monthly.empty:
+        return monthly
+    first, last = monthly["period"].min(), monthly["period"].max()
+    if start is not None:
+        first = min(first, pd.Period(start, freq="M"))
+    if end is not None:
+        last = max(last, pd.Period(end, freq="M"))
+    months = pd.period_range(first, last, freq="M")
+    out = (
+        monthly.set_index("period")[[value_col]]
+        .reindex(months, fill_value=fill)
+        .rename_axis("period")
+        .reset_index()
+    )
+    out["month_ts"] = out["period"].dt.to_timestamp()
+    return out
 
 
 # --- merchant profile ------------------------------------------------------

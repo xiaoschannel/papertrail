@@ -39,6 +39,64 @@ def test_monthly_volume(api_client):
     assert jan["count"] == 2   # 品川 + 上野; undated documents have no month
 
 
+def _months(rows):
+    return [str(r["month_ts"])[:7] for r in rows]
+
+
+def _assert_contiguous(rows):
+    import pandas as pd
+
+    months = _months(rows)
+    expected = [str(p) for p in pd.period_range(months[0], months[-1], freq="M")]
+    assert months == expected, "a monthly series skipped months — time would be compressed"
+
+
+def test_monthly_series_keep_time_gaps(api_client):
+    # REQUIREMENT: empty months must be present so gaps (e.g. an archiving pause)
+    # show as empty space instead of silently collapsing on the chart.
+    # Fixture documents span 2023-05 .. 2025-03 with long empty stretches.
+    spend = api_client.get("/api/analytics/monthly-spend").json()
+    volume = api_client.get("/api/analytics/monthly-volume").json()
+    for series in (spend, volume):
+        _assert_contiguous(series)
+        assert _months(series)[0] == "2023-05" and _months(series)[-1] == "2025-03"
+        assert len(series) == 23
+
+    gap_month = next(r for r in spend if _months([r])[0] == "2024-06")
+    assert gap_month["spend"] == 0
+    assert next(r for r in volume if _months([r])[0] == "2024-06")["count"] == 0
+
+
+def test_dashboard_charts_share_one_timeline(api_client, configured_archive):
+    # Side-by-side charts must put the same month at the same position, even when
+    # non-receipt documents extend the timeline beyond the first/last receipt.
+    from models import ReviewDecision, Sidecar
+
+    early = configured_archive / "2022" / "01"
+    early.mkdir(parents=True)
+    (early / "2022年1月15日 10：00 年金定期便.json").write_text(Sidecar(
+        original_filename="01152022100000_900.png", batch_id=9, serial=900,
+        review=ReviewDecision(verdict="accepted", document_type="other",
+                              name="年金定期便", date="2022-01-15", time="10:00"),
+    ).model_dump_json(), encoding="utf-8")
+
+    spend = api_client.get("/api/analytics/monthly-spend").json()
+    volume = api_client.get("/api/analytics/monthly-volume").json()
+    assert _months(volume)[0] == "2022-01"          # the non-receipt starts the timeline
+    assert _months(spend) == _months(volume)        # spend is padded onto the same one
+    assert spend[0]["spend"] == 0
+
+    for params in ({"year": 2023}, {"year": 2025}):
+        spend = api_client.get("/api/analytics/monthly-spend", params=params).json()
+        volume = api_client.get("/api/analytics/monthly-volume", params=params).json()
+        assert _months(spend) == _months(volume), f"timelines differ for {params}"
+
+
+def test_merchant_trend_keeps_time_gaps(api_client):
+    trend = api_client.get("/api/analytics/merchant", params={"brand_id": "seven-eleven"}).json()["trend"]
+    _assert_contiguous(trend)
+
+
 def test_merchant_profile_by_brand(api_client):
     resp = api_client.get("/api/analytics/merchant", params={"brand_id": "seven-eleven"})
     assert resp.status_code == 200
