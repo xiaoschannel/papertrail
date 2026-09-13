@@ -13,6 +13,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 
 from api.routers import config, media, viz
+from api.schemas import Health
 
 
 def create_app() -> FastAPI:
@@ -21,7 +22,7 @@ def create_app() -> FastAPI:
     app.include_router(viz.router)
     app.include_router(media.router)
 
-    @app.get("/api/health")
+    @app.get("/api/health", response_model=Health)
     def health() -> dict:
         return {"status": "ok"}
 

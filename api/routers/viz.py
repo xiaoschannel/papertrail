@@ -4,12 +4,16 @@ from __future__ import annotations
 
 from datetime import date
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 import analytics
 from api import cache
 from api.deps import get_output_path
+from api.schemas import (
+    BrandTotals, DateRange, MerchantProfile, MonthlySpend, MonthlyVolume, NameTotals, VizItem, VizRecord,
+)
 from api.serialization import df_records, to_jsonable
 
 router = APIRouter(prefix="/api", tags=["visualize"])
@@ -29,20 +33,20 @@ def _receipts(output_path: Path, year: int | None = None):
     return df[df["document_type"] == "receipt"]
 
 
-@router.get("/viz/records")
+@router.get("/viz/records", response_model=list[VizRecord])
 def viz_records_endpoint(output_path: Path = Depends(get_output_path)):
     return df_records(cache.viz_records(output_path))
 
 
-@router.get("/viz/items")
+@router.get("/viz/items", response_model=list[VizItem])
 def viz_items_endpoint(output_path: Path = Depends(get_output_path)):
     return df_records(cache.viz_items(output_path))
 
 
-@router.get("/analytics/top-merchants")
+@router.get("/analytics/top-merchants", response_model=list[BrandTotals] | list[NameTotals])
 def top_merchants_endpoint(
-    group_by: str = Query("brand", pattern="^(brand|name)$"),
-    rank_by: str = Query("total_spend", pattern="^(total_spend|visit_count)$"),
+    group_by: Literal["brand", "name"] = "brand",
+    rank_by: Literal["total_spend", "visit_count"] = "total_spend",
     top_n: int = 20,
     year: int | None = None,
     output_path: Path = Depends(get_output_path),
@@ -63,7 +67,7 @@ def _timeline(records):
     return dated.min().to_period("M"), dated.max().to_period("M")
 
 
-@router.get("/analytics/monthly-spend")
+@router.get("/analytics/monthly-spend", response_model=list[MonthlySpend])
 def monthly_spend_endpoint(
     year: int | None = None,
     output_path: Path = Depends(get_output_path),
@@ -77,7 +81,7 @@ def monthly_spend_endpoint(
         analytics.monthly_spend(receipts), "spend", start=start, end=end))
 
 
-@router.get("/analytics/monthly-volume")
+@router.get("/analytics/monthly-volume", response_model=list[MonthlyVolume])
 def monthly_volume_endpoint(
     year: int | None = None,
     output_path: Path = Depends(get_output_path),
@@ -90,7 +94,7 @@ def monthly_volume_endpoint(
         analytics.monthly_volume(records), "count", start=start, end=end))
 
 
-@router.get("/years")
+@router.get("/years", response_model=list[int])
 def years_endpoint(output_path: Path = Depends(get_output_path)):
     """Distinct years present in the archive, newest first."""
     df = cache.viz_records(output_path)
@@ -100,7 +104,7 @@ def years_endpoint(output_path: Path = Depends(get_output_path)):
     return sorted(years, reverse=True)
 
 
-@router.get("/date-range")
+@router.get("/date-range", response_model=DateRange)
 def date_range_endpoint(output_path: Path = Depends(get_output_path)):
     """Earliest/latest dated document — lets the UI open on a populated period
     instead of an empty current month."""
@@ -113,9 +117,9 @@ def date_range_endpoint(output_path: Path = Depends(get_output_path)):
     return {"min": to_jsonable(dated.min()), "max": to_jsonable(dated.max())}
 
 
-@router.get("/merchants")
+@router.get("/merchants", response_model=list[BrandTotals] | list[NameTotals])
 def merchants_endpoint(
-    group_by: str = Query("brand", pattern="^(brand|name)$"),
+    group_by: Literal["brand", "name"] = "brand",
     output_path: Path = Depends(get_output_path),
 ):
     """Every merchant/brand with totals — the selector list for the merchant page.
@@ -131,7 +135,7 @@ def merchants_endpoint(
     return df_records(lb)
 
 
-@router.get("/analytics/merchant")
+@router.get("/analytics/merchant", response_model=MerchantProfile)
 def merchant_endpoint(
     name: str | None = None,
     brand_id: str | None = None,
@@ -170,7 +174,7 @@ def merchant_endpoint(
     }
 
 
-@router.get("/analytics/timecapsule")
+@router.get("/analytics/timecapsule", response_model=list[VizRecord])
 def timecapsule_endpoint(
     month: int = Query(..., ge=1, le=12),
     day: int = Query(..., ge=1, le=31),
@@ -183,7 +187,7 @@ def timecapsule_endpoint(
     return df_records(analytics.timecapsule_matches(dated, date(2000, month, day)))
 
 
-@router.get("/analytics/calendar")
+@router.get("/analytics/calendar", response_model=dict[str, list[VizRecord]])
 def calendar_endpoint(
     start: str,
     end: str,
@@ -201,7 +205,7 @@ def calendar_endpoint(
     return {d.isoformat(): [to_jsonable(r) for r in recs] for d, recs in by_date.items()}
 
 
-@router.get("/receipt")
+@router.get("/receipt", response_model=VizRecord)
 def receipt_endpoint(
     file: str = Query(...),
     output_path: Path = Depends(get_output_path),

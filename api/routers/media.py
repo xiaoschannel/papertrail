@@ -22,13 +22,13 @@ def _safe_file(root: Path, rel: str) -> Path:
     return target
 
 
-@router.get("/archived/{rel_path:path}")
+@router.get("/archived/{rel_path:path}", response_class=FileResponse)
 def archived_media(rel_path: str, output_path: Path = Depends(get_output_path)):
     """Serve a file from the organized YYYY/MM (post-archive) tree."""
     return FileResponse(str(_safe_file(output_path, rel_path)))
 
 
-@router.get("/input/{filename:path}")
+@router.get("/input/{filename:path}", response_class=FileResponse)
 def input_media(filename: str, input_path: Path = Depends(get_input_path)):
     """Serve an original scan (pre-archive) by filename."""
     return FileResponse(str(_safe_file(input_path, filename)))
