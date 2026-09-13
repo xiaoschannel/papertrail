@@ -1,0 +1,238 @@
+/* ---------------------------------------------------------------------------
+   Papertrail web UI
+
+   LAYOUT DISCIPLINE (the rules that keep any one component from eating the page):
+     1. Charts live in FIXED-height boxes  -> a chart never grows with its data.
+     2. Tables get max-height + internal scroll + sticky header.
+     3. Receipt images fill their width and are capped by a MAX-height that is a
+        proportion of that width (cropped at the bottom, top always visible, with a
+        cut-off cue). Never a fixed height. Lives in components/DocumentCard.css.
+        Exception: the scan on Receipt Detail is shown IN FULL (bounded by width,
+        never cropped or scrolled) — seeing the whole receipt is that page's job.
+     4. Long text (OCR dumps) is capped and scrolls inside its own box.
+     5. Calendar day cells are capped and scroll internally.
+     6. Main content has a max-width so lines stay readable on wide monitors.
+        Exception: the Calendar (.main-inner.wide) is a grid of cards, not text.
+   If you add a component, give it a bound. Unbounded height is the bug.
+--------------------------------------------------------------------------- */
+
+:root {
+  /* Tells the browser the page supports both themes, so native UI (scrollbars,
+     date pickers, select dropdowns) renders dark in dark mode instead of light. */
+  color-scheme: light dark;
+  --scroll-thumb: #c9ced6;
+  --scroll-thumb-hover: #aab1bc;
+  --bg: #f7f7f8;
+  --panel: #ffffff;
+  --panel-2: #f1f2f4;
+  --border: #e2e4e8;
+  --text: #1c1e21;
+  --muted: #6b7280;
+  --accent: #3b7ddd;
+  --accent-soft: #e8f0fd;
+  --neg: #dc3545;
+  --radius: 10px;
+  --sidebar-w: 216px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --scroll-thumb: #333b4a;
+    --scroll-thumb-hover: #4a5468;
+    --bg: #0e1117;
+    --panel: #161a22;
+    --panel-2: #1d222c;
+    --border: #2a3040;
+    --text: #e6e8ec;
+    --muted: #98a2b3;
+    --accent: #5b9bff;
+    --accent-soft: #1b2740;
+  }
+}
+
+* { box-sizing: border-box; }
+
+/* --- scrollbars: thin, themed, brighten when their area is hovered -------- */
+html { scrollbar-color: var(--scroll-thumb) transparent; }   /* inherited */
+* { scrollbar-width: thin; }
+.sidebar:hover, .cal-cell:hover, .table-wrap:hover, .textdump:hover {
+  scrollbar-color: var(--scroll-thumb-hover) transparent;
+}
+@supports not (scrollbar-color: auto) {          /* older Safari */
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--scroll-thumb); border-radius: 8px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--scroll-thumb-hover); }
+}
+
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", "Noto Sans JP", "Yu Gothic UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* --- app shell: fixed sidebar, independently scrolling main --------------- */
+.app { display: grid; grid-template-columns: var(--sidebar-w) 1fr; height: 100%; }
+
+.sidebar {
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  padding: 18px 12px;
+  overflow-y: auto;
+}
+.brand { font-size: 17px; font-weight: 650; padding: 0 8px 4px; letter-spacing: .2px; }
+.brand small { display: block; font-weight: 400; font-size: 11px; color: var(--muted); font-style: italic; }
+.navgroup { margin-top: 18px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); padding: 0 8px 6px; }
+.navlink {
+  display: block; padding: 7px 10px; border-radius: 7px; color: var(--text);
+  text-decoration: none; font-size: 13.5px;
+}
+.navlink:hover { background: var(--panel-2); }
+.navlink.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+
+.main { overflow-y: auto; padding: 22px 26px 60px; }
+.main-inner { max-width: 1400px; margin: 0 auto; }
+/* the cap keeps text lines readable; a calendar grid isn't text, so it takes
+   the full width (on a 2560px screen the cap would leave ~900px unused) */
+.main-inner.wide { max-width: none; }
+
+h1 { font-size: 26px; margin: 0 0 4px; font-weight: 650; }
+h2 { font-size: 16px; margin: 0; font-weight: 620; }
+.page-sub { color: var(--muted); margin: 0 0 18px; font-size: 13px; }
+
+/* --- cards ---------------------------------------------------------------- */
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px 12px;
+  min-width: 0;            /* lets grid children shrink instead of overflowing */
+}
+.card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.card-head .hint { font-size: 12px; color: var(--muted); }
+
+.grid { display: grid; gap: 16px; }
+.grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.grid-sidebar { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); }
+@media (max-width: 1080px) {
+  .grid-2, .grid-sidebar { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* --- RULE 1: charts get a fixed height, never data-driven ---------------- */
+.chart-box { height: 260px; width: 100%; }
+/* tall = ranking charts: must fit one legible label per bar (20 bars ~ 21px each) */
+.chart-box.tall { height: 460px; }
+
+/* --- RULE 2: tables scroll inside themselves ----------------------------- */
+.table-wrap { max-height: 340px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
+.table-wrap.short { max-height: 240px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+thead th {
+  position: sticky; top: 0; z-index: 1;
+  background: var(--panel-2); text-align: left; font-weight: 600;
+  padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+tbody td { padding: 7px 10px; border-bottom: 1px solid var(--border); }
+tbody tr:last-child td { border-bottom: 0; }
+tbody tr:hover { background: var(--panel-2); }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+/* long merchant names truncate rather than stretching the table */
+td.ellipsis { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+td.ellipsis > a { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Fixed layout = columns can never be pushed out of view by a long CJK name.
+   Pair with <colgroup>; the name column absorbs the slack and ellipsises. */
+table.fixed { table-layout: fixed; }
+table.fixed td, table.fixed th { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* --- metric tiles --------------------------------------------------------- */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.tile { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; min-width: 0; }
+.tile .label { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.tile .value { font-size: 20px; font-weight: 650; margin-top: 3px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+
+/* --- RULE 3: receipt cards / capped images -> components/DocumentCard.css ---- */
+
+/* --- Receipt Detail: scan | details | spacer ------------------------------
+   Three equal columns; the third is reserved (empty for now). The scan column's
+   width is what sets the zoom, and the scan is never cropped. max-width keeps it
+   from ballooning when the columns collapse on narrow screens.              */
+.detail-layout {
+  display: grid; gap: 16px; align-items: start;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+@media (max-width: 1080px) {
+  .detail-layout { grid-template-columns: minmax(0, 1fr); }
+  .detail-layout > .spacer { display: none; }
+}
+.scan-full { display: grid; gap: 10px; justify-items: center; }
+.scan-full img {
+  width: 100%; max-width: 440px; height: auto; display: block;
+  border-radius: 6px; background: #fff;
+}
+
+/* --- RULE 4: long text scrolls in place ---------------------------------- */
+.textdump {
+  max-height: 300px; overflow: auto; background: var(--panel-2);
+  border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px;
+  font: 12px/1.55 ui-monospace, "Cascadia Code", Consolas, monospace;
+  white-space: pre-wrap; word-break: break-word; margin: 0;
+}
+
+/* --- RULE 5: calendar cells cap + scroll --------------------------------- */
+.cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
+.cal-head { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; padding-bottom: 2px; }
+.cal-cell {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+  padding: 2px; min-height: 92px; max-height: 780px; overflow-y: auto; min-width: 0;
+  container-type: inline-size;   /* lets .cal-items decide columns by cell width */
+}
+.cal-cell.empty { background: transparent; border-style: dashed; opacity: .45; }
+.cal-daynum { font-size: 15px; font-weight: 650; color: var(--text); padding: 3px 5px 4px; }
+
+/* Receipts in a day. Gaps are tight on purpose: each card's hover outline, not
+   whitespace, is what separates them (card<->card and card<->cell edge).
+
+   Two columns follow the Streamlit month view (pages/visualize/calendar.py,
+   analytics.balance_into_columns): only month view, only days with 2+ receipts
+   (the JSX adds .split), so a lone receipt stays full width. Added: only once the
+   CELL is wide enough for each column to stay >= ~120px (2 x 120 + gap = 248px).
+   On a 2560px window that's two ~150px columns; at 1920px and below days stay
+   single so receipts don't shrink. Balanced by actual rendered height, where
+   Streamlit used an aspect-ratio estimate. */
+.cal-items > .doc-card { margin-bottom: 3px; break-inside: avoid; }
+@container (min-width: 248px) {
+  .cal-items.split { columns: 2; column-gap: 3px; }
+}
+
+/* --- controls ------------------------------------------------------------- */
+.controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 16px; }
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field label { font-size: 11.5px; color: var(--muted); }
+select, input[type="date"], input[type="text"] {
+  background: var(--panel); color: var(--text); border: 1px solid var(--border);
+  border-radius: 7px; padding: 6px 9px; font: inherit; font-size: 13px; max-width: 320px;
+}
+button {
+  background: var(--panel); color: var(--text); border: 1px solid var(--border);
+  border-radius: 7px; padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer;
+}
+button:hover:not(:disabled) { background: var(--panel-2); }
+button:disabled { opacity: .45; cursor: default; }
+.segmented { display: inline-flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
+.segmented button { border: 0; border-radius: 0; border-right: 1px solid var(--border); }
+.segmented button:last-child { border-right: 0; }
+.segmented button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+
+/* --- misc ----------------------------------------------------------------- */
+.state { color: var(--muted); padding: 28px 0; font-size: 13.5px; }
+.state.error { color: var(--neg); }
+.rowlink { color: var(--accent); text-decoration: none; }
+.rowlink:hover { text-decoration: underline; }
+.pager { display: flex; gap: 10px; align-items: center; justify-content: center; margin-top: 12px; color: var(--muted); font-size: 12.5px; }
+.stack { display: flex; flex-direction: column; gap: 16px; }
+.neg { color: var(--neg); }

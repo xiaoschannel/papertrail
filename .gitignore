@@ -3,3 +3,5 @@ __pycache__/
 config.json
 ROADMAP.md
 .claude/
+node_modules/
+frontend/dist/
