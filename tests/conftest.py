@@ -68,6 +68,8 @@ def api_client(configured_archive: Path):
     """FastAPI TestClient wired to the fixture archive via patched config."""
     from fastapi.testclient import TestClient
 
+    from api import cache
     from api.main import create_app
 
+    cache.clear()  # module-level cache: never let one test see another's archive
     return TestClient(create_app())

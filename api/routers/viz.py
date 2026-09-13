@@ -8,15 +8,15 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 import analytics
+from api import cache
 from api.deps import get_output_path
 from api.serialization import df_records, to_jsonable
-from viz_records import build_viz_items, build_viz_records
 
 router = APIRouter(prefix="/api", tags=["visualize"])
 
 
 def _records(output_path: Path, year: int | None = None):
-    df = build_viz_records(output_path)
+    df = cache.viz_records(output_path)
     if df.empty or year is None:
         return df
     return df[df["year"] == year]
@@ -31,12 +31,12 @@ def _receipts(output_path: Path, year: int | None = None):
 
 @router.get("/viz/records")
 def viz_records_endpoint(output_path: Path = Depends(get_output_path)):
-    return df_records(build_viz_records(output_path))
+    return df_records(cache.viz_records(output_path))
 
 
 @router.get("/viz/items")
 def viz_items_endpoint(output_path: Path = Depends(get_output_path)):
-    return df_records(build_viz_items(output_path))
+    return df_records(cache.viz_items(output_path))
 
 
 @router.get("/analytics/top-merchants")
@@ -75,7 +75,7 @@ def monthly_volume_endpoint(
 @router.get("/years")
 def years_endpoint(output_path: Path = Depends(get_output_path)):
     """Distinct years present in the archive, newest first."""
-    df = build_viz_records(output_path)
+    df = cache.viz_records(output_path)
     if df.empty:
         return []
     years = df["year"].dropna().astype(int).unique().tolist()
@@ -86,7 +86,7 @@ def years_endpoint(output_path: Path = Depends(get_output_path)):
 def date_range_endpoint(output_path: Path = Depends(get_output_path)):
     """Earliest/latest dated document — lets the UI open on a populated period
     instead of an empty current month."""
-    df = build_viz_records(output_path)
+    df = cache.viz_records(output_path)
     if df.empty:
         return {"min": None, "max": None}
     dated = df["parsed_date"].dropna()
@@ -129,7 +129,7 @@ def merchant_endpoint(
         raise HTTPException(status_code=404, detail="no receipts for selection")
 
     dated = subset[subset["parsed_date"].notna()].sort_values("parsed_date")
-    items_df = build_viz_items(output_path)
+    items_df = cache.viz_items(output_path)
     merchant_items = (
         items_df[items_df["merchant"].isin(set(subset["name"]))]
         if not items_df.empty else items_df
@@ -158,7 +158,7 @@ def timecapsule_endpoint(
     day: int = Query(..., ge=1, le=31),
     output_path: Path = Depends(get_output_path),
 ):
-    df = build_viz_records(output_path)
+    df = cache.viz_records(output_path)
     if df.empty:
         return []
     dated = df[df["parsed_date"].notna()]
@@ -175,7 +175,7 @@ def calendar_endpoint(
         range_start, range_end = date.fromisoformat(start), date.fromisoformat(end)
     except ValueError:
         raise HTTPException(status_code=400, detail="start/end must be ISO dates")
-    df = build_viz_records(output_path)
+    df = cache.viz_records(output_path)
     if df.empty:
         return {}
     dated = df[df["parsed_date"].notna()]
@@ -188,7 +188,7 @@ def receipt_endpoint(
     file: str = Query(...),
     output_path: Path = Depends(get_output_path),
 ):
-    df = build_viz_records(output_path)
+    df = cache.viz_records(output_path)
     if not df.empty:
         match = df[df["filename"] == file]
         if not match.empty:
