@@ -1,6 +1,29 @@
-"""Every JSON endpoint declares a typed response model in the OpenAPI schema."""
+"""OpenAPI contract: every JSON endpoint has a typed response, and the committed snapshot the
+frontend's TypeScript types are generated from is current."""
+
+import json
+import sys
+from pathlib import Path
 
 from api.main import create_app
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT / "tools"))
+
+import export_openapi  # noqa: E402
+
+
+REGENERATE = (
+    "run `python tools/export_openapi.py` and `npm --prefix frontend run gen:api`. "
+    "If no API code changed, CI probably installed a newer fastapi/pydantic than you have "
+    "(requirements are unpinned): upgrade them locally first"
+)
+
+
+def test_openapi_snapshot_is_current():
+    assert export_openapi.SNAPSHOT.is_file(), f"frontend/openapi.json is missing: {REGENERATE}"
+    committed = json.loads(export_openapi.SNAPSHOT.read_text(encoding="utf-8"))
+    assert committed == create_app().openapi(), f"frontend/openapi.json is stale: {REGENERATE}"
 
 
 def loose_nodes(schema, where="response"):

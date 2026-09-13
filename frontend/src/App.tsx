@@ -1,9 +1,9 @@
 import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
-import Dashboard from './pages/Dashboard.jsx'
-import Merchant from './pages/Merchant.jsx'
-import CalendarPage from './pages/CalendarPage.jsx'
-import TimeCapsule from './pages/TimeCapsule.jsx'
-import Receipt from './pages/Receipt.jsx'
+import Dashboard from './pages/Dashboard.tsx'
+import Merchant from './pages/Merchant.tsx'
+import CalendarPage from './pages/CalendarPage.tsx'
+import TimeCapsule from './pages/TimeCapsule.tsx'
+import Receipt from './pages/Receipt.tsx'
 
 const NAV = [
   {

@@ -4,15 +4,17 @@ import { useQuery } from '@tanstack/react-query'
 import {
   Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
-import { api, monthLabel, num } from '../api.js'
+import { api, type GroupBy, type RankBy } from '../api/client.ts'
+import { totalsLabel, type MerchantTotals } from '../api/types.ts'
+import { monthLabel, num } from '../format.ts'
 import {
   Card, ChartCard, Empty, ErrorState, Loading, axisProps, niceAxis, tooltipStyle, truncTick,
-} from '../components/ui.jsx'
+} from '../components/ui.tsx'
 
 export default function Dashboard() {
-  const [year, setYear] = useState('')            // '' = all years
-  const [rankBy, setRankBy] = useState('total_spend')
-  const [groupBy, setGroupBy] = useState('brand')
+  const [year, setYear] = useState<number | undefined>(undefined)   // undefined = all years
+  const [rankBy, setRankBy] = useState<RankBy>('total_spend')
+  const [groupBy, setGroupBy] = useState<GroupBy>('brand')
 
   const years = useQuery({ queryKey: ['years'], queryFn: api.years })
   const spend = useQuery({ queryKey: ['monthly-spend', year], queryFn: () => api.monthlySpend(year) })
@@ -33,7 +35,7 @@ export default function Dashboard() {
       <div className="controls">
         <div className="field">
           <label htmlFor="yr">View</label>
-          <select id="yr" value={year} onChange={(e) => setYear(e.target.value)}>
+          <select id="yr" value={year ?? ''} onChange={(e) => setYear(e.target.value ? Number(e.target.value) : undefined)}>
             <option value="">All years</option>
             {(years.data || []).map((y) => (
               <option key={y} value={y}>{y}</option>
@@ -43,7 +45,7 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-2" style={{ marginBottom: 16 }}>
-        <ChartCard title="Monthly Spending" hint={year || 'all years'}>
+        <ChartCard title="Monthly Spending" hint={year ?? 'all years'}>
           {spend.isLoading ? <Loading what="spending" />
             : spend.isError ? <ErrorState error={spend.error} />
             : !spend.data?.length ? <Empty>No dated receipts.</Empty>
@@ -57,7 +59,7 @@ export default function Dashboard() {
                          tickFormatter={(v) => num(v)} width={62} {...axisProps} />
                   <Tooltip {...tooltipStyle}
                            labelFormatter={monthLabel}
-                           formatter={(v) => [num(v), 'Spend']} />
+                           formatter={(v) => [num(Number(v)), 'Spend']} />
                   <Bar dataKey="spend" fill="var(--accent)" radius={[3, 3, 0, 0]} isAnimationActive={false} />
                 </BarChart>
               </ResponsiveContainer>
@@ -77,7 +79,7 @@ export default function Dashboard() {
                   <YAxis width={42} {...axisProps} />
                   <Tooltip {...tooltipStyle}
                            labelFormatter={monthLabel}
-                           formatter={(v) => [num(v), 'Documents']} />
+                           formatter={(v) => [num(Number(v)), 'Documents']} />
                   <Bar dataKey="count" fill="var(--muted)" radius={[3, 3, 0, 0]} isAnimationActive={false} />
                 </BarChart>
               </ResponsiveContainer>
@@ -119,7 +121,7 @@ export default function Dashboard() {
                     <YAxis type="category" dataKey={keyCol} width={150} interval={0}
                            tickFormatter={truncTick(15)} {...axisProps} />
                     <Tooltip {...tooltipStyle}
-                             formatter={(v) => [num(v), rankBy === 'total_spend' ? 'Total spend' : 'Visits']} />
+                             formatter={(v) => [num(Number(v)), rankBy === 'total_spend' ? 'Total spend' : 'Visits']} />
                     <Bar dataKey={rankBy} fill="var(--accent)" radius={[0, 3, 3, 0]} isAnimationActive={false} />
                   </BarChart>
                 </ResponsiveContainer>
@@ -144,14 +146,15 @@ export default function Dashboard() {
                     </tr>
                   </thead>
                   <tbody>
-                    {top.data.map((r) => {
+                    {top.data.map((r: MerchantTotals) => {
+                      const rowLabel = totalsLabel(r)
                       const target = groupBy === 'brand' && r.brand_id
                         ? `/merchant?brand=${encodeURIComponent(r.brand_id)}`
-                        : `/merchant?name=${encodeURIComponent(r[keyCol])}`
+                        : `/merchant?name=${encodeURIComponent(rowLabel)}`
                       return (
-                        <tr key={r[keyCol]}>
-                          <td className="ellipsis" title={r[keyCol]}>
-                            <Link className="rowlink" to={target}>{r[keyCol]}</Link>
+                        <tr key={rowLabel}>
+                          <td className="ellipsis" title={rowLabel}>
+                            <Link className="rowlink" to={target}>{rowLabel}</Link>
                           </td>
                           <td className="num">{num(r.total_spend)}</td>
                           <td className="num">{num(r.visit_count)}</td>

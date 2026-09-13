@@ -1,0 +1,1599 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Papertrail API",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/config": {
+      "get": {
+        "tags": [
+          "config"
+        ],
+        "summary": "Read Config",
+        "operationId": "read_config_api_config_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppConfig"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "config"
+        ],
+        "summary": "Write Config",
+        "operationId": "write_config_api_config_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppConfig"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppConfig"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/viz/records": {
+      "get": {
+        "tags": [
+          "visualize"
+        ],
+        "summary": "Viz Records Endpoint",
+        "operationId": "viz_records_endpoint_api_viz_records_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VizRecord"
+                  },
+                  "type": "array",
+                  "title": "Response Viz Records Endpoint Api Viz Records Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/viz/items": {
+      "get": {
+        "tags": [
+          "visualize"
+        ],
+        "summary": "Viz Items Endpoint",
+        "operationId": "viz_items_endpoint_api_viz_items_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VizItem"
+                  },
+                  "type": "array",
+                  "title": "Response Viz Items Endpoint Api Viz Items Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/analytics/top-merchants": {
+      "get": {
+        "tags": [
+          "visualize"
+        ],
+        "summary": "Top Merchants Endpoint",
+        "operationId": "top_merchants_endpoint_api_analytics_top_merchants_get",
+        "parameters": [
+          {
+            "name": "group_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "brand",
+                "name"
+              ],
+              "type": "string",
+              "default": "brand",
+              "title": "Group By"
+            }
+          },
+          {
+            "name": "rank_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "total_spend",
+                "visit_count"
+              ],
+              "type": "string",
+              "default": "total_spend",
+              "title": "Rank By"
+            }
+          },
+          {
+            "name": "top_n",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "title": "Top N"
+            }
+          },
+          {
+            "name": "year",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Year"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/BrandTotals"
+                      }
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/NameTotals"
+                      }
+                    }
+                  ],
+                  "title": "Response Top Merchants Endpoint Api Analytics Top Merchants Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/analytics/monthly-spend": {
+      "get": {
+        "tags": [
+          "visualize"
+        ],
+        "summary": "Monthly Spend Endpoint",
+        "operationId": "monthly_spend_endpoint_api_analytics_monthly_spend_get",
+        "parameters": [
+          {
+            "name": "year",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Year"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MonthlySpend"
+                  },
+                  "title": "Response Monthly Spend Endpoint Api Analytics Monthly Spend Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/analytics/monthly-volume": {
+      "get": {
+        "tags": [
+          "visualize"
+        ],
+        "summary": "Monthly Volume Endpoint",
+        "operationId": "monthly_volume_endpoint_api_analytics_monthly_volume_get",
+        "parameters": [
+          {
+            "name": "year",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Year"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MonthlyVolume"
+                  },
+                  "title": "Response Monthly Volume Endpoint Api Analytics Monthly Volume Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/years": {
+      "get": {
+        "tags": [
+          "visualize"
+        ],
+        "summary": "Years Endpoint",
+        "description": "Distinct years present in the archive, newest first.",
+        "operationId": "years_endpoint_api_years_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "type": "integer"
+                  },
+                  "type": "array",
+                  "title": "Response Years Endpoint Api Years Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/date-range": {
+      "get": {
+        "tags": [
+          "visualize"
+        ],
+        "summary": "Date Range Endpoint",
+        "description": "Earliest/latest dated document — lets the UI open on a populated period\ninstead of an empty current month.",
+        "operationId": "date_range_endpoint_api_date_range_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DateRange"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/merchants": {
+      "get": {
+        "tags": [
+          "visualize"
+        ],
+        "summary": "Merchants Endpoint",
+        "description": "Every merchant/brand with totals — the selector list for the merchant page.\n\nDeliberately excludes the heavy per-document fields so the UI never has to\npull the full records payload just to populate a dropdown.",
+        "operationId": "merchants_endpoint_api_merchants_get",
+        "parameters": [
+          {
+            "name": "group_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "brand",
+                "name"
+              ],
+              "type": "string",
+              "default": "brand",
+              "title": "Group By"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/BrandTotals"
+                      }
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/NameTotals"
+                      }
+                    }
+                  ],
+                  "title": "Response Merchants Endpoint Api Merchants Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/analytics/merchant": {
+      "get": {
+        "tags": [
+          "visualize"
+        ],
+        "summary": "Merchant Endpoint",
+        "operationId": "merchant_endpoint_api_analytics_merchant_get",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Name"
+            }
+          },
+          {
+            "name": "brand_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Brand Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MerchantProfile"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/analytics/timecapsule": {
+      "get": {
+        "tags": [
+          "visualize"
+        ],
+        "summary": "Timecapsule Endpoint",
+        "operationId": "timecapsule_endpoint_api_analytics_timecapsule_get",
+        "parameters": [
+          {
+            "name": "month",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 12,
+              "minimum": 1,
+              "title": "Month"
+            }
+          },
+          {
+            "name": "day",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 31,
+              "minimum": 1,
+              "title": "Day"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/VizRecord"
+                  },
+                  "title": "Response Timecapsule Endpoint Api Analytics Timecapsule Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/analytics/calendar": {
+      "get": {
+        "tags": [
+          "visualize"
+        ],
+        "summary": "Calendar Endpoint",
+        "operationId": "calendar_endpoint_api_analytics_calendar_get",
+        "parameters": [
+          {
+            "name": "start",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Start"
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "End"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/VizRecord"
+                    }
+                  },
+                  "title": "Response Calendar Endpoint Api Analytics Calendar Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/receipt": {
+      "get": {
+        "tags": [
+          "visualize"
+        ],
+        "summary": "Receipt Endpoint",
+        "operationId": "receipt_endpoint_api_receipt_get",
+        "parameters": [
+          {
+            "name": "file",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "File"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VizRecord"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/media/archived/{rel_path}": {
+      "get": {
+        "tags": [
+          "media"
+        ],
+        "summary": "Archived Media",
+        "description": "Serve a file from the organized YYYY/MM (post-archive) tree.",
+        "operationId": "archived_media_api_media_archived__rel_path__get",
+        "parameters": [
+          {
+            "name": "rel_path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rel Path"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/media/input/{filename}": {
+      "get": {
+        "tags": [
+          "media"
+        ],
+        "summary": "Input Media",
+        "description": "Serve an original scan (pre-archive) by filename.",
+        "operationId": "input_media_api_media_input__filename__get",
+        "parameters": [
+          {
+            "name": "filename",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Filename"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/health": {
+      "get": {
+        "summary": "Health",
+        "operationId": "health_api_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AppConfig": {
+        "properties": {
+          "input_image_path": {
+            "type": "string",
+            "title": "Input Image Path",
+            "default": ""
+          },
+          "batch_output_path": {
+            "type": "string",
+            "title": "Batch Output Path",
+            "default": ""
+          },
+          "extract_structured": {
+            "type": "boolean",
+            "title": "Extract Structured",
+            "default": true
+          },
+          "ocr_model": {
+            "type": "string",
+            "title": "Ocr Model",
+            "default": ""
+          },
+          "workshop_ocr_model": {
+            "type": "string",
+            "title": "Workshop Ocr Model",
+            "default": ""
+          },
+          "extractor_model": {
+            "type": "string",
+            "title": "Extractor Model",
+            "default": ""
+          },
+          "workshop_extractor_model": {
+            "type": "string",
+            "title": "Workshop Extractor Model",
+            "default": ""
+          },
+          "parse_custom_instruction": {
+            "type": "string",
+            "title": "Parse Custom Instruction",
+            "default": ""
+          },
+          "normalize_engine": {
+            "type": "string",
+            "title": "Normalize Engine",
+            "default": "embedding"
+          },
+          "normalize_embedding_threshold": {
+            "type": "number",
+            "title": "Normalize Embedding Threshold",
+            "default": 0.05
+          },
+          "normalize_string_similarity": {
+            "type": "integer",
+            "title": "Normalize String Similarity",
+            "default": 80
+          },
+          "indexing_scheme": {
+            "type": "string",
+            "title": "Indexing Scheme",
+            "default": ""
+          },
+          "dashboard_rank_by": {
+            "type": "string",
+            "title": "Dashboard Rank By",
+            "default": "Total Spend"
+          },
+          "prefix_suggestion_boundary_only": {
+            "type": "boolean",
+            "title": "Prefix Suggestion Boundary Only",
+            "default": true
+          },
+          "prefix_suggestion_max_length": {
+            "type": "integer",
+            "title": "Prefix Suggestion Max Length",
+            "default": 24
+          },
+          "prefix_suggestion_min_length": {
+            "type": "integer",
+            "title": "Prefix Suggestion Min Length",
+            "default": 3
+          },
+          "prefix_suggestion_min_count": {
+            "type": "integer",
+            "title": "Prefix Suggestion Min Count",
+            "default": 2
+          },
+          "calendar_period": {
+            "type": "string",
+            "title": "Calendar Period",
+            "default": "week"
+          },
+          "calendar_date": {
+            "type": "string",
+            "title": "Calendar Date",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "title": "AppConfig"
+      },
+      "BrandTotals": {
+        "properties": {
+          "merchant_group": {
+            "type": "string",
+            "title": "Merchant Group"
+          },
+          "total_spend": {
+            "type": "number",
+            "title": "Total Spend"
+          },
+          "visit_count": {
+            "type": "integer",
+            "title": "Visit Count"
+          },
+          "brand_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Id"
+          },
+          "avg_per_visit": {
+            "type": "integer",
+            "title": "Avg Per Visit"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "merchant_group",
+          "total_spend",
+          "visit_count",
+          "brand_id",
+          "avg_per_visit"
+        ],
+        "title": "BrandTotals"
+      },
+      "CadencePoint": {
+        "properties": {
+          "visit_date": {
+            "type": "string",
+            "title": "Visit Date"
+          },
+          "days_since_last": {
+            "type": "number",
+            "title": "Days Since Last"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "visit_date",
+          "days_since_last"
+        ],
+        "title": "CadencePoint"
+      },
+      "DateRange": {
+        "properties": {
+          "min": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min"
+          },
+          "max": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "min",
+          "max"
+        ],
+        "title": "DateRange"
+      },
+      "GalleryReceipt": {
+        "properties": {
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "date": {
+            "type": "string",
+            "title": "Date"
+          },
+          "time": {
+            "type": "string",
+            "title": "Time"
+          },
+          "cost": {
+            "type": "number",
+            "title": "Cost"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "brand_location": {
+            "type": "string",
+            "title": "Brand Location"
+          },
+          "document_type": {
+            "type": "string",
+            "title": "Document Type"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "filename",
+          "path",
+          "date",
+          "time",
+          "cost",
+          "currency",
+          "name",
+          "brand_location",
+          "document_type"
+        ],
+        "title": "GalleryReceipt",
+        "description": "Slim receipt for galleries: no OCR text or line items."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "Health": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "Health"
+      },
+      "ItemBreakdownRow": {
+        "properties": {
+          "item_name": {
+            "type": "string",
+            "title": "Item Name"
+          },
+          "times_purchased": {
+            "type": "integer",
+            "title": "Times Purchased"
+          },
+          "total_spent": {
+            "type": "number",
+            "title": "Total Spent"
+          },
+          "avg_unit_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Unit Price"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "item_name",
+          "times_purchased",
+          "total_spent",
+          "avg_unit_price"
+        ],
+        "title": "ItemBreakdownRow"
+      },
+      "LineItem": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity"
+          },
+          "unit_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit Price"
+          },
+          "total_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Price"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "quantity",
+          "unit_price",
+          "total_price"
+        ],
+        "title": "LineItem"
+      },
+      "MerchantMetrics": {
+        "properties": {
+          "total_spend": {
+            "type": "number",
+            "title": "Total Spend"
+          },
+          "visit_count": {
+            "type": "integer",
+            "title": "Visit Count"
+          },
+          "avg_ticket": {
+            "type": "number",
+            "title": "Avg Ticket"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "first_visit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Visit"
+          },
+          "last_visit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Visit"
+          },
+          "avg_gap": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Gap"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "total_spend",
+          "visit_count",
+          "avg_ticket",
+          "currency",
+          "first_visit",
+          "last_visit",
+          "avg_gap"
+        ],
+        "title": "MerchantMetrics"
+      },
+      "MerchantProfile": {
+        "properties": {
+          "metrics": {
+            "$ref": "#/components/schemas/MerchantMetrics"
+          },
+          "trend": {
+            "items": {
+              "$ref": "#/components/schemas/MonthlySpend"
+            },
+            "type": "array",
+            "title": "Trend"
+          },
+          "cadence": {
+            "items": {
+              "$ref": "#/components/schemas/CadencePoint"
+            },
+            "type": "array",
+            "title": "Cadence"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ItemBreakdownRow"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "receipts": {
+            "items": {
+              "$ref": "#/components/schemas/GalleryReceipt"
+            },
+            "type": "array",
+            "title": "Receipts"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "metrics",
+          "trend",
+          "cadence",
+          "items",
+          "receipts"
+        ],
+        "title": "MerchantProfile"
+      },
+      "MonthlySpend": {
+        "properties": {
+          "period": {
+            "type": "string",
+            "title": "Period"
+          },
+          "spend": {
+            "type": "number",
+            "title": "Spend"
+          },
+          "month_ts": {
+            "type": "string",
+            "title": "Month Ts"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "period",
+          "spend",
+          "month_ts"
+        ],
+        "title": "MonthlySpend"
+      },
+      "MonthlyVolume": {
+        "properties": {
+          "period": {
+            "type": "string",
+            "title": "Period"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "month_ts": {
+            "type": "string",
+            "title": "Month Ts"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "period",
+          "count",
+          "month_ts"
+        ],
+        "title": "MonthlyVolume"
+      },
+      "NameTotals": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "total_spend": {
+            "type": "number",
+            "title": "Total Spend"
+          },
+          "visit_count": {
+            "type": "integer",
+            "title": "Visit Count"
+          },
+          "brand_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Id"
+          },
+          "avg_per_visit": {
+            "type": "integer",
+            "title": "Avg Per Visit"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "total_spend",
+          "visit_count",
+          "brand_id",
+          "avg_per_visit"
+        ],
+        "title": "NameTotals"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "VizItem": {
+        "properties": {
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "merchant": {
+            "type": "string",
+            "title": "Merchant"
+          },
+          "merchant_group": {
+            "type": "string",
+            "title": "Merchant Group"
+          },
+          "receipt_date": {
+            "type": "string",
+            "title": "Receipt Date"
+          },
+          "parsed_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parsed Date"
+          },
+          "item_name": {
+            "type": "string",
+            "title": "Item Name"
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity"
+          },
+          "unit_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit Price"
+          },
+          "total_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Price"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "filename",
+          "merchant",
+          "merchant_group",
+          "receipt_date",
+          "parsed_date",
+          "item_name",
+          "quantity",
+          "unit_price",
+          "total_price",
+          "currency"
+        ],
+        "title": "VizItem",
+        "description": "One line item across all archived receipts."
+      },
+      "VizRecord": {
+        "properties": {
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "paths": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Paths"
+          },
+          "document_type": {
+            "type": "string",
+            "title": "Document Type"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "date": {
+            "type": "string",
+            "title": "Date"
+          },
+          "time": {
+            "type": "string",
+            "title": "Time"
+          },
+          "cost": {
+            "type": "number",
+            "title": "Cost"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "comment": {
+            "type": "string",
+            "title": "Comment"
+          },
+          "address": {
+            "type": "string",
+            "title": "Address"
+          },
+          "language": {
+            "type": "string",
+            "title": "Language"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LineItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "ocr_markdown": {
+            "type": "string",
+            "title": "Ocr Markdown"
+          },
+          "parsed_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parsed Date"
+          },
+          "year": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year"
+          },
+          "month": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Month"
+          },
+          "brand_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Id"
+          },
+          "brand_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Label"
+          },
+          "brand_location": {
+            "type": "string",
+            "title": "Brand Location"
+          },
+          "merchant_group": {
+            "type": "string",
+            "title": "Merchant Group"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "filename",
+          "path",
+          "paths",
+          "document_type",
+          "name",
+          "date",
+          "time",
+          "cost",
+          "currency",
+          "comment",
+          "address",
+          "language",
+          "items",
+          "ocr_markdown",
+          "parsed_date",
+          "year",
+          "month",
+          "brand_id",
+          "brand_label",
+          "brand_location",
+          "merchant_group"
+        ],
+        "title": "VizRecord",
+        "description": "One archived document (multi-page documents collapsed to their first page)."
+      }
+    }
+  }
+}

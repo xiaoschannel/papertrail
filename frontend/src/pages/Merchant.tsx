@@ -4,25 +4,26 @@ import { useQuery } from '@tanstack/react-query'
 import {
   Bar, BarChart, CartesianGrid, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis,
 } from 'recharts'
-import { api, dayLabel, money, monthLabel, num } from '../api.js'
+import { api, type GroupBy } from '../api/client.ts'
+import { totalsLabel, type MerchantTotals } from '../api/types.ts'
+import { dayLabel, money, monthLabel, num } from '../format.ts'
 import {
   Card, ChartCard, Empty, ErrorState, Loading, Tile, axisProps, niceAxis, tooltipStyle,
-} from '../components/ui.jsx'
-import { ReceiptGallery } from '../components/DocumentCard.jsx'
+} from '../components/ui.tsx'
+import { ReceiptGallery } from '../components/DocumentCard.tsx'
 
 export default function Merchant() {
   const [params, setParams] = useSearchParams()
-  const [mode, setMode] = useState(params.get('name') ? 'name' : 'brand')
+  const [mode, setMode] = useState<GroupBy>(params.get('name') ? 'name' : 'brand')
 
-  const groupBy = mode === 'brand' ? 'brand' : 'name'
-  const list = useQuery({ queryKey: ['merchants', groupBy], queryFn: () => api.merchants(groupBy) })
+  const list = useQuery({ queryKey: ['merchants', mode], queryFn: () => api.merchants(mode) })
 
   const selected = mode === 'brand' ? params.get('brand') : params.get('name')
+  // the selector's value for a row: its brand id, or its exact merchant name
+  const valueOf = (o: MerchantTotals) => (mode === 'brand' ? o.brand_id : 'name' in o ? o.name : null)
   // default to the biggest merchant once the list arrives
-  const options = list.data || []
-  const fallback = mode === 'brand'
-    ? options.find((o) => o.brand_id)?.brand_id
-    : options[0]?.name
+  const options: MerchantTotals[] = list.data ?? []
+  const fallback = options.map(valueOf).find(Boolean)
   const current = selected || fallback || ''
 
   const detail = useQuery({
@@ -31,10 +32,10 @@ export default function Merchant() {
     enabled: Boolean(current),
   })
 
-  const choose = (value) => {
+  const choose = (value: string) => {
     setParams(value ? { [mode === 'brand' ? 'brand' : 'name']: value } : {})
   }
-  const switchMode = (m) => {
+  const switchMode = (m: GroupBy) => {
     setMode(m)
     setParams({})
   }
@@ -59,12 +60,11 @@ export default function Merchant() {
           <label>{mode === 'brand' ? 'Brand' : 'Merchant'}</label>
           <select value={current} onChange={(e) => choose(e.target.value)} style={{ maxWidth: 420 }}>
             {options.map((o) => {
-              const value = mode === 'brand' ? o.brand_id : o.name
-              const label = mode === 'brand' ? o.merchant_group : o.name
+              const value = valueOf(o)
               if (!value) return null
               return (
                 <option key={value} value={value}>
-                  {label} — {num(o.visit_count)} receipt(s)
+                  {totalsLabel(o)} — {num(o.visit_count)} receipt(s)
                 </option>
               )
             })}
@@ -75,8 +75,8 @@ export default function Merchant() {
       {list.isError ? <ErrorState error={list.error} />
         : list.isLoading ? <Loading what="merchants" />
         : !current ? <Empty>No merchants found.</Empty>
-        : detail.isLoading ? <Loading what="merchant" />
         : detail.isError ? <ErrorState error={detail.error} />
+        : !detail.data ? <Loading what="merchant" />
         : (
           <div className="stack">
             <div className="tiles">
@@ -90,16 +90,16 @@ export default function Merchant() {
 
             <div className="grid grid-2">
               <ChartCard title="Spending Trend">
-                {!detail.data.trend?.length ? <Empty>No dated receipts.</Empty> : (
+                {!detail.data.trend.length ? <Empty>No dated receipts.</Empty> : (
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={detail.data.trend} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
                       <XAxis dataKey="month_ts" tickFormatter={monthLabel} minTickGap={28}
                              interval="preserveStartEnd" {...axisProps} />
                       <YAxis {...niceAxis(detail.data.trend, 'spend')} allowDataOverflow
-                             tickFormatter={(v) => num(v)} width={62} {...axisProps} />
+                             tickFormatter={(v: number) => num(v)} width={62} {...axisProps} />
                       <Tooltip {...tooltipStyle} labelFormatter={monthLabel}
-                               formatter={(v) => [num(v), 'Spend']} />
+                               formatter={(v) => [num(Number(v)), 'Spend']} />
                       <Bar dataKey="spend" fill="var(--accent)" radius={[3, 3, 0, 0]} isAnimationActive={false} />
                     </BarChart>
                   </ResponsiveContainer>
@@ -107,7 +107,7 @@ export default function Merchant() {
               </ChartCard>
 
               <ChartCard title="Visit Cadence" hint="days since previous visit">
-                {!detail.data.cadence?.length ? <Empty>Needs at least two visits.</Empty> : (
+                {!detail.data.cadence.length ? <Empty>Needs at least two visits.</Empty> : (
                   <ResponsiveContainer width="100%" height="100%">
                     <ScatterChart margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
@@ -115,7 +115,7 @@ export default function Merchant() {
                              interval="preserveStartEnd" {...axisProps} />
                       <YAxis dataKey="days_since_last" width={46} {...axisProps} />
                       <Tooltip {...tooltipStyle} labelFormatter={dayLabel}
-                               formatter={(v) => [num(v), 'Days since last']} />
+                               formatter={(v) => [num(Number(v)), 'Days since last']} />
                       <Scatter data={detail.data.cadence} fill="var(--accent)" isAnimationActive={false} />
                     </ScatterChart>
                   </ResponsiveContainer>
@@ -123,7 +123,7 @@ export default function Merchant() {
               </ChartCard>
             </div>
 
-            {detail.data.items?.length > 0 && (
+            {detail.data.items.length > 0 && (
               <Card title="Item Breakdown" hint={`${detail.data.items.length} distinct item(s)`}>
                 <div className="table-wrap">
                   <table>
@@ -143,7 +143,7 @@ export default function Merchant() {
                             <td className="ellipsis" title={it.item_name}>{it.item_name}</td>
                             <td className="num">{num(it.times_purchased)}</td>
                             <td className={`num${it.total_spent < 0 ? ' neg' : ''}`}>{num(it.total_spent)}</td>
-                            <td className={`num${it.avg_unit_price < 0 ? ' neg' : ''}`}>{num(it.avg_unit_price, 1)}</td>
+                            <td className={`num${(it.avg_unit_price ?? 0) < 0 ? ' neg' : ''}`}>{num(it.avg_unit_price, 1)}</td>
                           </tr>
                         ))}
                     </tbody>

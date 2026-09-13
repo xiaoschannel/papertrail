@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { api } from '../api.js'
-import { ReceiptGallery } from '../components/DocumentCard.jsx'
-import { Card, Empty, ErrorState, Loading } from '../components/ui.jsx'
+import { api } from '../api/client.ts'
+import type { VizRecord } from '../api/types.ts'
+import { isoDateParts } from '../format.ts'
+import { ReceiptGallery } from '../components/DocumentCard.tsx'
+import { Card, Empty, ErrorState, Loading } from '../components/ui.tsx'
 
 const todayIso = () => {
   const d = new Date()
@@ -11,7 +13,7 @@ const todayIso = () => {
 
 export default function TimeCapsule() {
   const [date, setDate] = useState(todayIso)
-  const [, month, day] = date.split('-').map(Number)
+  const { month, day } = isoDateParts(date)
 
   const q = useQuery({
     queryKey: ['timecapsule', month, day],
@@ -20,10 +22,12 @@ export default function TimeCapsule() {
   })
 
   const byYear = useMemo(() => {
-    const groups = new Map()
-    for (const r of q.data || []) {   // the endpoint returns dated documents only
-      if (!groups.has(r.year)) groups.set(r.year, [])
-      groups.get(r.year).push(r)
+    const groups = new Map<number, VizRecord[]>()
+    for (const r of q.data ?? []) {
+      if (r.year === null) continue   // the endpoint returns dated documents only
+      const group = groups.get(r.year)
+      if (group) group.push(r)
+      else groups.set(r.year, [r])
     }
     return [...groups.entries()].sort((a, b) => b[0] - a[0])
   }, [q.data])

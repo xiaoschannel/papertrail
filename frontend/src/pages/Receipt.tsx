@@ -1,7 +1,8 @@
 import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { api, mediaUrl, money, num } from '../api.js'
-import { Card, Empty, ErrorState, Loading, Tile } from '../components/ui.jsx'
+import { api, mediaUrl } from '../api/client.ts'
+import { money, num } from '../format.ts'
+import { Card, Empty, ErrorState, Loading, Tile } from '../components/ui.tsx'
 
 export default function Receipt() {
   const [params] = useSearchParams()
@@ -21,12 +22,12 @@ export default function Receipt() {
       </>
     )
   }
-  if (q.isLoading) return <Loading what="document" />
   if (q.isError) return <ErrorState error={q.error} />
+  if (!q.data) return <Loading what="document" />
 
   const r = q.data
-  const pages = r.paths?.length ? r.paths : (r.path ? [r.path] : [])
-  const items = r.items || []
+  const pages = r.paths.length ? r.paths : (r.path ? [r.path] : [])
+  const items = r.items
 
   return (
     <>
@@ -83,7 +84,7 @@ export default function Receipt() {
                           <td className="ellipsis" title={it.name}>{it.name}</td>
                           <td className="num">{it.quantity != null ? num(it.quantity, 0) : '—'}</td>
                           <td className="num">{it.unit_price != null ? num(it.unit_price) : '—'}</td>
-                          <td className={`num${it.total_price < 0 ? ' neg' : ''}`}>
+                          <td className={`num${(it.total_price ?? 0) < 0 ? ' neg' : ''}`}>
                             {it.total_price != null ? num(it.total_price) : '—'}
                           </td>
                         </tr>

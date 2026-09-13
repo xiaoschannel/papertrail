@@ -1,4 +1,4 @@
-import { useLayoutEffect, useState } from 'react'
+import { useLayoutEffect, useState, type RefObject } from 'react'
 
 /**
  * Number of columns a CSS grid actually laid out, kept current on resize.
@@ -11,7 +11,7 @@ import { useLayoutEffect, useState } from 'react'
  *
  * Measured in a layout effect, so the first paint already uses the real count.
  */
-export function useGridColumnCount(ref, fallback = 1) {
+export function useGridColumnCount(ref: RefObject<HTMLElement | null>, fallback = 1): number {
   const [count, setCount] = useState(fallback)
 
   useLayoutEffect(() => {

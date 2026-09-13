@@ -1,6 +1,8 @@
-import { truncate } from '../api.js'
+import type { ReactNode } from 'react'
+import { truncate } from '../format.ts'
 
-export function Card({ title, hint, children, className = '' }) {
+export function Card({ title, hint, children, className = '' }:
+  { title?: ReactNode; hint?: ReactNode; children?: ReactNode; className?: string }) {
   return (
     <section className={`card ${className}`}>
       {(title || hint) && (
@@ -15,7 +17,7 @@ export function Card({ title, hint, children, className = '' }) {
 }
 
 /** Charts always render into a fixed-height box (layout rule 1). */
-export function ChartCard({ title, hint, children }) {
+export function ChartCard({ title, hint, children }: { title?: ReactNode; hint?: ReactNode; children?: ReactNode }) {
   return (
     <Card title={title} hint={hint}>
       <div className="chart-box">{children}</div>
@@ -23,7 +25,7 @@ export function ChartCard({ title, hint, children }) {
   )
 }
 
-export function Tile({ label, value }) {
+export function Tile({ label, value }: { label: ReactNode; value: ReactNode }) {
   return (
     <div className="tile">
       <div className="label">{label}</div>
@@ -32,15 +34,16 @@ export function Tile({ label, value }) {
   )
 }
 
-export function Loading({ what = 'data' }) {
+export function Loading({ what = 'data' }: { what?: string }) {
   return <div className="state">Loading {what}…</div>
 }
 
-export function ErrorState({ error }) {
-  return <div className="state error">Failed to load: {error?.message || String(error)}</div>
+export function ErrorState({ error }: { error: unknown }) {
+  const message = error instanceof Error ? error.message : String(error)
+  return <div className="state error">Failed to load: {message}</div>
 }
 
-export function Empty({ children = 'Nothing to show.' }) {
+export function Empty({ children = 'Nothing to show.' }: { children?: ReactNode }) {
   return <div className="state">{children}</div>
 }
 
@@ -57,12 +60,14 @@ export const tooltipStyle = {
   itemStyle: { color: 'var(--text)' },
 }
 
-const niceStep = (raw) => {
+const niceStep = (raw: number): number => {
   if (!(raw > 0)) return 1
   const mag = 10 ** Math.floor(Math.log10(raw))
   const n = raw / mag
   return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * mag
 }
+
+export type NiceAxis = { domain: [number, number | 'auto']; ticks?: number[] }
 
 /** Axis domain + explicit round ticks for a value column.
  *
@@ -76,9 +81,11 @@ const niceStep = (raw) => {
  *  hand-built round ticks from 0 up. Round labels, ~2% negative band, and no
  *  data is ever clipped out of view.
  */
-export function niceAxis(rows, key, tickCount = 5) {
-  const values = (rows || []).map((r) => r[key]).filter((v) => typeof v === 'number' && !Number.isNaN(v))
-  if (!values.length) return { domain: [0, 'auto'], ticks: undefined }
+export function niceAxis<T>(rows: readonly T[] | undefined, key: keyof T, tickCount = 5): NiceAxis {
+  const values = (rows ?? [])
+    .map((r) => r[key])
+    .filter((v): v is T[keyof T] & number => typeof v === 'number' && !Number.isNaN(v))
+  if (!values.length) return { domain: [0, 'auto'] }
 
   const dataMin = Math.min(0, ...values)
   const dataMax = Math.max(0, ...values)
@@ -89,7 +96,7 @@ export function niceAxis(rows, key, tickCount = 5) {
   const floorUnit = step / 10
   const min = dataMin < 0 ? -Math.ceil(-dataMin / floorUnit) * floorUnit : 0
 
-  const ticks = []
+  const ticks: number[] = []
   for (let t = 0; t <= max + step / 1000; t += step) ticks.push(Math.round(t))
   return { domain: [min, max], ticks }
 }
@@ -102,4 +109,4 @@ export const axisProps = {
 
 /** Y-axis label for horizontal bars — truncated so long JP names can't
  *  push the plot area into nothing (layout rule 1 corollary). */
-export const truncTick = (n) => (v) => truncate(v, n)
+export const truncTick = (n: number) => (v: unknown): string => truncate(v == null ? '' : String(v), n)

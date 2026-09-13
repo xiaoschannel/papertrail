@@ -1,25 +1,29 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { api } from '../api.js'
-import { ReceiptCard } from '../components/DocumentCard.jsx'
-import { Empty, ErrorState, Loading } from '../components/ui.jsx'
+import { api } from '../api/client.ts'
+import { isoDateParts } from '../format.ts'
+import { ReceiptCard } from '../components/DocumentCard.tsx'
+import { Empty, ErrorState, Loading } from '../components/ui.tsx'
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
-const iso = (d) =>
+type Period = 'week' | 'month'
+
+const iso = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-const parseIso = (s) => {
-  const [y, m, d] = s.split('-').map(Number)
-  return new Date(y, m - 1, d)
+/** "YYYY-MM-DD" as a LOCAL date (new Date(string) would parse it as UTC). */
+const parseIso = (s: string) => {
+  const { year, month, day } = isoDateParts(s)
+  return new Date(year, month - 1, day)
 }
-const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n)
-const mondayOfWeek = (d) => addDays(d, -((d.getDay() + 6) % 7))
-const firstOfMonth = (d) => new Date(d.getFullYear(), d.getMonth(), 1)
-const firstOfNextMonth = (d) => new Date(d.getFullYear(), d.getMonth() + 1, 1)
+const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n)
+const mondayOfWeek = (d: Date) => addDays(d, -((d.getDay() + 6) % 7))
+const firstOfMonth = (d: Date) => new Date(d.getFullYear(), d.getMonth(), 1)
+const firstOfNextMonth = (d: Date) => new Date(d.getFullYear(), d.getMonth() + 1, 1)
 
 export default function CalendarPage() {
-  const [period, setPeriod] = useState('month')
-  const [anchor, setAnchor] = useState(null)
+  const [period, setPeriod] = useState<Period>('month')
+  const [anchor, setAnchor] = useState<string | null>(null)
 
   // Open on the newest month that actually has documents, not an empty current
   // month (the archive may end months ago). With no dated documents at all, fall
@@ -42,7 +46,12 @@ export default function CalendarPage() {
   return <CalendarBody period={period} setPeriod={setPeriod} anchor={anchor} setAnchor={setAnchor} />
 }
 
-function CalendarBody({ period, setPeriod, anchor, setAnchor }) {
+function CalendarBody({ period, setPeriod, anchor, setAnchor }: {
+  period: Period
+  setPeriod: (p: Period) => void
+  anchor: string
+  setAnchor: (iso: string) => void
+}) {
   const anchorDate = parseIso(anchor)
   const start = period === 'week' ? mondayOfWeek(anchorDate) : firstOfMonth(anchorDate)
   const end = period === 'week' ? addDays(start, 7) : firstOfNextMonth(start)
@@ -54,7 +63,7 @@ function CalendarBody({ period, setPeriod, anchor, setAnchor }) {
 
   const cells = useMemo(() => {
     const gridStart = period === 'week' ? start : mondayOfWeek(start)
-    const out = []
+    const out: { date: Date; inRange: boolean }[] = []
     for (let d = gridStart; d < end || out.length % 7 !== 0; d = addDays(d, 1)) {
       out.push({ date: d, inRange: d >= start && d < end })
       if (out.length > 42) break
@@ -62,7 +71,7 @@ function CalendarBody({ period, setPeriod, anchor, setAnchor }) {
     return out
   }, [anchor, period])
 
-  const shift = (dir) => {
+  const shift = (dir: 1 | -1) => {
     setAnchor(iso(period === 'week'
       ? addDays(start, 7 * dir)
       : new Date(start.getFullYear(), start.getMonth() + dir, 1)))
@@ -72,7 +81,7 @@ function CalendarBody({ period, setPeriod, anchor, setAnchor }) {
     ? `Week of ${iso(start)}`
     : start.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
 
-  const byDate = cal.data || {}
+  const byDate = cal.data ?? {}
 
   return (
     <>
@@ -111,7 +120,7 @@ function CalendarBody({ period, setPeriod, anchor, setAnchor }) {
             <div className="cal-grid">
               {cells.map(({ date, inRange }) => {
                 const key = iso(date)
-                const items = inRange ? (byDate[key] || []) : []
+                const items = inRange ? (byDate[key] ?? []) : []
                 return (
                   <div key={key} className={`cal-cell${inRange ? '' : ' empty'}`}>
                     {inRange && <div className="cal-daynum">{date.getDate()}</div>}
