@@ -1,4 +1,7 @@
 import json
+import os
+import tempfile
+import time
 from pathlib import Path
 
 import numpy as np
@@ -82,9 +85,26 @@ def load_decisions(output_path: Path) -> dict[str, ReviewDecision]:
 
 def save_decisions(output_path: Path, decisions: dict[str, ReviewDecision]):
     d = {k: v.model_dump() for k, v in decisions.items()}
-    (output_path / "decisions.json").write_text(
-        json.dumps(d, indent=2, ensure_ascii=False), encoding="utf-8"
-    )
+    # Write a uniquely named sibling temp file and swap it in, so a crash mid-write can't leave a
+    # truncated decisions.json and two writers (Streamlit pages, the web API) never share a temp file.
+    target = output_path / "decisions.json"
+    fd, tmp_name = tempfile.mkstemp(dir=output_path, prefix="decisions.", suffix=".tmp")
+    tmp = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(json.dumps(d, indent=2, ensure_ascii=False))
+        # On Windows the swap fails while another process has decisions.json open for reading;
+        # readers are brief, so retry for a moment before giving up.
+        for attempt in range(20):
+            try:
+                tmp.replace(target)
+                return
+            except PermissionError:
+                if attempt == 19:
+                    raise
+                time.sleep(0.05)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def load_name_cache(output_path: Path) -> dict[str, dict]:

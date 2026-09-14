@@ -1,4 +1,5 @@
-"""Response models for the visualize/analytics endpoints (config uses ``settings.AppConfig``).
+"""Request/response models for the visualize, analytics and review endpoints (config uses
+``settings.AppConfig``).
 
 Endpoints declare these as ``response_model``, so responses are validated at runtime. FastAPI turns
 them into the OpenAPI schema; ``tools/export_openapi.py`` snapshots it to ``frontend/openapi.json``
@@ -11,6 +12,8 @@ validation in the API tests instead of silently drifting from the generated type
 """
 
 from __future__ import annotations
+
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -148,3 +151,131 @@ class DateRange(_Model):
 
 class Health(_Model):
     status: str
+
+
+# --- review (ingest) ---------------------------------------------------------------
+DocumentType = Literal["receipt", "other", "corrupted"]
+VerdictName = Literal["accepted", "marked", "tossed"]
+
+
+class VerdictCount(_Model):
+    verdict: VerdictName
+    label: str
+    color: str
+    count: int
+
+
+class ReviewSummary(_Model):
+    total: int
+    pending: int
+    verdicts: list[VerdictCount]
+
+
+class QueueItem(_Model):
+    key: str
+    document_type: DocumentType
+    label: str
+
+
+class ReviewQueue(_Model):
+    """``blocker`` explains why there is nothing to review yet (no index, no extractions)."""
+
+    blocker: str | None
+    summary: ReviewSummary
+    items: list[QueueItem]
+
+
+class FormDefaultsOut(_Model):
+    document_type: DocumentType
+    name: str
+    date: str
+    time: str
+    cost: float
+    currency: str
+    phone: str
+
+
+class SmartMatch(_Model):
+    name: str
+    name_score: float
+    phone_score: float
+    quick_apply: bool
+    label: str
+
+
+class BoxRect(_Model):
+    """Corner-normalized rectangle on the OCR's 0-1000 scale, relative to the page image."""
+
+    x1: int
+    y1: int
+    x2: int
+    y2: int
+
+
+class FieldBoxOut(_Model):
+    index: int
+    fields: list[str]
+    rects: list[BoxRect]
+    text: str | None
+
+
+class ReviewPage(_Model):
+    file_key: str
+    filename: str | None
+    image_available: bool
+    boxes: list[FieldBoxOut]
+
+
+class DecisionOut(_Model):
+    verdict: VerdictName
+    document_type: str
+    name: str
+    date: str
+    time: str
+    cost: float
+    currency: str
+    comment: str
+
+
+class ReviewDocument(_Model):
+    key: str
+    defaults: FormDefaultsOut
+    initial_name: str
+    ocr_text: str
+    pages: list[ReviewPage]
+    smart_matches: list[SmartMatch]
+    decision: DecisionOut | None
+
+
+class DraftIn(_Model):
+    document_type: DocumentType
+    name: str
+    date: str
+    time: str
+    cost: float | None
+    currency: str
+
+
+class HintsRequest(_Model):
+    key: str
+    draft: DraftIn
+
+
+class HintOut(_Model):
+    message: str
+    color: str
+
+
+class HintsResponse(_Model):
+    """``accept_error`` is why Accept would be refused for these values (None if it wouldn't be)."""
+
+    hints: list[HintOut]
+    name_status: Literal["placeholder", "approved", "unseen"]
+    accept_error: str | None
+
+
+class DecisionIn(_Model):
+    key: str
+    verdict: VerdictName
+    draft: DraftIn
+    comment: str = ""

@@ -63,6 +63,46 @@
             }
           }
         }
+      },
+      "patch": {
+        "tags": [
+          "config"
+        ],
+        "summary": "Patch Config",
+        "description": "Change only the given fields, so pages editing one setting never revert another page's edits.",
+        "operationId": "patch_config_api_config_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppConfigPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppConfig"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/viz/records": {
@@ -728,6 +768,218 @@
         }
       }
     },
+    "/api/review/queue": {
+      "get": {
+        "tags": [
+          "review"
+        ],
+        "summary": "Queue Endpoint",
+        "description": "Documents awaiting review, in review order, plus progress counts.",
+        "operationId": "queue_endpoint_api_review_queue_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewQueue"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/review/document": {
+      "get": {
+        "tags": [
+          "review"
+        ],
+        "summary": "Document Endpoint",
+        "description": "Everything the review form needs for one document.",
+        "operationId": "document_endpoint_api_review_document_get",
+        "parameters": [
+          {
+            "name": "key",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewDocument"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/review/hints": {
+      "post": {
+        "tags": [
+          "review"
+        ],
+        "summary": "Hints Endpoint",
+        "description": "Hint rules, name status and accept blocker for the form's unsaved values.",
+        "operationId": "hints_endpoint_api_review_hints_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HintsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HintsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/review/decisions": {
+      "post": {
+        "tags": [
+          "review"
+        ],
+        "summary": "Decide Endpoint",
+        "description": "Record accept/mark/toss for a document. Accept is validated; mark and toss never are.",
+        "operationId": "decide_endpoint_api_review_decisions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecisionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewSummary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "review"
+        ],
+        "summary": "Clear Endpoint",
+        "description": "Clear every review decision (the UI confirms first).",
+        "operationId": "clear_endpoint_api_review_decisions_delete",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewSummary"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/review/decision": {
+      "delete": {
+        "tags": [
+          "review"
+        ],
+        "summary": "Undo Endpoint",
+        "description": "Remove one document's decision, returning it to the queue (Undo).",
+        "operationId": "undo_endpoint_api_review_decision_delete",
+        "parameters": [
+          {
+            "name": "key",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewSummary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/health": {
       "get": {
         "summary": "Health",
@@ -850,6 +1102,252 @@
         "type": "object",
         "title": "AppConfig"
       },
+      "AppConfigPatch": {
+        "properties": {
+          "input_image_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input Image Path"
+          },
+          "batch_output_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Batch Output Path"
+          },
+          "extract_structured": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extract Structured"
+          },
+          "ocr_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ocr Model"
+          },
+          "workshop_ocr_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workshop Ocr Model"
+          },
+          "extractor_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extractor Model"
+          },
+          "workshop_extractor_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workshop Extractor Model"
+          },
+          "parse_custom_instruction": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parse Custom Instruction"
+          },
+          "normalize_engine": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Normalize Engine"
+          },
+          "normalize_embedding_threshold": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Normalize Embedding Threshold"
+          },
+          "normalize_string_similarity": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Normalize String Similarity"
+          },
+          "indexing_scheme": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Indexing Scheme"
+          },
+          "dashboard_rank_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dashboard Rank By"
+          },
+          "prefix_suggestion_boundary_only": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prefix Suggestion Boundary Only"
+          },
+          "prefix_suggestion_max_length": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prefix Suggestion Max Length"
+          },
+          "prefix_suggestion_min_length": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prefix Suggestion Min Length"
+          },
+          "prefix_suggestion_min_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prefix Suggestion Min Count"
+          },
+          "calendar_period": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calendar Period"
+          },
+          "calendar_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calendar Date"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "AppConfigPatch"
+      },
+      "BoxRect": {
+        "properties": {
+          "x1": {
+            "type": "integer",
+            "title": "X1"
+          },
+          "y1": {
+            "type": "integer",
+            "title": "Y1"
+          },
+          "x2": {
+            "type": "integer",
+            "title": "X2"
+          },
+          "y2": {
+            "type": "integer",
+            "title": "Y2"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "x1",
+          "y1",
+          "x2",
+          "y2"
+        ],
+        "title": "BoxRect",
+        "description": "Corner-normalized rectangle on the OCR's 0-1000 scale, relative to the page image."
+      },
       "BrandTotals": {
         "properties": {
           "merchant_group": {
@@ -943,6 +1441,235 @@
         ],
         "title": "DateRange"
       },
+      "DecisionIn": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "marked",
+              "tossed"
+            ],
+            "title": "Verdict"
+          },
+          "draft": {
+            "$ref": "#/components/schemas/DraftIn"
+          },
+          "comment": {
+            "type": "string",
+            "title": "Comment",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "verdict",
+          "draft"
+        ],
+        "title": "DecisionIn"
+      },
+      "DecisionOut": {
+        "properties": {
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "marked",
+              "tossed"
+            ],
+            "title": "Verdict"
+          },
+          "document_type": {
+            "type": "string",
+            "title": "Document Type"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "date": {
+            "type": "string",
+            "title": "Date"
+          },
+          "time": {
+            "type": "string",
+            "title": "Time"
+          },
+          "cost": {
+            "type": "number",
+            "title": "Cost"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "comment": {
+            "type": "string",
+            "title": "Comment"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "verdict",
+          "document_type",
+          "name",
+          "date",
+          "time",
+          "cost",
+          "currency",
+          "comment"
+        ],
+        "title": "DecisionOut"
+      },
+      "DraftIn": {
+        "properties": {
+          "document_type": {
+            "type": "string",
+            "enum": [
+              "receipt",
+              "other",
+              "corrupted"
+            ],
+            "title": "Document Type"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "date": {
+            "type": "string",
+            "title": "Date"
+          },
+          "time": {
+            "type": "string",
+            "title": "Time"
+          },
+          "cost": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "document_type",
+          "name",
+          "date",
+          "time",
+          "cost",
+          "currency"
+        ],
+        "title": "DraftIn"
+      },
+      "FieldBoxOut": {
+        "properties": {
+          "index": {
+            "type": "integer",
+            "title": "Index"
+          },
+          "fields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Fields"
+          },
+          "rects": {
+            "items": {
+              "$ref": "#/components/schemas/BoxRect"
+            },
+            "type": "array",
+            "title": "Rects"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "index",
+          "fields",
+          "rects",
+          "text"
+        ],
+        "title": "FieldBoxOut"
+      },
+      "FormDefaultsOut": {
+        "properties": {
+          "document_type": {
+            "type": "string",
+            "enum": [
+              "receipt",
+              "other",
+              "corrupted"
+            ],
+            "title": "Document Type"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "date": {
+            "type": "string",
+            "title": "Date"
+          },
+          "time": {
+            "type": "string",
+            "title": "Time"
+          },
+          "cost": {
+            "type": "number",
+            "title": "Cost"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "phone": {
+            "type": "string",
+            "title": "Phone"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "document_type",
+          "name",
+          "date",
+          "time",
+          "cost",
+          "currency",
+          "phone"
+        ],
+        "title": "FormDefaultsOut"
+      },
       "GalleryReceipt": {
         "properties": {
           "filename": {
@@ -1024,6 +1751,83 @@
           "status"
         ],
         "title": "Health"
+      },
+      "HintOut": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "color": {
+            "type": "string",
+            "title": "Color"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "message",
+          "color"
+        ],
+        "title": "HintOut"
+      },
+      "HintsRequest": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "draft": {
+            "$ref": "#/components/schemas/DraftIn"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "draft"
+        ],
+        "title": "HintsRequest"
+      },
+      "HintsResponse": {
+        "properties": {
+          "hints": {
+            "items": {
+              "$ref": "#/components/schemas/HintOut"
+            },
+            "type": "array",
+            "title": "Hints"
+          },
+          "name_status": {
+            "type": "string",
+            "enum": [
+              "placeholder",
+              "approved",
+              "unseen"
+            ],
+            "title": "Name Status"
+          },
+          "accept_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accept Error"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "hints",
+          "name_status",
+          "accept_error"
+        ],
+        "title": "HintsResponse",
+        "description": "``accept_error`` is why Accept would be refused for these values (None if it wouldn't be)."
       },
       "ItemBreakdownRow": {
         "properties": {
@@ -1310,6 +2114,224 @@
         ],
         "title": "NameTotals"
       },
+      "QueueItem": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "document_type": {
+            "type": "string",
+            "enum": [
+              "receipt",
+              "other",
+              "corrupted"
+            ],
+            "title": "Document Type"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "document_type",
+          "label"
+        ],
+        "title": "QueueItem"
+      },
+      "ReviewDocument": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "defaults": {
+            "$ref": "#/components/schemas/FormDefaultsOut"
+          },
+          "initial_name": {
+            "type": "string",
+            "title": "Initial Name"
+          },
+          "ocr_text": {
+            "type": "string",
+            "title": "Ocr Text"
+          },
+          "pages": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewPage"
+            },
+            "type": "array",
+            "title": "Pages"
+          },
+          "smart_matches": {
+            "items": {
+              "$ref": "#/components/schemas/SmartMatch"
+            },
+            "type": "array",
+            "title": "Smart Matches"
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DecisionOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "defaults",
+          "initial_name",
+          "ocr_text",
+          "pages",
+          "smart_matches",
+          "decision"
+        ],
+        "title": "ReviewDocument"
+      },
+      "ReviewPage": {
+        "properties": {
+          "file_key": {
+            "type": "string",
+            "title": "File Key"
+          },
+          "filename": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filename"
+          },
+          "image_available": {
+            "type": "boolean",
+            "title": "Image Available"
+          },
+          "boxes": {
+            "items": {
+              "$ref": "#/components/schemas/FieldBoxOut"
+            },
+            "type": "array",
+            "title": "Boxes"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "file_key",
+          "filename",
+          "image_available",
+          "boxes"
+        ],
+        "title": "ReviewPage"
+      },
+      "ReviewQueue": {
+        "properties": {
+          "blocker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocker"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/ReviewSummary"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/QueueItem"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "blocker",
+          "summary",
+          "items"
+        ],
+        "title": "ReviewQueue",
+        "description": "``blocker`` explains why there is nothing to review yet (no index, no extractions)."
+      },
+      "ReviewSummary": {
+        "properties": {
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "pending": {
+            "type": "integer",
+            "title": "Pending"
+          },
+          "verdicts": {
+            "items": {
+              "$ref": "#/components/schemas/VerdictCount"
+            },
+            "type": "array",
+            "title": "Verdicts"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "total",
+          "pending",
+          "verdicts"
+        ],
+        "title": "ReviewSummary"
+      },
+      "SmartMatch": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "name_score": {
+            "type": "number",
+            "title": "Name Score"
+          },
+          "phone_score": {
+            "type": "number",
+            "title": "Phone Score"
+          },
+          "quick_apply": {
+            "type": "boolean",
+            "title": "Quick Apply"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "name_score",
+          "phone_score",
+          "quick_apply",
+          "label"
+        ],
+        "title": "SmartMatch"
+      },
       "ValidationError": {
         "properties": {
           "loc": {
@@ -1349,6 +2371,40 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "VerdictCount": {
+        "properties": {
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "marked",
+              "tossed"
+            ],
+            "title": "Verdict"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "color": {
+            "type": "string",
+            "title": "Color"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "verdict",
+          "label",
+          "color",
+          "count"
+        ],
+        "title": "VerdictCount"
       },
       "VizItem": {
         "properties": {

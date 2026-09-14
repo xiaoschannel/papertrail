@@ -118,3 +118,45 @@ def test_scan_organized_filenames(archive_dir):
     assert len(organized) == 11
     assert "08102025143000_201.png" in organized  # tossed
     assert "08102025142000_202.png" in organized  # marked
+
+
+def test_save_decisions_retries_while_the_file_is_briefly_locked(ingest_dir, monkeypatch):
+    # Windows refuses to replace a file another process has open; the save waits it out.
+    from pathlib import Path
+
+    import data
+
+    decisions = data.load_decisions(ingest_dir)
+    real_replace = Path.replace
+    calls = {"n": 0}
+
+    def flaky_replace(self, target):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise PermissionError("locked")
+        return real_replace(self, target)
+
+    monkeypatch.setattr(Path, "replace", flaky_replace)
+    monkeypatch.setattr(data.time, "sleep", lambda _s: None)
+    decisions["1:6"] = decisions["1:6"].model_copy(update={"comment": "saved"})
+    data.save_decisions(ingest_dir, decisions)
+
+    assert calls["n"] == 3
+    assert data.load_decisions(ingest_dir)["1:6"].comment == "saved"
+    assert not list(ingest_dir.glob("decisions.*.tmp"))
+
+
+def test_save_decisions_gives_up_and_cleans_up_when_locked_for_good(ingest_dir, monkeypatch):
+    from pathlib import Path
+
+    import pytest
+
+    import data
+
+    before = (ingest_dir / "decisions.json").read_text(encoding="utf-8")
+    monkeypatch.setattr(Path, "replace", lambda self, target: (_ for _ in ()).throw(PermissionError("locked")))
+    monkeypatch.setattr(data.time, "sleep", lambda _s: None)
+    with pytest.raises(PermissionError):
+        data.save_decisions(ingest_dir, {})
+    assert (ingest_dir / "decisions.json").read_text(encoding="utf-8") == before
+    assert not list(ingest_dir.glob("decisions.*.tmp"))

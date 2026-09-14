@@ -19,7 +19,11 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Patch Config
+         * @description Change only the given fields, so pages editing one setting never revert another page's edits.
+         */
+        patch: operations["patch_config_api_config_patch"];
         trace?: never;
     };
     "/api/viz/records": {
@@ -279,6 +283,110 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/review/queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Queue Endpoint
+         * @description Documents awaiting review, in review order, plus progress counts.
+         */
+        get: operations["queue_endpoint_api_review_queue_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/review/document": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Document Endpoint
+         * @description Everything the review form needs for one document.
+         */
+        get: operations["document_endpoint_api_review_document_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/review/hints": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Hints Endpoint
+         * @description Hint rules, name status and accept blocker for the form's unsaved values.
+         */
+        post: operations["hints_endpoint_api_review_hints_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/review/decisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decide Endpoint
+         * @description Record accept/mark/toss for a document. Accept is validated; mark and toss never are.
+         */
+        post: operations["decide_endpoint_api_review_decisions_post"];
+        /**
+         * Clear Endpoint
+         * @description Clear every review decision (the UI confirms first).
+         */
+        delete: operations["clear_endpoint_api_review_decisions_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/review/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Undo Endpoint
+         * @description Remove one document's decision, returning it to the queue (Undo).
+         */
+        delete: operations["undo_endpoint_api_review_decision_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -398,6 +506,61 @@ export interface components {
              */
             calendar_date: string;
         };
+        /** AppConfigPatch */
+        AppConfigPatch: {
+            /** Input Image Path */
+            input_image_path?: string | null;
+            /** Batch Output Path */
+            batch_output_path?: string | null;
+            /** Extract Structured */
+            extract_structured?: boolean | null;
+            /** Ocr Model */
+            ocr_model?: string | null;
+            /** Workshop Ocr Model */
+            workshop_ocr_model?: string | null;
+            /** Extractor Model */
+            extractor_model?: string | null;
+            /** Workshop Extractor Model */
+            workshop_extractor_model?: string | null;
+            /** Parse Custom Instruction */
+            parse_custom_instruction?: string | null;
+            /** Normalize Engine */
+            normalize_engine?: string | null;
+            /** Normalize Embedding Threshold */
+            normalize_embedding_threshold?: number | null;
+            /** Normalize String Similarity */
+            normalize_string_similarity?: number | null;
+            /** Indexing Scheme */
+            indexing_scheme?: string | null;
+            /** Dashboard Rank By */
+            dashboard_rank_by?: string | null;
+            /** Prefix Suggestion Boundary Only */
+            prefix_suggestion_boundary_only?: boolean | null;
+            /** Prefix Suggestion Max Length */
+            prefix_suggestion_max_length?: number | null;
+            /** Prefix Suggestion Min Length */
+            prefix_suggestion_min_length?: number | null;
+            /** Prefix Suggestion Min Count */
+            prefix_suggestion_min_count?: number | null;
+            /** Calendar Period */
+            calendar_period?: string | null;
+            /** Calendar Date */
+            calendar_date?: string | null;
+        };
+        /**
+         * BoxRect
+         * @description Corner-normalized rectangle on the OCR's 0-1000 scale, relative to the page image.
+         */
+        BoxRect: {
+            /** X1 */
+            x1: number;
+            /** Y1 */
+            y1: number;
+            /** X2 */
+            x2: number;
+            /** Y2 */
+            y2: number;
+        };
         /** BrandTotals */
         BrandTotals: {
             /** Merchant Group */
@@ -424,6 +587,93 @@ export interface components {
             min: string | null;
             /** Max */
             max: string | null;
+        };
+        /** DecisionIn */
+        DecisionIn: {
+            /** Key */
+            key: string;
+            /**
+             * Verdict
+             * @enum {string}
+             */
+            verdict: "accepted" | "marked" | "tossed";
+            draft: components["schemas"]["DraftIn"];
+            /**
+             * Comment
+             * @default
+             */
+            comment: string;
+        };
+        /** DecisionOut */
+        DecisionOut: {
+            /**
+             * Verdict
+             * @enum {string}
+             */
+            verdict: "accepted" | "marked" | "tossed";
+            /** Document Type */
+            document_type: string;
+            /** Name */
+            name: string;
+            /** Date */
+            date: string;
+            /** Time */
+            time: string;
+            /** Cost */
+            cost: number;
+            /** Currency */
+            currency: string;
+            /** Comment */
+            comment: string;
+        };
+        /** DraftIn */
+        DraftIn: {
+            /**
+             * Document Type
+             * @enum {string}
+             */
+            document_type: "receipt" | "other" | "corrupted";
+            /** Name */
+            name: string;
+            /** Date */
+            date: string;
+            /** Time */
+            time: string;
+            /** Cost */
+            cost: number | null;
+            /** Currency */
+            currency: string;
+        };
+        /** FieldBoxOut */
+        FieldBoxOut: {
+            /** Index */
+            index: number;
+            /** Fields */
+            fields: string[];
+            /** Rects */
+            rects: components["schemas"]["BoxRect"][];
+            /** Text */
+            text: string | null;
+        };
+        /** FormDefaultsOut */
+        FormDefaultsOut: {
+            /**
+             * Document Type
+             * @enum {string}
+             */
+            document_type: "receipt" | "other" | "corrupted";
+            /** Name */
+            name: string;
+            /** Date */
+            date: string;
+            /** Time */
+            time: string;
+            /** Cost */
+            cost: number;
+            /** Currency */
+            currency: string;
+            /** Phone */
+            phone: string;
         };
         /**
          * GalleryReceipt
@@ -458,6 +708,34 @@ export interface components {
         Health: {
             /** Status */
             status: string;
+        };
+        /** HintOut */
+        HintOut: {
+            /** Message */
+            message: string;
+            /** Color */
+            color: string;
+        };
+        /** HintsRequest */
+        HintsRequest: {
+            /** Key */
+            key: string;
+            draft: components["schemas"]["DraftIn"];
+        };
+        /**
+         * HintsResponse
+         * @description ``accept_error`` is why Accept would be refused for these values (None if it wouldn't be).
+         */
+        HintsResponse: {
+            /** Hints */
+            hints: components["schemas"]["HintOut"][];
+            /**
+             * Name Status
+             * @enum {string}
+             */
+            name_status: "placeholder" | "approved" | "unseen";
+            /** Accept Error */
+            accept_error: string | null;
         };
         /** ItemBreakdownRow */
         ItemBreakdownRow: {
@@ -541,6 +819,77 @@ export interface components {
             /** Avg Per Visit */
             avg_per_visit: number;
         };
+        /** QueueItem */
+        QueueItem: {
+            /** Key */
+            key: string;
+            /**
+             * Document Type
+             * @enum {string}
+             */
+            document_type: "receipt" | "other" | "corrupted";
+            /** Label */
+            label: string;
+        };
+        /** ReviewDocument */
+        ReviewDocument: {
+            /** Key */
+            key: string;
+            defaults: components["schemas"]["FormDefaultsOut"];
+            /** Initial Name */
+            initial_name: string;
+            /** Ocr Text */
+            ocr_text: string;
+            /** Pages */
+            pages: components["schemas"]["ReviewPage"][];
+            /** Smart Matches */
+            smart_matches: components["schemas"]["SmartMatch"][];
+            decision: components["schemas"]["DecisionOut"] | null;
+        };
+        /** ReviewPage */
+        ReviewPage: {
+            /** File Key */
+            file_key: string;
+            /** Filename */
+            filename: string | null;
+            /** Image Available */
+            image_available: boolean;
+            /** Boxes */
+            boxes: components["schemas"]["FieldBoxOut"][];
+        };
+        /**
+         * ReviewQueue
+         * @description ``blocker`` explains why there is nothing to review yet (no index, no extractions).
+         */
+        ReviewQueue: {
+            /** Blocker */
+            blocker: string | null;
+            summary: components["schemas"]["ReviewSummary"];
+            /** Items */
+            items: components["schemas"]["QueueItem"][];
+        };
+        /** ReviewSummary */
+        ReviewSummary: {
+            /** Total */
+            total: number;
+            /** Pending */
+            pending: number;
+            /** Verdicts */
+            verdicts: components["schemas"]["VerdictCount"][];
+        };
+        /** SmartMatch */
+        SmartMatch: {
+            /** Name */
+            name: string;
+            /** Name Score */
+            name_score: number;
+            /** Phone Score */
+            phone_score: number;
+            /** Quick Apply */
+            quick_apply: boolean;
+            /** Label */
+            label: string;
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -553,6 +902,20 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /** VerdictCount */
+        VerdictCount: {
+            /**
+             * Verdict
+             * @enum {string}
+             */
+            verdict: "accepted" | "marked" | "tossed";
+            /** Label */
+            label: string;
+            /** Color */
+            color: string;
+            /** Count */
+            count: number;
         };
         /**
          * VizItem
@@ -667,6 +1030,39 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["AppConfig"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppConfig"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_config_api_config_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AppConfigPatch"];
             };
         };
         responses: {
@@ -1072,6 +1468,174 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    queue_endpoint_api_review_queue_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewQueue"];
+                };
+            };
+        };
+    };
+    document_endpoint_api_review_document_get: {
+        parameters: {
+            query: {
+                key: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewDocument"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    hints_endpoint_api_review_hints_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HintsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HintsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decide_endpoint_api_review_decisions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecisionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clear_endpoint_api_review_decisions_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewSummary"];
+                };
+            };
+        };
+    };
+    undo_endpoint_api_review_decision_delete: {
+        parameters: {
+            query: {
+                key: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewSummary"];
+                };
             };
             /** @description Validation Error */
             422: {

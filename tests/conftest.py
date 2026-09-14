@@ -64,6 +64,36 @@ def configured_archive(archive_dir: Path, tmp_path: Path, monkeypatch: pytest.Mo
 
 
 @pytest.fixture
+def configured_ingest(ingest_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """``ingest_dir`` wired through ``get_config()``, with a scan-input folder holding page 1:1's image."""
+    scans = tmp_path / "scans"
+    scans.mkdir()
+    shutil.copy(FIXTURES / "archive" / "tossed" / "08102025143000_201.png", scans / "01102025132642_1.png")
+    cfg = AppConfig(
+        batch_output_path=str(ingest_dir),
+        input_image_path=str(scans),
+        normalize_engine="string",
+        indexing_scheme="Canon ImageFormula",
+    )
+    cfg_path = tmp_path / "config.json"
+    cfg_path.write_text(json.dumps(cfg.model_dump(), indent=2), encoding="utf-8")
+    monkeypatch.setattr(settings, "CONFIG_PATH", cfg_path)
+    return ingest_dir
+
+
+@pytest.fixture
+def ingest_client(configured_ingest: Path):
+    """FastAPI TestClient wired to the mid-ingest fixture."""
+    from fastapi.testclient import TestClient
+
+    from api import ingest_store
+    from api.main import create_app
+
+    ingest_store.clear()
+    return TestClient(create_app())
+
+
+@pytest.fixture
 def api_client(configured_archive: Path):
     """FastAPI TestClient wired to the fixture archive via patched config."""
     from fastapi.testclient import TestClient
