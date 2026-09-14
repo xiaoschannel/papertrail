@@ -28,6 +28,3 @@ export function isoDateParts(s: string): { year: number; month: number; day: num
 export const monthLabel = (iso: unknown): string => (iso ? String(iso).slice(0, 7) : '')
 
 export const dayLabel = (iso: unknown): string => (iso ? String(iso).slice(0, 10) : '')
-
-export const truncate = (s: Maybe<string>, n = 22): string =>
-  !s ? '' : s.length > n ? `${s.slice(0, n - 1)}…` : s

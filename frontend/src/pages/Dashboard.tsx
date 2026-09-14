@@ -1,15 +1,15 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import {
-  Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
-} from 'recharts'
 import { api, type GroupBy, type RankBy } from '../api/client.ts'
 import { totalsLabel, type MerchantTotals } from '../api/types.ts'
-import { monthLabel, num } from '../format.ts'
-import {
-  Card, ChartCard, Empty, ErrorState, Loading, axisProps, niceAxis, tooltipStyle, truncTick,
-} from '../components/ui.tsx'
+import { num } from '../format.ts'
+import { Card, ChartCard, Empty, ErrorState, Loading } from '../components/ui.tsx'
+import { EChart, useChartTheme } from '../components/EChart.tsx'
+import { monthlyBars, rankedBars } from '../components/chartOptions.ts'
+
+/** The two monthly charts share one timeline, so zooming either keeps them aligned. */
+const TIMELINE_GROUP = 'dashboard-timeline'
 
 export default function Dashboard() {
   const [year, setYear] = useState<number | undefined>(undefined)   // undefined = all years
@@ -24,8 +24,23 @@ export default function Dashboard() {
     queryFn: () => api.topMerchants({ groupBy, rankBy, year }),
   })
 
-  const keyCol = groupBy === 'brand' ? 'merchant_group' : 'name'
   const label = groupBy === 'brand' ? 'Brand' : 'Merchant'
+
+  const theme = useChartTheme()
+  const spendOption = useMemo(
+    () => monthlyBars((spend.data ?? []).map((r) => ({ month_ts: r.month_ts, value: r.spend })), { name: 'Spend' }, theme),
+    [spend.data, theme],
+  )
+  const volumeOption = useMemo(
+    () => monthlyBars((volume.data ?? []).map((r) => ({ month_ts: r.month_ts, value: r.count })),
+      { name: 'Documents', color: theme.muted }, theme),
+    [volume.data, theme],
+  )
+  const topOption = useMemo(
+    () => rankedBars((top.data ?? []).map((r) => ({ label: totalsLabel(r), value: r[rankBy] })),
+      { name: rankBy === 'total_spend' ? 'Total spend' : 'Visits' }, theme),
+    [top.data, rankBy, theme],
+  )
 
   return (
     <>
@@ -49,41 +64,14 @@ export default function Dashboard() {
           {spend.isLoading ? <Loading what="spending" />
             : spend.isError ? <ErrorState error={spend.error} />
             : !spend.data?.length ? <Empty>No dated receipts.</Empty>
-            : (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={spend.data} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                  <XAxis dataKey="month_ts" tickFormatter={monthLabel} minTickGap={28}
-                         interval="preserveStartEnd" {...axisProps} />
-                  <YAxis {...niceAxis(spend.data, 'spend')} allowDataOverflow
-                         tickFormatter={(v) => num(v)} width={62} {...axisProps} />
-                  <Tooltip {...tooltipStyle}
-                           labelFormatter={monthLabel}
-                           formatter={(v) => [num(Number(v)), 'Spend']} />
-                  <Bar dataKey="spend" fill="var(--accent)" radius={[3, 3, 0, 0]} isAnimationActive={false} />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
+            : <EChart option={spendOption} group={TIMELINE_GROUP} />}
         </ChartCard>
 
         <ChartCard title="Document Volume" hint="all document types">
           {volume.isLoading ? <Loading what="volume" />
             : volume.isError ? <ErrorState error={volume.error} />
             : !volume.data?.length ? <Empty>No dated documents.</Empty>
-            : (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={volume.data} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                  <XAxis dataKey="month_ts" tickFormatter={monthLabel} minTickGap={28}
-                         interval="preserveStartEnd" {...axisProps} />
-                  <YAxis width={42} {...axisProps} />
-                  <Tooltip {...tooltipStyle}
-                           labelFormatter={monthLabel}
-                           formatter={(v) => [num(Number(v)), 'Documents']} />
-                  <Bar dataKey="count" fill="var(--muted)" radius={[3, 3, 0, 0]} isAnimationActive={false} />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
+            : <EChart option={volumeOption} group={TIMELINE_GROUP} />}
         </ChartCard>
       </div>
 
@@ -111,20 +99,7 @@ export default function Dashboard() {
           : (
             <div className="grid grid-sidebar">
               <div className="chart-box tall">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={top.data} layout="vertical" margin={{ top: 4, right: 12, left: 4, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
-                    <XAxis type="number" {...niceAxis(top.data, rankBy, 4)} allowDataOverflow
-                           tickFormatter={(v) => num(v)} {...axisProps} />
-                    {/* interval={0} forces a label on EVERY bar — without it Recharts
-                        silently drops half of them and bars become unidentifiable */}
-                    <YAxis type="category" dataKey={keyCol} width={150} interval={0}
-                           tickFormatter={truncTick(15)} {...axisProps} />
-                    <Tooltip {...tooltipStyle}
-                             formatter={(v) => [num(Number(v)), rankBy === 'total_spend' ? 'Total spend' : 'Visits']} />
-                    <Bar dataKey={rankBy} fill="var(--accent)" radius={[0, 3, 3, 0]} isAnimationActive={false} />
-                  </BarChart>
-                </ResponsiveContainer>
+                <EChart option={topOption} />
               </div>
 
               <div className="table-wrap" style={{ maxHeight: 460 }}>

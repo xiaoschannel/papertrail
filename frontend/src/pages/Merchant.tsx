@@ -1,15 +1,12 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import {
-  Bar, BarChart, CartesianGrid, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis,
-} from 'recharts'
 import { api, type GroupBy } from '../api/client.ts'
 import { totalsLabel, type MerchantTotals } from '../api/types.ts'
-import { dayLabel, money, monthLabel, num } from '../format.ts'
-import {
-  Card, ChartCard, Empty, ErrorState, Loading, Tile, axisProps, niceAxis, tooltipStyle,
-} from '../components/ui.tsx'
+import { dayLabel, money, num } from '../format.ts'
+import { Card, ChartCard, Empty, ErrorState, Loading, Tile } from '../components/ui.tsx'
+import { EChart, useChartTheme } from '../components/EChart.tsx'
+import { cadenceScatter, monthlyBars } from '../components/chartOptions.ts'
 import { ReceiptGallery } from '../components/DocumentCard.tsx'
 
 export default function Merchant() {
@@ -42,6 +39,14 @@ export default function Merchant() {
 
   const m = detail.data?.metrics
   const receipts = detail.data?.receipts || []
+
+  const theme = useChartTheme()
+  const trendOption = useMemo(
+    () => monthlyBars((detail.data?.trend ?? []).map((r) => ({ month_ts: r.month_ts, value: r.spend })),
+      { name: 'Spend' }, theme),
+    [detail.data, theme],
+  )
+  const cadenceOption = useMemo(() => cadenceScatter(detail.data?.cadence ?? [], theme), [detail.data, theme])
 
   return (
     <>
@@ -90,36 +95,11 @@ export default function Merchant() {
 
             <div className="grid grid-2">
               <ChartCard title="Spending Trend">
-                {!detail.data.trend.length ? <Empty>No dated receipts.</Empty> : (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={detail.data.trend} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                      <XAxis dataKey="month_ts" tickFormatter={monthLabel} minTickGap={28}
-                             interval="preserveStartEnd" {...axisProps} />
-                      <YAxis {...niceAxis(detail.data.trend, 'spend')} allowDataOverflow
-                             tickFormatter={(v: number) => num(v)} width={62} {...axisProps} />
-                      <Tooltip {...tooltipStyle} labelFormatter={monthLabel}
-                               formatter={(v) => [num(Number(v)), 'Spend']} />
-                      <Bar dataKey="spend" fill="var(--accent)" radius={[3, 3, 0, 0]} isAnimationActive={false} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                )}
+                {!detail.data.trend.length ? <Empty>No dated receipts.</Empty> : <EChart option={trendOption} />}
               </ChartCard>
 
               <ChartCard title="Visit Cadence" hint="days since previous visit">
-                {!detail.data.cadence.length ? <Empty>Needs at least two visits.</Empty> : (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <ScatterChart margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                      <XAxis dataKey="visit_date" tickFormatter={dayLabel} minTickGap={34}
-                             interval="preserveStartEnd" {...axisProps} />
-                      <YAxis dataKey="days_since_last" width={46} {...axisProps} />
-                      <Tooltip {...tooltipStyle} labelFormatter={dayLabel}
-                               formatter={(v) => [num(Number(v)), 'Days since last']} />
-                      <Scatter data={detail.data.cadence} fill="var(--accent)" isAnimationActive={false} />
-                    </ScatterChart>
-                  </ResponsiveContainer>
-                )}
+                {!detail.data.cadence.length ? <Empty>Needs at least two visits.</Empty> : <EChart option={cadenceOption} />}
               </ChartCard>
             </div>
 
