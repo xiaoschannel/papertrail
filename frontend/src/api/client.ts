@@ -1,6 +1,6 @@
 import createClient from 'openapi-fetch'
 import type { paths } from './schema'
-import type { MerchantTotals } from './types.ts'
+import type { AppConfig, DecisionIn, Draft, MerchantTotals } from './types.ts'
 
 /** Typed HTTP client. Paths, query parameters and response bodies all come from
  *  `schema.d.ts`, generated from the backend's OpenAPI schema (`npm run gen:api`). */
@@ -45,6 +45,19 @@ export const api = {
   timecapsule: (month: number, day: number) =>
     unwrap(client.GET('/api/analytics/timecapsule', { params: { query: { month, day } } })),
   receipt: (file: string) => unwrap(client.GET('/api/receipt', { params: { query: { file } } })),
+
+  config: () => unwrap(client.GET('/api/config')),
+  /** Change only the given settings (other pages may have changed the rest). */
+  patchConfig: (patch: Partial<AppConfig>) => unwrap(client.PATCH('/api/config', { body: patch })),
+
+  review: {
+    queue: () => unwrap(client.GET('/api/review/queue')),
+    document: (key: string) => unwrap(client.GET('/api/review/document', { params: { query: { key } } })),
+    hints: (key: string, draft: Draft) => unwrap(client.POST('/api/review/hints', { body: { key, draft } })),
+    decide: (decision: DecisionIn) => unwrap(client.POST('/api/review/decisions', { body: decision })),
+    undo: (key: string) => unwrap(client.DELETE('/api/review/decision', { params: { query: { key } } })),
+    clearAll: () => unwrap(client.DELETE('/api/review/decisions')),
+  },
 }
 
 /** Archived media lives under YYYY/MM with spaces + unicode in the name. */

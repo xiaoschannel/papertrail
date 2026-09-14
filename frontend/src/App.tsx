@@ -4,8 +4,13 @@ import Merchant from './pages/Merchant.tsx'
 import CalendarPage from './pages/CalendarPage.tsx'
 import TimeCapsule from './pages/TimeCapsule.tsx'
 import Receipt from './pages/Receipt.tsx'
+import Review from './pages/Review.tsx'
 
 const NAV = [
+  {
+    group: 'Ingest',
+    items: [{ to: '/review', label: 'Review' }],
+  },
   {
     group: 'Visualize',
     items: [
@@ -19,8 +24,8 @@ const NAV = [
   },
 ]
 
-// Pages that are grids rather than text take the full width (see .main-inner.wide).
-const WIDE_ROUTES = ['/calendar']
+// Grid and multi-column workspace pages take the full width (see .main-inner.wide).
+const WIDE_ROUTES = ['/calendar', '/review']
 
 export default function App() {
   const { pathname } = useLocation()
@@ -57,6 +62,7 @@ export default function App() {
             <Route path="/calendar" element={<CalendarPage />} />
             <Route path="/timecapsule" element={<TimeCapsule />} />
             <Route path="/receipt" element={<Receipt />} />
+            <Route path="/review" element={<Review />} />
           </Routes>
         </div>
       </main>
