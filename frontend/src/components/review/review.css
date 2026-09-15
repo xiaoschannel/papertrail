@@ -4,14 +4,6 @@
 .review-page .review-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
 .review-page .shortcut-legend { white-space: nowrap; }
 
-.review-page kbd {
-  display: inline-block; min-width: 1.4em; padding: 0 4px; margin: 0 2px;
-  border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px;
-  background: var(--panel-2); color: var(--muted);
-  font: 600 10.5px/1.5 ui-monospace, "Cascadia Code", Consolas, monospace; text-align: center;
-}
-.review-page button kbd { margin-left: 6px; }
-
 .review-page .review-progress {
   display: flex; height: 26px; border-radius: 6px; overflow: hidden; margin-bottom: 12px;
   background: var(--panel-2);
@@ -91,39 +83,9 @@
 .review-page .hints li { font-size: 12.5px; font-weight: 600; }
 .review-page .hints li.plain { color: var(--text); font-weight: 500; }
 
-.review-page .review-error {
-  color: var(--neg); font-size: 13px; margin: 0 0 12px; padding: 8px 12px;
-  border: 1px solid var(--neg); border-radius: 8px; background: color-mix(in srgb, var(--neg) 8%, transparent);
-}
-
 .review-page .review-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 14px 0; }
-.review-page button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
-.review-page button.primary:hover:not(:disabled) { background: var(--accent); filter: brightness(1.08); }
-.review-page button.primary kbd, .review-page button.danger kbd { background: rgb(255 255 255 / .18); border-color: rgb(255 255 255 / .35); color: #fff; }
-.review-page button.warn { border-color: #b8860b; color: #b8860b; font-weight: 600; }
-.review-page button.danger { background: var(--neg); border-color: var(--neg); color: #fff; font-weight: 600; }
-.review-page button.danger-outline { border-color: var(--neg); color: var(--neg); }
 
 .review-page .custom-instructions { margin-top: 4px; }
 
-/* --- undo toast + modal ----------------------------------------------------------------------- */
-.review-page .toast {
-  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 20;
-  display: flex; align-items: center; gap: 10px; padding: 8px 10px 8px 14px;
-  background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
-  box-shadow: 0 10px 30px rgb(0 0 0 / .25); font-size: 13px;
-}
-
-.review-page .modal-backdrop {
-  position: fixed; inset: 0; z-index: 30; display: grid; place-items: center;
-  background: rgb(0 0 0 / .45);
-}
-.review-page .modal {
-  width: min(440px, calc(100vw - 32px)); padding: 18px 20px; border-radius: 12px;
-  background: var(--panel); border: 1px solid var(--border); box-shadow: 0 20px 50px rgb(0 0 0 / .35);
-}
-.review-page .modal h2 { margin-bottom: 8px; }
-.review-page .modal__body { font-size: 13.5px; color: var(--text); overflow-wrap: anywhere; }
-.review-page .modal__actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 /* boxes at the very top of the page put their label underneath instead of off the image */
 .review-page .field-box.label-below .field-box__label { bottom: auto; top: 100%; border-radius: 0 0 3px 3px; }

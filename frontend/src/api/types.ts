@@ -19,5 +19,18 @@ export type Verdict = DecisionIn['verdict']
 export type DocumentType = Draft['document_type']
 export type HintsResponse = Schemas['HintsResponse']
 
+export type Job = Schemas['JobOut']
+export type Batch = Schemas['BatchOut']
+export type IndexStatus = Schemas['IndexStatus']
+export type ConfirmIndexIn = Schemas['ConfirmIndexIn']
+export type Grouping = Schemas['GroupingOut']
+export type GroupingPage = Schemas['GroupingPageOut']
+export type TopPoints = Schemas['RotateIn']['top_points']
+export type OcrStatus = Schemas['OcrStatus']
+export type StartOcrIn = Schemas['StartOcrIn']
+export type ParseStatus = Schemas['ParseStatus']
+export type StartParseIn = Schemas['StartParseIn']
+export type ArchiveStatus = Schemas['ArchiveStatus']
+
 /** The label column of a totals row: `merchant_group` when grouped by brand, `name` otherwise. */
 export const totalsLabel = (row: MerchantTotals): string => ('merchant_group' in row ? row.merchant_group : row.name)

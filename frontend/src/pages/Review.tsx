@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api/client.ts'
 import type { Draft, ReviewQueue, Verdict } from '../api/types.ts'
 import { Card, Empty, ErrorState, Loading } from '../components/ui.tsx'
-import { ConfirmDialog } from '../components/review/ConfirmDialog.tsx'
+import { ConfirmDialog } from '../components/ConfirmDialog.tsx'
 import { ReviewProgress } from '../components/review/ReviewProgress.tsx'
 import {
   INPUT_SOURCES, ReviewForm, costIsInvalid, initialForm, parseCost, type FormState,
@@ -243,7 +243,7 @@ export default function Review() {
         )}
       </div>
 
-      {error && <div className="review-error" role="alert">{error}</div>}
+      {error && <div className="error-banner" role="alert">{error}</div>}
 
       {queue.isLoading ? <Loading what="review queue" />
         : queue.isError ? <ErrorState error={queue.error} />
