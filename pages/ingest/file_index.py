@@ -13,6 +13,13 @@ from data import (
     save_decisions,
 )
 from indexing_schemes import SCHEMES, parse_canon_filename
+from document_grouping import (
+    build_display_state,
+    compute_groups,
+    group_containing,
+    links_from_groups,
+    rotate_upright,
+)
 from models import (
     DocumentKey,
     ReviewDecision,
@@ -141,37 +148,9 @@ if "doc_grouping_links_by_batch" not in st.session_state:
     st.session_state.doc_grouping_links_by_batch = {}
 
 
-def _compute_groups(k: list[str], lnk: list[bool]) -> list[list[str]]:
-    if not k:
-        return []
-    groups: list[list[str]] = []
-    current = [k[0]]
-    for i in range(1, len(k)):
-        if i - 1 < len(lnk) and lnk[i - 1]:
-            current.append(k[i])
-        else:
-            groups.append(current)
-            current = [k[i]]
-    groups.append(current)
-    return groups
-
-
-def _links_from_groups(keys: list[str], groups: list[list[str]]) -> list[bool]:
-    key_to_gi: dict[str, int] = {}
-    for gi, g in enumerate(groups):
-        for k in g:
-            key_to_gi[k] = gi
-    return [key_to_gi.get(keys[i], -1) == key_to_gi.get(keys[i + 1], -2) for i in range(len(keys) - 1)]
-
-
-def _group_containing(idx: int, keys: list[str], links: list[bool]) -> tuple[int, list[int]]:
-    grps = _compute_groups(keys, links)
-    for gi, g in enumerate(grps):
-        for i, k in enumerate(g):
-            if keys.index(k) == idx:
-                indices = [keys.index(kk) for kk in g]
-                return gi, indices
-    return -1, []
+_compute_groups = compute_groups
+_links_from_groups = links_from_groups
+_group_containing = group_containing
 
 
 def _batch_id_from_key(key: str) -> int | None:
@@ -179,73 +158,11 @@ def _batch_id_from_key(key: str) -> int | None:
     return doc_key.batch_id if doc_key else None
 
 
-def _build_display_keys(filtered_groups: list[list[str]], batch_keys: list[str], tossed_set: set[str]) -> list[str]:
-    if not filtered_groups:
-        return batch_keys
-    keys_in_groups = {k for g in filtered_groups for k in g}
-    batch_idx = {k: i for i, k in enumerate(batch_keys)}
-    groups_by_scan = sorted(filtered_groups, key=lambda g: min(batch_idx[k] for k in g if k not in tossed_set))
-    active_ordered = [k for g in groups_by_scan for k in g if k not in tossed_set]
-    active_iter = iter(active_ordered)
-    result = []
-    for k in batch_keys:
-        if k in tossed_set:
-            result.append(k)
-        elif k in keys_in_groups:
-            result.append(next(active_iter, k))
-        else:
-            result.append(k)
-    return result
-
-
-def _split_groups_at_tossed_boundaries(groups: list[list[str]], batch_keys: list[str], tossed_set: set[str]) -> list[list[str]]:
-    batch_idx = {k: i for i, k in enumerate(batch_keys)}
-    result = []
-    for g in groups:
-        active = [k for k in g if k not in tossed_set]
-        if not active:
-            continue
-        current = [active[0]]
-        for i in range(1, len(active)):
-            idx_prev = batch_idx[active[i - 1]]
-            idx_curr = batch_idx[active[i]]
-            lo, hi = min(idx_prev, idx_curr), max(idx_prev, idx_curr)
-            if any(batch_keys[j] in tossed_set for j in range(lo + 1, hi)):
-                result.append(current)
-                current = [active[i]]
-            else:
-                current.append(active[i])
-        result.append(current)
-    return result
-
-
-def build_display_state(
-    batch_keys: list[str],
-    batch_groups: list[list[str]],
-    tossed_set: set[str],
-) -> tuple[list[str], list[str], list[bool]]:
-    filtered = _split_groups_at_tossed_boundaries(batch_groups, batch_keys, tossed_set)
-    display_keys = _build_display_keys(filtered, batch_keys, tossed_set)
-    active_keys = [k for k in display_keys if k not in tossed_set]
-    active_links = _links_from_groups(active_keys, filtered) if filtered else [False] * max(0, len(active_keys) - 1)
-    return display_keys, active_keys, active_links
-
-
-ROTATION_MAP = {
-    90: Image.Transpose.ROTATE_90,
-    180: Image.Transpose.ROTATE_180,
-    270: Image.Transpose.ROTATE_270,
-}
+_ARROW_TO_TOP = {"←": "left", "→": "right", "↓": "down"}
 
 
 def _apply_orientation(img: Image.Image, orientation: str) -> Image.Image:
-    if orientation == "←":
-        return img.transpose(ROTATION_MAP[270])
-    if orientation == "→":
-        return img.transpose(ROTATION_MAP[90])
-    if orientation == "↓":
-        return img.transpose(ROTATION_MAP[180])
-    return img
+    return rotate_upright(img, _ARROW_TO_TOP.get(orientation, ""))
 
 
 def _render_pagination(page: int, n_pages: int, page_key: str, batch_id: int, key_suffix: str = ""):

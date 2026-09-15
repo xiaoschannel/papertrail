@@ -54,10 +54,10 @@ def test_build_smart_match_history(ingest_dir):
     assert any(r.extracted == "Business Card - John Doe" for r in rows)
 
 
-def test_clear_extractions_decisions_keeps_only_tossed_without_extraction(tmp_path):
-    # Characterizes the actual rule: the batch's extractions are all dropped, and
-    # decisions are dropped for every key that is either non-tossed OR still has an
-    # extraction. A tossed decision survives only when it has no extraction entry.
+def test_clear_extractions_decisions_keeps_tossed_decisions(tmp_path):
+    # Regrouping a batch drops all of its extractions and every non-tossed decision. Tosses survive
+    # (tossed pages can't be regrouped, so their document keys stay valid). Streamlit also dropped a
+    # tossed decision that had an extraction, which silently un-tossed it.
     from models import ReceiptResult, ReviewDecision
 
     def receipt(name, cost):
@@ -71,14 +71,14 @@ def test_clear_extractions_decisions_keeps_only_tossed_without_extraction(tmp_pa
     data.save_extractions(tmp_path, {"1:1": receipt("A", 1.0), "1:2": receipt("B", 2.0)})
     data.save_decisions(tmp_path, {
         "1:1": decision("accepted", "A"),
-        "1:2": decision("tossed", "B"),    # tossed BUT has an extraction -> removed
+        "1:2": decision("tossed", "B"),    # tossed with an extraction -> kept
         "1:9": decision("tossed", "C"),    # tossed, no extraction -> preserved
     })
 
     data.clear_extractions_decisions_for_batch(tmp_path, 1)
 
     assert data.load_extractions(tmp_path) == {}
-    assert set(data.load_decisions(tmp_path)) == {"1:9"}
+    assert set(data.load_decisions(tmp_path)) == {"1:2", "1:9"}
 
 
 def test_replace_groups_for_batch(ingest_dir):
