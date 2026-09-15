@@ -279,3 +279,161 @@ class DecisionIn(_Model):
     verdict: VerdictName
     draft: DraftIn
     comment: str = ""
+
+
+# --- jobs --------------------------------------------------------------------------
+class JobError(_Model):
+    item: str
+    error: str
+
+
+class JobOut(_Model):
+    id: str
+    kind: str
+    title: str
+    status: Literal["running", "succeeded", "failed", "cancelled"]
+    total: int
+    done: int
+    failed: int
+    message: str
+    errors: list[JobError]
+    elapsed_seconds: float
+    seconds_per_item: float | None
+    eta_seconds: int | None
+    cancel_requested: bool
+    version: int
+
+
+# --- ingest: file index -------------------------------------------------------------
+class BatchFile(_Model):
+    serial: int
+    filename: str
+
+
+class BatchOut(_Model):
+    batch_id: int
+    start_datetime: str
+    end_datetime: str
+    file_count: int
+
+
+class ProposedBatch(BatchOut):
+    files: list[BatchFile]
+
+
+class IndexStatus(_Model):
+    """``blocker`` explains why indexing can't be shown (paths not configured, input folder missing)."""
+
+    blocker: str | None
+    schemes: list[str]
+    scheme: str
+    image_count: int
+    indexed_count: int
+    unindexed_count: int
+    existing_batches: int
+    proposal: list[ProposedBatch]
+    skipped: list[str]
+    warnings: list[str]
+    error: str | None
+    offending: list[str]
+    token: str
+
+
+class ConfirmIndexIn(_Model):
+    scheme: str
+    token: str
+
+
+class GroupingPageOut(_Model):
+    key: str
+    serial: int
+    filename: str
+    tossed: bool
+    image_available: bool
+    image_version: int
+
+
+class GroupingOut(_Model):
+    blocker: str | None
+    batches: list[BatchOut]
+    batch_id: int | None
+    pages: list[GroupingPageOut]
+    display_keys: list[str]
+    active_links: list[bool]
+    saved_groups: list[list[str]]
+
+
+class SaveGroupingIn(_Model):
+    batch_id: int
+    groups: list[list[str]]
+
+
+class SaveGroupingOut(_Model):
+    changed: bool
+
+
+class PageIn(_Model):
+    key: str
+
+
+class RotateIn(_Model):
+    key: str
+    top_points: Literal["left", "right", "down"]
+
+
+# --- ingest: OCR / Parse / Archive -----------------------------------------------------
+class OcrStatus(_Model):
+    blocker: str | None
+    providers: list[str]
+    provider: str
+    grounding: bool
+    batches: list[BatchOut]
+    total: int
+    processed: int
+    failed: int
+    missing_images: int
+    to_process: int
+
+
+class StartOcrIn(_Model):
+    provider: str
+    batch_id: int | None = None
+    reprocess: bool = False
+    limit: int = 0
+
+
+class ParseStatus(_Model):
+    blocker: str | None
+    extractors: list[str]
+    extractor: str
+    custom_instruction: str
+    total: int
+    processed: int
+    tossed: int
+    to_process: int
+
+
+class StartParseIn(_Model):
+    extractor: str
+    reprocess: bool = False
+    limit: int = 0
+    custom_instruction: str = ""
+
+
+class ArchiveMoveOut(_Model):
+    key: str
+    filename: str
+    destination: str
+
+
+class ArchiveStatus(_Model):
+    blocker: str | None
+    unarchived_batches: int
+    complete_batches: int
+    documents: int
+    multipage: int
+    files: int
+    accepted: int
+    marked: int
+    tossed: int
+    moves: list[ArchiveMoveOut]

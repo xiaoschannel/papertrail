@@ -283,6 +283,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/media/input-thumb/{filename}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Input Thumbnail
+         * @description A scan from the input folder scaled to ``width`` px (cached until the file changes, e.g. rotated).
+         */
+        get: operations["input_thumbnail_api_media_input_thumb__filename__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/review/queue": {
         parameters: {
             query?: never;
@@ -382,6 +402,256 @@ export interface paths {
          * @description Remove one document's decision, returning it to the queue (Undo).
          */
         delete: operations["undo_endpoint_api_review_decision_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ingest/index": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Index Status
+         * @description Image counts and the batches the chosen indexing scheme would add.
+         */
+        get: operations["index_status_api_ingest_index_get"];
+        put?: never;
+        /**
+         * Confirm Index
+         * @description Add the proposed batches to batches.json (only if the proposal is unchanged).
+         */
+        post: operations["confirm_index_api_ingest_index_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ingest/grouping": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Grouping
+         * @description A batch's pages in display order with their links, for grouping pages into documents.
+         *
+         *     Without ``batch_id``, or when that batch has been archived meanwhile, the first unarchived batch.
+         */
+        get: operations["grouping_api_ingest_grouping_get"];
+        /**
+         * Save Grouping
+         * @description Save multi-page groups. A change clears the batch's parse results and review decisions.
+         */
+        put: operations["save_grouping_api_ingest_grouping_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ingest/pages/toss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Toss Page
+         * @description Toss the document this page belongs to.
+         */
+        post: operations["toss_page_api_ingest_pages_toss_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ingest/pages/recover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Recover Page
+         * @description Undo a toss.
+         */
+        post: operations["recover_page_api_ingest_pages_recover_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ingest/pages/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rotate Page
+         * @description Rotate a page's scan in place so it is upright.
+         */
+        post: operations["rotate_page_api_ingest_pages_rotate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ingest/ocr": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ocr Status
+         * @description Page counts for the chosen scope; ``provider`` defaults to the saved OCR model.
+         */
+        get: operations["ocr_status_api_ingest_ocr_get"];
+        put?: never;
+        /**
+         * Start Ocr
+         * @description Start OCR on the planned pages as a background job.
+         */
+        post: operations["start_ocr_api_ingest_ocr_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ingest/parse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Parse Status */
+        get: operations["parse_status_api_ingest_parse_get"];
+        put?: never;
+        /**
+         * Start Parse
+         * @description Start extraction on the planned documents as a background job.
+         */
+        post: operations["start_parse_api_ingest_parse_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ingest/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Archive Status */
+        get: operations["archive_status_api_ingest_archive_get"];
+        put?: never;
+        /**
+         * Start Archive
+         * @description Archive every reviewed file as a background job.
+         */
+        post: operations["start_archive_api_ingest_archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Current Job
+         * @description The running job, or the last one to run (None before any job).
+         */
+        get: operations["current_job_api_jobs_current_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Job */
+        get: operations["get_job_api_jobs__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Job
+         * @description Ask the job to stop after the item it is working on.
+         */
+        post: operations["cancel_job_api_jobs__job_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Job Events */
+        get: operations["job_events_api_jobs__job_id__events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -547,6 +817,56 @@ export interface components {
             /** Calendar Date */
             calendar_date?: string | null;
         };
+        /** ArchiveMoveOut */
+        ArchiveMoveOut: {
+            /** Key */
+            key: string;
+            /** Filename */
+            filename: string;
+            /** Destination */
+            destination: string;
+        };
+        /** ArchiveStatus */
+        ArchiveStatus: {
+            /** Blocker */
+            blocker: string | null;
+            /** Unarchived Batches */
+            unarchived_batches: number;
+            /** Complete Batches */
+            complete_batches: number;
+            /** Documents */
+            documents: number;
+            /** Multipage */
+            multipage: number;
+            /** Files */
+            files: number;
+            /** Accepted */
+            accepted: number;
+            /** Marked */
+            marked: number;
+            /** Tossed */
+            tossed: number;
+            /** Moves */
+            moves: components["schemas"]["ArchiveMoveOut"][];
+        };
+        /** BatchFile */
+        BatchFile: {
+            /** Serial */
+            serial: number;
+            /** Filename */
+            filename: string;
+        };
+        /** BatchOut */
+        BatchOut: {
+            /** Batch Id */
+            batch_id: number;
+            /** Start Datetime */
+            start_datetime: string;
+            /** End Datetime */
+            end_datetime: string;
+            /** File Count */
+            file_count: number;
+        };
         /**
          * BoxRect
          * @description Corner-normalized rectangle on the OCR's 0-1000 scale, relative to the page image.
@@ -580,6 +900,13 @@ export interface components {
             visit_date: string;
             /** Days Since Last */
             days_since_last: number;
+        };
+        /** ConfirmIndexIn */
+        ConfirmIndexIn: {
+            /** Scheme */
+            scheme: string;
+            /** Token */
+            token: string;
         };
         /** DateRange */
         DateRange: {
@@ -699,6 +1026,38 @@ export interface components {
             /** Document Type */
             document_type: string;
         };
+        /** GroupingOut */
+        GroupingOut: {
+            /** Blocker */
+            blocker: string | null;
+            /** Batches */
+            batches: components["schemas"]["BatchOut"][];
+            /** Batch Id */
+            batch_id: number | null;
+            /** Pages */
+            pages: components["schemas"]["GroupingPageOut"][];
+            /** Display Keys */
+            display_keys: string[];
+            /** Active Links */
+            active_links: boolean[];
+            /** Saved Groups */
+            saved_groups: string[][];
+        };
+        /** GroupingPageOut */
+        GroupingPageOut: {
+            /** Key */
+            key: string;
+            /** Serial */
+            serial: number;
+            /** Filename */
+            filename: string;
+            /** Tossed */
+            tossed: boolean;
+            /** Image Available */
+            image_available: boolean;
+            /** Image Version */
+            image_version: number;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -737,6 +1096,38 @@ export interface components {
             /** Accept Error */
             accept_error: string | null;
         };
+        /**
+         * IndexStatus
+         * @description ``blocker`` explains why indexing can't be shown (paths not configured, input folder missing).
+         */
+        IndexStatus: {
+            /** Blocker */
+            blocker: string | null;
+            /** Schemes */
+            schemes: string[];
+            /** Scheme */
+            scheme: string;
+            /** Image Count */
+            image_count: number;
+            /** Indexed Count */
+            indexed_count: number;
+            /** Unindexed Count */
+            unindexed_count: number;
+            /** Existing Batches */
+            existing_batches: number;
+            /** Proposal */
+            proposal: components["schemas"]["ProposedBatch"][];
+            /** Skipped */
+            skipped: string[];
+            /** Warnings */
+            warnings: string[];
+            /** Error */
+            error: string | null;
+            /** Offending */
+            offending: string[];
+            /** Token */
+            token: string;
+        };
         /** ItemBreakdownRow */
         ItemBreakdownRow: {
             /** Item Name */
@@ -747,6 +1138,47 @@ export interface components {
             total_spent: number;
             /** Avg Unit Price */
             avg_unit_price: number | null;
+        };
+        /** JobError */
+        JobError: {
+            /** Item */
+            item: string;
+            /** Error */
+            error: string;
+        };
+        /** JobOut */
+        JobOut: {
+            /** Id */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Title */
+            title: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "running" | "succeeded" | "failed" | "cancelled";
+            /** Total */
+            total: number;
+            /** Done */
+            done: number;
+            /** Failed */
+            failed: number;
+            /** Message */
+            message: string;
+            /** Errors */
+            errors: components["schemas"]["JobError"][];
+            /** Elapsed Seconds */
+            elapsed_seconds: number;
+            /** Seconds Per Item */
+            seconds_per_item: number | null;
+            /** Eta Seconds */
+            eta_seconds: number | null;
+            /** Cancel Requested */
+            cancel_requested: boolean;
+            /** Version */
+            version: number;
         };
         /** LineItem */
         LineItem: {
@@ -819,6 +1251,66 @@ export interface components {
             /** Avg Per Visit */
             avg_per_visit: number;
         };
+        /** OcrStatus */
+        OcrStatus: {
+            /** Blocker */
+            blocker: string | null;
+            /** Providers */
+            providers: string[];
+            /** Provider */
+            provider: string;
+            /** Grounding */
+            grounding: boolean;
+            /** Batches */
+            batches: components["schemas"]["BatchOut"][];
+            /** Total */
+            total: number;
+            /** Processed */
+            processed: number;
+            /** Failed */
+            failed: number;
+            /** Missing Images */
+            missing_images: number;
+            /** To Process */
+            to_process: number;
+        };
+        /** PageIn */
+        PageIn: {
+            /** Key */
+            key: string;
+        };
+        /** ParseStatus */
+        ParseStatus: {
+            /** Blocker */
+            blocker: string | null;
+            /** Extractors */
+            extractors: string[];
+            /** Extractor */
+            extractor: string;
+            /** Custom Instruction */
+            custom_instruction: string;
+            /** Total */
+            total: number;
+            /** Processed */
+            processed: number;
+            /** Tossed */
+            tossed: number;
+            /** To Process */
+            to_process: number;
+        };
+        /** ProposedBatch */
+        ProposedBatch: {
+            /** Batch Id */
+            batch_id: number;
+            /** Start Datetime */
+            start_datetime: string;
+            /** End Datetime */
+            end_datetime: string;
+            /** File Count */
+            file_count: number;
+            /** Files */
+            files: components["schemas"]["BatchFile"][];
+        };
         /** QueueItem */
         QueueItem: {
             /** Key */
@@ -877,6 +1369,28 @@ export interface components {
             /** Verdicts */
             verdicts: components["schemas"]["VerdictCount"][];
         };
+        /** RotateIn */
+        RotateIn: {
+            /** Key */
+            key: string;
+            /**
+             * Top Points
+             * @enum {string}
+             */
+            top_points: "left" | "right" | "down";
+        };
+        /** SaveGroupingIn */
+        SaveGroupingIn: {
+            /** Batch Id */
+            batch_id: number;
+            /** Groups */
+            groups: string[][];
+        };
+        /** SaveGroupingOut */
+        SaveGroupingOut: {
+            /** Changed */
+            changed: boolean;
+        };
         /** SmartMatch */
         SmartMatch: {
             /** Name */
@@ -889,6 +1403,43 @@ export interface components {
             quick_apply: boolean;
             /** Label */
             label: string;
+        };
+        /** StartOcrIn */
+        StartOcrIn: {
+            /** Provider */
+            provider: string;
+            /** Batch Id */
+            batch_id?: number | null;
+            /**
+             * Reprocess
+             * @default false
+             */
+            reprocess: boolean;
+            /**
+             * Limit
+             * @default 0
+             */
+            limit: number;
+        };
+        /** StartParseIn */
+        StartParseIn: {
+            /** Extractor */
+            extractor: string;
+            /**
+             * Reprocess
+             * @default false
+             */
+            reprocess: boolean;
+            /**
+             * Limit
+             * @default 0
+             */
+            limit: number;
+            /**
+             * Custom Instruction
+             * @default
+             */
+            custom_instruction: string;
         };
         /** ValidationError */
         ValidationError: {
@@ -1480,6 +2031,39 @@ export interface operations {
             };
         };
     };
+    input_thumbnail_api_media_input_thumb__filename__get: {
+        parameters: {
+            query?: {
+                width?: number;
+            };
+            header?: never;
+            path: {
+                filename: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description JPEG thumbnail */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     queue_endpoint_api_review_queue_get: {
         parameters: {
             query?: never;
@@ -1635,6 +2219,518 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReviewSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    index_status_api_ingest_index_get: {
+        parameters: {
+            query?: {
+                scheme?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IndexStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_index_api_ingest_index_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfirmIndexIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IndexStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    grouping_api_ingest_grouping_get: {
+        parameters: {
+            query?: {
+                batch_id?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupingOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_grouping_api_ingest_grouping_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveGroupingIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SaveGroupingOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    toss_page_api_ingest_pages_toss_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PageIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SaveGroupingOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recover_page_api_ingest_pages_recover_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PageIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SaveGroupingOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rotate_page_api_ingest_pages_rotate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RotateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SaveGroupingOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ocr_status_api_ingest_ocr_get: {
+        parameters: {
+            query?: {
+                provider?: string | null;
+                batch_id?: number | null;
+                reprocess?: boolean;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OcrStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_ocr_api_ingest_ocr_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartOcrIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    parse_status_api_ingest_parse_get: {
+        parameters: {
+            query?: {
+                reprocess?: boolean;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ParseStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_parse_api_ingest_parse_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartParseIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_status_api_ingest_archive_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveStatus"];
+                };
+            };
+        };
+    };
+    start_archive_api_ingest_archive_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobOut"];
+                };
+            };
+        };
+    };
+    current_job_api_jobs_current_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobOut"] | null;
+                };
+            };
+        };
+    };
+    get_job_api_jobs__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_job_api_jobs__job_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    job_events_api_jobs__job_id__events_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A `data:` event with the job (JobOut JSON) whenever it changes; the stream ends after the job finishes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": unknown;
                 };
             };
             /** @description Validation Error */

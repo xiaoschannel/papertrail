@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 import review_logic as rl
 from api import ingest_store as store
 from api.deps import get_output_path
+from api.guards import no_job_running
 from api.schemas import (
     BoxRect, DecisionIn, DecisionOut, DraftIn, FieldBoxOut, FormDefaultsOut, HintOut, HintsRequest,
     HintsResponse, QueueItem, ReviewDocument, ReviewPage, ReviewQueue, ReviewSummary, SmartMatch, VerdictCount,
@@ -40,6 +41,11 @@ def _extraction_or_404(output_path: Path, key: str):
     if extraction is None:
         raise HTTPException(status_code=404, detail=f"no extraction for document {key}")
     return extraction
+
+
+def _no_archive_running():
+    """Archive deletes decisions.json when it finishes, so decisions can't change while it runs."""
+    return no_job_running("change review decisions", kind="archive")
 
 
 def _draft(d: DraftIn) -> rl.Draft:
@@ -153,7 +159,7 @@ def decide_endpoint(body: DecisionIn, output_path: Path = Depends(get_output_pat
         currency=draft.currency if receipt else "",
         comment=body.comment,
     )
-    with store.decisions_lock:
+    with _no_archive_running(), store.decisions_lock:
         decisions = load_decisions(output_path)
         decisions[body.key] = decision
         save_decisions(output_path, decisions)
@@ -163,7 +169,7 @@ def decide_endpoint(body: DecisionIn, output_path: Path = Depends(get_output_pat
 @router.delete("/decision", response_model=ReviewSummary)
 def undo_endpoint(key: str = Query(...), output_path: Path = Depends(get_output_path)):
     """Remove one document's decision, returning it to the queue (Undo)."""
-    with store.decisions_lock:
+    with _no_archive_running(), store.decisions_lock:
         decisions = load_decisions(output_path)
         if key not in decisions:
             raise HTTPException(status_code=404, detail=f"no decision for document {key}")
@@ -175,6 +181,6 @@ def undo_endpoint(key: str = Query(...), output_path: Path = Depends(get_output_
 @router.delete("/decisions", response_model=ReviewSummary)
 def clear_endpoint(output_path: Path = Depends(get_output_path)):
     """Clear every review decision (the UI confirms first)."""
-    with store.decisions_lock:
+    with _no_archive_running(), store.decisions_lock:
         save_decisions(output_path, {})
     return _summary(store.extractions(output_path), {})
