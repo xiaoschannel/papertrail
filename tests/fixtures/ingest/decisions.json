@@ -1,0 +1,72 @@
+{
+  "1:1": {
+    "verdict": "accepted",
+    "document_type": "receipt",
+    "name": "セブン-イレブン 品川駅前店",
+    "date": "2025-01-10",
+    "time": "13:26:42",
+    "cost": 1260.0,
+    "currency": "JPY",
+    "comment": ""
+  },
+  "1:2": {
+    "verdict": "accepted",
+    "document_type": "receipt",
+    "name": "セブン-イレブン 品川駅前店",
+    "date": "2025-01-10",
+    "time": "13:30:00",
+    "cost": 1260.0,
+    "currency": "JPY",
+    "comment": ""
+  },
+  "1:3": {
+    "verdict": "accepted",
+    "document_type": "receipt",
+    "name": "上海小笼包馆",
+    "date": "2025-01-10",
+    "time": "14:00:00",
+    "cost": 520.0,
+    "currency": "CNY",
+    "comment": ""
+  },
+  "1:4-5": {
+    "verdict": "accepted",
+    "document_type": "receipt",
+    "name": "Tealive KLCC",
+    "date": "2025-01-10",
+    "time": "14:16:00",
+    "cost": 15.9,
+    "currency": "MYR",
+    "comment": ""
+  },
+  "1:6": {
+    "verdict": "tossed",
+    "document_type": "corrupted",
+    "name": "",
+    "date": "",
+    "time": "",
+    "cost": 0.0,
+    "currency": "",
+    "comment": ""
+  },
+  "1:7": {
+    "verdict": "accepted",
+    "document_type": "other",
+    "name": "Business Card - John Doe",
+    "date": "",
+    "time": "",
+    "cost": 0.0,
+    "currency": "",
+    "comment": ""
+  },
+  "1:8": {
+    "verdict": "tossed",
+    "document_type": "receipt",
+    "name": "(unreadable)",
+    "date": "2025-01-10",
+    "time": "14:30:00",
+    "cost": 0.0,
+    "currency": "JPY",
+    "comment": ""
+  }
+}

@@ -2,6 +2,7 @@ from datetime import date
 
 import streamlit as st
 
+from analytics import timecapsule_matches
 from viz_data import get_output_path, load_viz_records, receipt_url
 
 st.title("Time Capsule")
@@ -24,10 +25,7 @@ if dated.empty:
 today = date.today()
 selected_date = st.date_input("On this day...", value=today)
 
-matches = dated[
-    (dated["parsed_date"].dt.month == selected_date.month) &
-    (dated["parsed_date"].dt.day == selected_date.day)
-].sort_values("parsed_date", ascending=False)
+matches = timecapsule_matches(dated, selected_date)
 
 if matches.empty:
     st.info(f"No documents found on {selected_date.strftime('%B %d')} in any year.")

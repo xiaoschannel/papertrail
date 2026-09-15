@@ -1,43 +1,20 @@
 from datetime import date, timedelta
 from pathlib import Path
 
-import pandas as pd
 import streamlit as st
 from PIL import Image
 
+from analytics import (
+    balance_into_columns,
+    first_of_month,
+    first_of_next_month,
+    monday_of_week,
+    records_in_range,
+)
 from settings import get_config, update_config
 from viz_data import get_output_path, load_viz_records, receipt_url
 
 WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-
-
-def monday_of_week(d: date) -> date:
-    return d - timedelta(days=d.weekday())
-
-
-def first_of_month(d: date) -> date:
-    return date(d.year, d.month, 1)
-
-
-def first_of_next_month(d: date) -> date:
-    y, m = d.year, d.month
-    if m == 12:
-        return date(y + 1, 1, 1)
-    return date(y, m + 1, 1)
-
-
-def records_in_range(
-    dated: pd.DataFrame, range_start: date, range_end: date
-) -> dict[date, list]:
-    mask = (dated["parsed_date"].dt.date >= range_start) & (
-        dated["parsed_date"].dt.date < range_end
-    )
-    subset = dated.loc[mask]
-    out: dict[date, list] = {}
-    for val in subset["parsed_date"].dt.date.unique():
-        d_py = val if isinstance(val, date) else date(val.year, val.month, val.day)
-        out[d_py] = subset[subset["parsed_date"].dt.date == val].to_dict("records")
-    return out
 
 
 @st.cache_data
@@ -55,20 +32,6 @@ def estimate_card_height(row: dict, output_path: Path) -> float:
         if img_path.exists():
             base += _image_aspect(str(img_path)) * 10
     return base
-
-
-def assign_to_columns(records: list[dict], output_path: Path) -> tuple[list, list]:
-    col1, col2 = [], []
-    h1, h2 = 0.0, 0.0
-    for row in records:
-        card_h = estimate_card_height(row, output_path)
-        if h1 <= h2:
-            col1.append(row)
-            h1 += card_h
-        else:
-            col2.append(row)
-            h2 += card_h
-    return col1, col2
 
 
 def render_receipt_card(row: dict, output_path: Path) -> None:
@@ -213,7 +176,9 @@ else:
                     st.markdown(f"**{cell_date.day}**")
                     day_records = by_date.get(cell_date, [])
                     if len(day_records) >= 2:
-                        col1_items, col2_items = assign_to_columns(day_records, output_path)
+                        col1_items, col2_items = balance_into_columns(
+                            day_records, lambda r: estimate_card_height(r, output_path)
+                        )
                         sub_cols = st.columns(2)
                         with sub_cols[0]:
                             for row in col1_items:

@@ -9,8 +9,8 @@ jobs:
   tests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Install dependencies
@@ -20,3 +20,32 @@ jobs:
           pip install pytest
       - name: Run tests
         run: python -m pytest -q
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      # The Python job checks frontend/openapi.json against the API; this checks the
+      # TypeScript types generated from it are committed and current. `git status`
+      # (not `git diff`) so a never-committed schema.d.ts fails too.
+      - name: Generated API types are committed and current
+        run: |
+          npm run gen:api
+          if [ -n "$(git status --porcelain --untracked-files=all -- openapi.json src/api/schema.d.ts)" ]; then
+            git status --short -- openapi.json src/api/schema.d.ts
+            git diff -- src/api/schema.d.ts
+            echo "::error::frontend/src/api/schema.d.ts is missing or stale: run 'npm run gen:api' and commit it"
+            exit 1
+          fi
+      - name: Type-check and build
+        run: npm run build

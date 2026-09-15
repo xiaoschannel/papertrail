@@ -5,6 +5,8 @@ from ollama import chat, generate
 
 class OllamaOcrProvider:
     MODEL = "glm-ocr:latest"
+    #: Ignores the structured flag, so a second "structured" pass would just repeat the OCR.
+    grounding = False
     PROMPT = "Extract all text from this image exactly as shown, preserving layout."
 
     def run(self, path: Path, structured: bool = False) -> str:

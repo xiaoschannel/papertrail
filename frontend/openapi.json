@@ -1,0 +1,4236 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Papertrail API",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/config": {
+      "get": {
+        "tags": [
+          "config"
+        ],
+        "summary": "Read Config",
+        "operationId": "read_config_api_config_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppConfig"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "config"
+        ],
+        "summary": "Write Config",
+        "operationId": "write_config_api_config_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppConfig"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppConfig"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "config"
+        ],
+        "summary": "Patch Config",
+        "description": "Change only the given fields, so pages editing one setting never revert another page's edits.",
+        "operationId": "patch_config_api_config_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppConfigPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppConfig"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/viz/records": {
+      "get": {
+        "tags": [
+          "visualize"
+        ],
+        "summary": "Viz Records Endpoint",
+        "operationId": "viz_records_endpoint_api_viz_records_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VizRecord"
+                  },
+                  "type": "array",
+                  "title": "Response Viz Records Endpoint Api Viz Records Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/viz/items": {
+      "get": {
+        "tags": [
+          "visualize"
+        ],
+        "summary": "Viz Items Endpoint",
+        "operationId": "viz_items_endpoint_api_viz_items_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VizItem"
+                  },
+                  "type": "array",
+                  "title": "Response Viz Items Endpoint Api Viz Items Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/analytics/top-merchants": {
+      "get": {
+        "tags": [
+          "visualize"
+        ],
+        "summary": "Top Merchants Endpoint",
+        "operationId": "top_merchants_endpoint_api_analytics_top_merchants_get",
+        "parameters": [
+          {
+            "name": "group_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "brand",
+                "name"
+              ],
+              "type": "string",
+              "default": "brand",
+              "title": "Group By"
+            }
+          },
+          {
+            "name": "rank_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "total_spend",
+                "visit_count"
+              ],
+              "type": "string",
+              "default": "total_spend",
+              "title": "Rank By"
+            }
+          },
+          {
+            "name": "top_n",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "title": "Top N"
+            }
+          },
+          {
+            "name": "year",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Year"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/BrandTotals"
+                      }
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/NameTotals"
+                      }
+                    }
+                  ],
+                  "title": "Response Top Merchants Endpoint Api Analytics Top Merchants Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/analytics/monthly-spend": {
+      "get": {
+        "tags": [
+          "visualize"
+        ],
+        "summary": "Monthly Spend Endpoint",
+        "operationId": "monthly_spend_endpoint_api_analytics_monthly_spend_get",
+        "parameters": [
+          {
+            "name": "year",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Year"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MonthlySpend"
+                  },
+                  "title": "Response Monthly Spend Endpoint Api Analytics Monthly Spend Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/analytics/monthly-volume": {
+      "get": {
+        "tags": [
+          "visualize"
+        ],
+        "summary": "Monthly Volume Endpoint",
+        "operationId": "monthly_volume_endpoint_api_analytics_monthly_volume_get",
+        "parameters": [
+          {
+            "name": "year",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Year"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MonthlyVolume"
+                  },
+                  "title": "Response Monthly Volume Endpoint Api Analytics Monthly Volume Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/years": {
+      "get": {
+        "tags": [
+          "visualize"
+        ],
+        "summary": "Years Endpoint",
+        "description": "Distinct years present in the archive, newest first.",
+        "operationId": "years_endpoint_api_years_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "type": "integer"
+                  },
+                  "type": "array",
+                  "title": "Response Years Endpoint Api Years Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/date-range": {
+      "get": {
+        "tags": [
+          "visualize"
+        ],
+        "summary": "Date Range Endpoint",
+        "description": "Earliest/latest dated document — lets the UI open on a populated period\ninstead of an empty current month.",
+        "operationId": "date_range_endpoint_api_date_range_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DateRange"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/merchants": {
+      "get": {
+        "tags": [
+          "visualize"
+        ],
+        "summary": "Merchants Endpoint",
+        "description": "Every merchant/brand with totals — the selector list for the merchant page.\n\nDeliberately excludes the heavy per-document fields so the UI never has to\npull the full records payload just to populate a dropdown.",
+        "operationId": "merchants_endpoint_api_merchants_get",
+        "parameters": [
+          {
+            "name": "group_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "brand",
+                "name"
+              ],
+              "type": "string",
+              "default": "brand",
+              "title": "Group By"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/BrandTotals"
+                      }
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/NameTotals"
+                      }
+                    }
+                  ],
+                  "title": "Response Merchants Endpoint Api Merchants Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/analytics/merchant": {
+      "get": {
+        "tags": [
+          "visualize"
+        ],
+        "summary": "Merchant Endpoint",
+        "operationId": "merchant_endpoint_api_analytics_merchant_get",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Name"
+            }
+          },
+          {
+            "name": "brand_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Brand Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MerchantProfile"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/analytics/timecapsule": {
+      "get": {
+        "tags": [
+          "visualize"
+        ],
+        "summary": "Timecapsule Endpoint",
+        "operationId": "timecapsule_endpoint_api_analytics_timecapsule_get",
+        "parameters": [
+          {
+            "name": "month",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 12,
+              "minimum": 1,
+              "title": "Month"
+            }
+          },
+          {
+            "name": "day",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 31,
+              "minimum": 1,
+              "title": "Day"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/VizRecord"
+                  },
+                  "title": "Response Timecapsule Endpoint Api Analytics Timecapsule Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/analytics/calendar": {
+      "get": {
+        "tags": [
+          "visualize"
+        ],
+        "summary": "Calendar Endpoint",
+        "operationId": "calendar_endpoint_api_analytics_calendar_get",
+        "parameters": [
+          {
+            "name": "start",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Start"
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "End"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/VizRecord"
+                    }
+                  },
+                  "title": "Response Calendar Endpoint Api Analytics Calendar Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/receipt": {
+      "get": {
+        "tags": [
+          "visualize"
+        ],
+        "summary": "Receipt Endpoint",
+        "operationId": "receipt_endpoint_api_receipt_get",
+        "parameters": [
+          {
+            "name": "file",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "File"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VizRecord"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/media/archived/{rel_path}": {
+      "get": {
+        "tags": [
+          "media"
+        ],
+        "summary": "Archived Media",
+        "description": "Serve a file from the organized YYYY/MM (post-archive) tree.",
+        "operationId": "archived_media_api_media_archived__rel_path__get",
+        "parameters": [
+          {
+            "name": "rel_path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rel Path"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/media/input/{filename}": {
+      "get": {
+        "tags": [
+          "media"
+        ],
+        "summary": "Input Media",
+        "description": "Serve an original scan (pre-archive) by filename.",
+        "operationId": "input_media_api_media_input__filename__get",
+        "parameters": [
+          {
+            "name": "filename",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Filename"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/media/input-thumb/{filename}": {
+      "get": {
+        "tags": [
+          "media"
+        ],
+        "summary": "Input Thumbnail",
+        "description": "A scan from the input folder scaled to ``width`` px (cached until the file changes, e.g. rotated).",
+        "operationId": "input_thumbnail_api_media_input_thumb__filename__get",
+        "parameters": [
+          {
+            "name": "filename",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Filename"
+            }
+          },
+          {
+            "name": "width",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1200,
+              "minimum": 64,
+              "default": 360,
+              "title": "Width"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "JPEG thumbnail",
+            "content": {
+              "image/jpeg": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/review/queue": {
+      "get": {
+        "tags": [
+          "review"
+        ],
+        "summary": "Queue Endpoint",
+        "description": "Documents awaiting review, in review order, plus progress counts.",
+        "operationId": "queue_endpoint_api_review_queue_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewQueue"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/review/document": {
+      "get": {
+        "tags": [
+          "review"
+        ],
+        "summary": "Document Endpoint",
+        "description": "Everything the review form needs for one document.",
+        "operationId": "document_endpoint_api_review_document_get",
+        "parameters": [
+          {
+            "name": "key",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewDocument"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/review/hints": {
+      "post": {
+        "tags": [
+          "review"
+        ],
+        "summary": "Hints Endpoint",
+        "description": "Hint rules, name status and accept blocker for the form's unsaved values.",
+        "operationId": "hints_endpoint_api_review_hints_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HintsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HintsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/review/decisions": {
+      "post": {
+        "tags": [
+          "review"
+        ],
+        "summary": "Decide Endpoint",
+        "description": "Record accept/mark/toss for a document. Accept is validated; mark and toss never are.",
+        "operationId": "decide_endpoint_api_review_decisions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecisionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewSummary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "review"
+        ],
+        "summary": "Clear Endpoint",
+        "description": "Clear every review decision (the UI confirms first).",
+        "operationId": "clear_endpoint_api_review_decisions_delete",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewSummary"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/review/decision": {
+      "delete": {
+        "tags": [
+          "review"
+        ],
+        "summary": "Undo Endpoint",
+        "description": "Remove one document's decision, returning it to the queue (Undo).",
+        "operationId": "undo_endpoint_api_review_decision_delete",
+        "parameters": [
+          {
+            "name": "key",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewSummary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ingest/index": {
+      "get": {
+        "tags": [
+          "ingest"
+        ],
+        "summary": "Index Status",
+        "description": "Image counts and the batches the chosen indexing scheme would add.",
+        "operationId": "index_status_api_ingest_index_get",
+        "parameters": [
+          {
+            "name": "scheme",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scheme"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IndexStatus"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "ingest"
+        ],
+        "summary": "Confirm Index",
+        "description": "Add the proposed batches to batches.json (only if the proposal is unchanged).",
+        "operationId": "confirm_index_api_ingest_index_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmIndexIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IndexStatus"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ingest/grouping": {
+      "get": {
+        "tags": [
+          "ingest"
+        ],
+        "summary": "Grouping",
+        "description": "A batch's pages in display order with their links, for grouping pages into documents.\n\nWithout ``batch_id``, or when that batch has been archived meanwhile, the first unarchived batch.",
+        "operationId": "grouping_api_ingest_grouping_get",
+        "parameters": [
+          {
+            "name": "batch_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Batch Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupingOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "ingest"
+        ],
+        "summary": "Save Grouping",
+        "description": "Save multi-page groups. A change clears the batch's parse results and review decisions.",
+        "operationId": "save_grouping_api_ingest_grouping_put",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveGroupingIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SaveGroupingOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ingest/pages/toss": {
+      "post": {
+        "tags": [
+          "ingest"
+        ],
+        "summary": "Toss Page",
+        "description": "Toss the document this page belongs to.",
+        "operationId": "toss_page_api_ingest_pages_toss_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PageIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SaveGroupingOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ingest/pages/recover": {
+      "post": {
+        "tags": [
+          "ingest"
+        ],
+        "summary": "Recover Page",
+        "description": "Undo a toss.",
+        "operationId": "recover_page_api_ingest_pages_recover_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PageIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SaveGroupingOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ingest/pages/rotate": {
+      "post": {
+        "tags": [
+          "ingest"
+        ],
+        "summary": "Rotate Page",
+        "description": "Rotate a page's scan in place so it is upright.",
+        "operationId": "rotate_page_api_ingest_pages_rotate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RotateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SaveGroupingOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ingest/ocr": {
+      "get": {
+        "tags": [
+          "ingest"
+        ],
+        "summary": "Ocr Status",
+        "description": "Page counts for the chosen scope; ``provider`` defaults to the saved OCR model.",
+        "operationId": "ocr_status_api_ingest_ocr_get",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Provider"
+            }
+          },
+          {
+            "name": "batch_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Batch Id"
+            }
+          },
+          {
+            "name": "reprocess",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Reprocess"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OcrStatus"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "ingest"
+        ],
+        "summary": "Start Ocr",
+        "description": "Start OCR on the planned pages as a background job.",
+        "operationId": "start_ocr_api_ingest_ocr_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartOcrIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ingest/parse": {
+      "get": {
+        "tags": [
+          "ingest"
+        ],
+        "summary": "Parse Status",
+        "operationId": "parse_status_api_ingest_parse_get",
+        "parameters": [
+          {
+            "name": "reprocess",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Reprocess"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParseStatus"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "ingest"
+        ],
+        "summary": "Start Parse",
+        "description": "Start extraction on the planned documents as a background job.",
+        "operationId": "start_parse_api_ingest_parse_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartParseIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ingest/archive": {
+      "get": {
+        "tags": [
+          "ingest"
+        ],
+        "summary": "Archive Status",
+        "operationId": "archive_status_api_ingest_archive_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveStatus"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "ingest"
+        ],
+        "summary": "Start Archive",
+        "description": "Archive every reviewed file as a background job.",
+        "operationId": "start_archive_api_ingest_archive_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/current": {
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "Current Job",
+        "description": "The running job, or the last one to run (None before any job).",
+        "operationId": "current_job_api_jobs_current_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/JobOut"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Current Job Api Jobs Current Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}": {
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "Get Job",
+        "operationId": "get_job_api_jobs__job_id__get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}/cancel": {
+      "post": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "Cancel Job",
+        "description": "Ask the job to stop after the item it is working on.",
+        "operationId": "cancel_job_api_jobs__job_id__cancel_post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}/events": {
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "Job Events",
+        "operationId": "job_events_api_jobs__job_id__events_get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A `data:` event with the job (JobOut JSON) whenever it changes; the stream ends after the job finishes.",
+            "content": {
+              "text/event-stream": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/health": {
+      "get": {
+        "summary": "Health",
+        "operationId": "health_api_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AppConfig": {
+        "properties": {
+          "input_image_path": {
+            "type": "string",
+            "title": "Input Image Path",
+            "default": ""
+          },
+          "batch_output_path": {
+            "type": "string",
+            "title": "Batch Output Path",
+            "default": ""
+          },
+          "extract_structured": {
+            "type": "boolean",
+            "title": "Extract Structured",
+            "default": true
+          },
+          "ocr_model": {
+            "type": "string",
+            "title": "Ocr Model",
+            "default": ""
+          },
+          "workshop_ocr_model": {
+            "type": "string",
+            "title": "Workshop Ocr Model",
+            "default": ""
+          },
+          "extractor_model": {
+            "type": "string",
+            "title": "Extractor Model",
+            "default": ""
+          },
+          "workshop_extractor_model": {
+            "type": "string",
+            "title": "Workshop Extractor Model",
+            "default": ""
+          },
+          "parse_custom_instruction": {
+            "type": "string",
+            "title": "Parse Custom Instruction",
+            "default": ""
+          },
+          "normalize_engine": {
+            "type": "string",
+            "title": "Normalize Engine",
+            "default": "embedding"
+          },
+          "normalize_embedding_threshold": {
+            "type": "number",
+            "title": "Normalize Embedding Threshold",
+            "default": 0.05
+          },
+          "normalize_string_similarity": {
+            "type": "integer",
+            "title": "Normalize String Similarity",
+            "default": 80
+          },
+          "indexing_scheme": {
+            "type": "string",
+            "title": "Indexing Scheme",
+            "default": ""
+          },
+          "dashboard_rank_by": {
+            "type": "string",
+            "title": "Dashboard Rank By",
+            "default": "Total Spend"
+          },
+          "prefix_suggestion_boundary_only": {
+            "type": "boolean",
+            "title": "Prefix Suggestion Boundary Only",
+            "default": true
+          },
+          "prefix_suggestion_max_length": {
+            "type": "integer",
+            "title": "Prefix Suggestion Max Length",
+            "default": 24
+          },
+          "prefix_suggestion_min_length": {
+            "type": "integer",
+            "title": "Prefix Suggestion Min Length",
+            "default": 3
+          },
+          "prefix_suggestion_min_count": {
+            "type": "integer",
+            "title": "Prefix Suggestion Min Count",
+            "default": 2
+          },
+          "calendar_period": {
+            "type": "string",
+            "title": "Calendar Period",
+            "default": "week"
+          },
+          "calendar_date": {
+            "type": "string",
+            "title": "Calendar Date",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "title": "AppConfig"
+      },
+      "AppConfigPatch": {
+        "properties": {
+          "input_image_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input Image Path"
+          },
+          "batch_output_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Batch Output Path"
+          },
+          "extract_structured": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extract Structured"
+          },
+          "ocr_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ocr Model"
+          },
+          "workshop_ocr_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workshop Ocr Model"
+          },
+          "extractor_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extractor Model"
+          },
+          "workshop_extractor_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workshop Extractor Model"
+          },
+          "parse_custom_instruction": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parse Custom Instruction"
+          },
+          "normalize_engine": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Normalize Engine"
+          },
+          "normalize_embedding_threshold": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Normalize Embedding Threshold"
+          },
+          "normalize_string_similarity": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Normalize String Similarity"
+          },
+          "indexing_scheme": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Indexing Scheme"
+          },
+          "dashboard_rank_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dashboard Rank By"
+          },
+          "prefix_suggestion_boundary_only": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prefix Suggestion Boundary Only"
+          },
+          "prefix_suggestion_max_length": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prefix Suggestion Max Length"
+          },
+          "prefix_suggestion_min_length": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prefix Suggestion Min Length"
+          },
+          "prefix_suggestion_min_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prefix Suggestion Min Count"
+          },
+          "calendar_period": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calendar Period"
+          },
+          "calendar_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calendar Date"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "AppConfigPatch"
+      },
+      "ArchiveMoveOut": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "destination": {
+            "type": "string",
+            "title": "Destination"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "filename",
+          "destination"
+        ],
+        "title": "ArchiveMoveOut"
+      },
+      "ArchiveStatus": {
+        "properties": {
+          "blocker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocker"
+          },
+          "unarchived_batches": {
+            "type": "integer",
+            "title": "Unarchived Batches"
+          },
+          "complete_batches": {
+            "type": "integer",
+            "title": "Complete Batches"
+          },
+          "documents": {
+            "type": "integer",
+            "title": "Documents"
+          },
+          "multipage": {
+            "type": "integer",
+            "title": "Multipage"
+          },
+          "files": {
+            "type": "integer",
+            "title": "Files"
+          },
+          "accepted": {
+            "type": "integer",
+            "title": "Accepted"
+          },
+          "marked": {
+            "type": "integer",
+            "title": "Marked"
+          },
+          "tossed": {
+            "type": "integer",
+            "title": "Tossed"
+          },
+          "moves": {
+            "items": {
+              "$ref": "#/components/schemas/ArchiveMoveOut"
+            },
+            "type": "array",
+            "title": "Moves"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "blocker",
+          "unarchived_batches",
+          "complete_batches",
+          "documents",
+          "multipage",
+          "files",
+          "accepted",
+          "marked",
+          "tossed",
+          "moves"
+        ],
+        "title": "ArchiveStatus"
+      },
+      "BatchFile": {
+        "properties": {
+          "serial": {
+            "type": "integer",
+            "title": "Serial"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "serial",
+          "filename"
+        ],
+        "title": "BatchFile"
+      },
+      "BatchOut": {
+        "properties": {
+          "batch_id": {
+            "type": "integer",
+            "title": "Batch Id"
+          },
+          "start_datetime": {
+            "type": "string",
+            "title": "Start Datetime"
+          },
+          "end_datetime": {
+            "type": "string",
+            "title": "End Datetime"
+          },
+          "file_count": {
+            "type": "integer",
+            "title": "File Count"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "batch_id",
+          "start_datetime",
+          "end_datetime",
+          "file_count"
+        ],
+        "title": "BatchOut"
+      },
+      "BoxRect": {
+        "properties": {
+          "x1": {
+            "type": "integer",
+            "title": "X1"
+          },
+          "y1": {
+            "type": "integer",
+            "title": "Y1"
+          },
+          "x2": {
+            "type": "integer",
+            "title": "X2"
+          },
+          "y2": {
+            "type": "integer",
+            "title": "Y2"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "x1",
+          "y1",
+          "x2",
+          "y2"
+        ],
+        "title": "BoxRect",
+        "description": "Corner-normalized rectangle on the OCR's 0-1000 scale, relative to the page image."
+      },
+      "BrandTotals": {
+        "properties": {
+          "merchant_group": {
+            "type": "string",
+            "title": "Merchant Group"
+          },
+          "total_spend": {
+            "type": "number",
+            "title": "Total Spend"
+          },
+          "visit_count": {
+            "type": "integer",
+            "title": "Visit Count"
+          },
+          "brand_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Id"
+          },
+          "avg_per_visit": {
+            "type": "integer",
+            "title": "Avg Per Visit"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "merchant_group",
+          "total_spend",
+          "visit_count",
+          "brand_id",
+          "avg_per_visit"
+        ],
+        "title": "BrandTotals"
+      },
+      "CadencePoint": {
+        "properties": {
+          "visit_date": {
+            "type": "string",
+            "title": "Visit Date"
+          },
+          "days_since_last": {
+            "type": "number",
+            "title": "Days Since Last"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "visit_date",
+          "days_since_last"
+        ],
+        "title": "CadencePoint"
+      },
+      "ConfirmIndexIn": {
+        "properties": {
+          "scheme": {
+            "type": "string",
+            "title": "Scheme"
+          },
+          "token": {
+            "type": "string",
+            "title": "Token"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "scheme",
+          "token"
+        ],
+        "title": "ConfirmIndexIn"
+      },
+      "DateRange": {
+        "properties": {
+          "min": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min"
+          },
+          "max": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "min",
+          "max"
+        ],
+        "title": "DateRange"
+      },
+      "DecisionIn": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "marked",
+              "tossed"
+            ],
+            "title": "Verdict"
+          },
+          "draft": {
+            "$ref": "#/components/schemas/DraftIn"
+          },
+          "comment": {
+            "type": "string",
+            "title": "Comment",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "verdict",
+          "draft"
+        ],
+        "title": "DecisionIn"
+      },
+      "DecisionOut": {
+        "properties": {
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "marked",
+              "tossed"
+            ],
+            "title": "Verdict"
+          },
+          "document_type": {
+            "type": "string",
+            "title": "Document Type"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "date": {
+            "type": "string",
+            "title": "Date"
+          },
+          "time": {
+            "type": "string",
+            "title": "Time"
+          },
+          "cost": {
+            "type": "number",
+            "title": "Cost"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "comment": {
+            "type": "string",
+            "title": "Comment"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "verdict",
+          "document_type",
+          "name",
+          "date",
+          "time",
+          "cost",
+          "currency",
+          "comment"
+        ],
+        "title": "DecisionOut"
+      },
+      "DraftIn": {
+        "properties": {
+          "document_type": {
+            "type": "string",
+            "enum": [
+              "receipt",
+              "other",
+              "corrupted"
+            ],
+            "title": "Document Type"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "date": {
+            "type": "string",
+            "title": "Date"
+          },
+          "time": {
+            "type": "string",
+            "title": "Time"
+          },
+          "cost": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "document_type",
+          "name",
+          "date",
+          "time",
+          "cost",
+          "currency"
+        ],
+        "title": "DraftIn"
+      },
+      "FieldBoxOut": {
+        "properties": {
+          "index": {
+            "type": "integer",
+            "title": "Index"
+          },
+          "fields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Fields"
+          },
+          "rects": {
+            "items": {
+              "$ref": "#/components/schemas/BoxRect"
+            },
+            "type": "array",
+            "title": "Rects"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "index",
+          "fields",
+          "rects",
+          "text"
+        ],
+        "title": "FieldBoxOut"
+      },
+      "FormDefaultsOut": {
+        "properties": {
+          "document_type": {
+            "type": "string",
+            "enum": [
+              "receipt",
+              "other",
+              "corrupted"
+            ],
+            "title": "Document Type"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "date": {
+            "type": "string",
+            "title": "Date"
+          },
+          "time": {
+            "type": "string",
+            "title": "Time"
+          },
+          "cost": {
+            "type": "number",
+            "title": "Cost"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "phone": {
+            "type": "string",
+            "title": "Phone"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "document_type",
+          "name",
+          "date",
+          "time",
+          "cost",
+          "currency",
+          "phone"
+        ],
+        "title": "FormDefaultsOut"
+      },
+      "GalleryReceipt": {
+        "properties": {
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "date": {
+            "type": "string",
+            "title": "Date"
+          },
+          "time": {
+            "type": "string",
+            "title": "Time"
+          },
+          "cost": {
+            "type": "number",
+            "title": "Cost"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "brand_location": {
+            "type": "string",
+            "title": "Brand Location"
+          },
+          "document_type": {
+            "type": "string",
+            "title": "Document Type"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "filename",
+          "path",
+          "date",
+          "time",
+          "cost",
+          "currency",
+          "name",
+          "brand_location",
+          "document_type"
+        ],
+        "title": "GalleryReceipt",
+        "description": "Slim receipt for galleries: no OCR text or line items."
+      },
+      "GroupingOut": {
+        "properties": {
+          "blocker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocker"
+          },
+          "batches": {
+            "items": {
+              "$ref": "#/components/schemas/BatchOut"
+            },
+            "type": "array",
+            "title": "Batches"
+          },
+          "batch_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Batch Id"
+          },
+          "pages": {
+            "items": {
+              "$ref": "#/components/schemas/GroupingPageOut"
+            },
+            "type": "array",
+            "title": "Pages"
+          },
+          "display_keys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Display Keys"
+          },
+          "active_links": {
+            "items": {
+              "type": "boolean"
+            },
+            "type": "array",
+            "title": "Active Links"
+          },
+          "saved_groups": {
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Saved Groups"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "blocker",
+          "batches",
+          "batch_id",
+          "pages",
+          "display_keys",
+          "active_links",
+          "saved_groups"
+        ],
+        "title": "GroupingOut"
+      },
+      "GroupingPageOut": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "serial": {
+            "type": "integer",
+            "title": "Serial"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "tossed": {
+            "type": "boolean",
+            "title": "Tossed"
+          },
+          "image_available": {
+            "type": "boolean",
+            "title": "Image Available"
+          },
+          "image_version": {
+            "type": "integer",
+            "title": "Image Version"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "serial",
+          "filename",
+          "tossed",
+          "image_available",
+          "image_version"
+        ],
+        "title": "GroupingPageOut"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "Health": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "Health"
+      },
+      "HintOut": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "color": {
+            "type": "string",
+            "title": "Color"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "message",
+          "color"
+        ],
+        "title": "HintOut"
+      },
+      "HintsRequest": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "draft": {
+            "$ref": "#/components/schemas/DraftIn"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "draft"
+        ],
+        "title": "HintsRequest"
+      },
+      "HintsResponse": {
+        "properties": {
+          "hints": {
+            "items": {
+              "$ref": "#/components/schemas/HintOut"
+            },
+            "type": "array",
+            "title": "Hints"
+          },
+          "name_status": {
+            "type": "string",
+            "enum": [
+              "placeholder",
+              "approved",
+              "unseen"
+            ],
+            "title": "Name Status"
+          },
+          "accept_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accept Error"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "hints",
+          "name_status",
+          "accept_error"
+        ],
+        "title": "HintsResponse",
+        "description": "``accept_error`` is why Accept would be refused for these values (None if it wouldn't be)."
+      },
+      "IndexStatus": {
+        "properties": {
+          "blocker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocker"
+          },
+          "schemes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Schemes"
+          },
+          "scheme": {
+            "type": "string",
+            "title": "Scheme"
+          },
+          "image_count": {
+            "type": "integer",
+            "title": "Image Count"
+          },
+          "indexed_count": {
+            "type": "integer",
+            "title": "Indexed Count"
+          },
+          "unindexed_count": {
+            "type": "integer",
+            "title": "Unindexed Count"
+          },
+          "existing_batches": {
+            "type": "integer",
+            "title": "Existing Batches"
+          },
+          "proposal": {
+            "items": {
+              "$ref": "#/components/schemas/ProposedBatch"
+            },
+            "type": "array",
+            "title": "Proposal"
+          },
+          "skipped": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Skipped"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "offending": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Offending"
+          },
+          "token": {
+            "type": "string",
+            "title": "Token"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "blocker",
+          "schemes",
+          "scheme",
+          "image_count",
+          "indexed_count",
+          "unindexed_count",
+          "existing_batches",
+          "proposal",
+          "skipped",
+          "warnings",
+          "error",
+          "offending",
+          "token"
+        ],
+        "title": "IndexStatus",
+        "description": "``blocker`` explains why indexing can't be shown (paths not configured, input folder missing)."
+      },
+      "ItemBreakdownRow": {
+        "properties": {
+          "item_name": {
+            "type": "string",
+            "title": "Item Name"
+          },
+          "times_purchased": {
+            "type": "integer",
+            "title": "Times Purchased"
+          },
+          "total_spent": {
+            "type": "number",
+            "title": "Total Spent"
+          },
+          "avg_unit_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Unit Price"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "item_name",
+          "times_purchased",
+          "total_spent",
+          "avg_unit_price"
+        ],
+        "title": "ItemBreakdownRow"
+      },
+      "JobError": {
+        "properties": {
+          "item": {
+            "type": "string",
+            "title": "Item"
+          },
+          "error": {
+            "type": "string",
+            "title": "Error"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "item",
+          "error"
+        ],
+        "title": "JobError"
+      },
+      "JobOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "running",
+              "succeeded",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Status"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "done": {
+            "type": "integer",
+            "title": "Done"
+          },
+          "failed": {
+            "type": "integer",
+            "title": "Failed"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "errors": {
+            "items": {
+              "$ref": "#/components/schemas/JobError"
+            },
+            "type": "array",
+            "title": "Errors"
+          },
+          "elapsed_seconds": {
+            "type": "number",
+            "title": "Elapsed Seconds"
+          },
+          "seconds_per_item": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seconds Per Item"
+          },
+          "eta_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eta Seconds"
+          },
+          "cancel_requested": {
+            "type": "boolean",
+            "title": "Cancel Requested"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "title",
+          "status",
+          "total",
+          "done",
+          "failed",
+          "message",
+          "errors",
+          "elapsed_seconds",
+          "seconds_per_item",
+          "eta_seconds",
+          "cancel_requested",
+          "version"
+        ],
+        "title": "JobOut"
+      },
+      "LineItem": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity"
+          },
+          "unit_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit Price"
+          },
+          "total_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Price"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "quantity",
+          "unit_price",
+          "total_price"
+        ],
+        "title": "LineItem"
+      },
+      "MerchantMetrics": {
+        "properties": {
+          "total_spend": {
+            "type": "number",
+            "title": "Total Spend"
+          },
+          "visit_count": {
+            "type": "integer",
+            "title": "Visit Count"
+          },
+          "avg_ticket": {
+            "type": "number",
+            "title": "Avg Ticket"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "first_visit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Visit"
+          },
+          "last_visit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Visit"
+          },
+          "avg_gap": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Gap"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "total_spend",
+          "visit_count",
+          "avg_ticket",
+          "currency",
+          "first_visit",
+          "last_visit",
+          "avg_gap"
+        ],
+        "title": "MerchantMetrics"
+      },
+      "MerchantProfile": {
+        "properties": {
+          "metrics": {
+            "$ref": "#/components/schemas/MerchantMetrics"
+          },
+          "trend": {
+            "items": {
+              "$ref": "#/components/schemas/MonthlySpend"
+            },
+            "type": "array",
+            "title": "Trend"
+          },
+          "cadence": {
+            "items": {
+              "$ref": "#/components/schemas/CadencePoint"
+            },
+            "type": "array",
+            "title": "Cadence"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ItemBreakdownRow"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "receipts": {
+            "items": {
+              "$ref": "#/components/schemas/GalleryReceipt"
+            },
+            "type": "array",
+            "title": "Receipts"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "metrics",
+          "trend",
+          "cadence",
+          "items",
+          "receipts"
+        ],
+        "title": "MerchantProfile"
+      },
+      "MonthlySpend": {
+        "properties": {
+          "period": {
+            "type": "string",
+            "title": "Period"
+          },
+          "spend": {
+            "type": "number",
+            "title": "Spend"
+          },
+          "month_ts": {
+            "type": "string",
+            "title": "Month Ts"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "period",
+          "spend",
+          "month_ts"
+        ],
+        "title": "MonthlySpend"
+      },
+      "MonthlyVolume": {
+        "properties": {
+          "period": {
+            "type": "string",
+            "title": "Period"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "month_ts": {
+            "type": "string",
+            "title": "Month Ts"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "period",
+          "count",
+          "month_ts"
+        ],
+        "title": "MonthlyVolume"
+      },
+      "NameTotals": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "total_spend": {
+            "type": "number",
+            "title": "Total Spend"
+          },
+          "visit_count": {
+            "type": "integer",
+            "title": "Visit Count"
+          },
+          "brand_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Id"
+          },
+          "avg_per_visit": {
+            "type": "integer",
+            "title": "Avg Per Visit"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "total_spend",
+          "visit_count",
+          "brand_id",
+          "avg_per_visit"
+        ],
+        "title": "NameTotals"
+      },
+      "OcrStatus": {
+        "properties": {
+          "blocker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocker"
+          },
+          "providers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Providers"
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "grounding": {
+            "type": "boolean",
+            "title": "Grounding"
+          },
+          "batches": {
+            "items": {
+              "$ref": "#/components/schemas/BatchOut"
+            },
+            "type": "array",
+            "title": "Batches"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "processed": {
+            "type": "integer",
+            "title": "Processed"
+          },
+          "failed": {
+            "type": "integer",
+            "title": "Failed"
+          },
+          "missing_images": {
+            "type": "integer",
+            "title": "Missing Images"
+          },
+          "to_process": {
+            "type": "integer",
+            "title": "To Process"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "blocker",
+          "providers",
+          "provider",
+          "grounding",
+          "batches",
+          "total",
+          "processed",
+          "failed",
+          "missing_images",
+          "to_process"
+        ],
+        "title": "OcrStatus"
+      },
+      "PageIn": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key"
+        ],
+        "title": "PageIn"
+      },
+      "ParseStatus": {
+        "properties": {
+          "blocker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocker"
+          },
+          "extractors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Extractors"
+          },
+          "extractor": {
+            "type": "string",
+            "title": "Extractor"
+          },
+          "custom_instruction": {
+            "type": "string",
+            "title": "Custom Instruction"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "processed": {
+            "type": "integer",
+            "title": "Processed"
+          },
+          "tossed": {
+            "type": "integer",
+            "title": "Tossed"
+          },
+          "to_process": {
+            "type": "integer",
+            "title": "To Process"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "blocker",
+          "extractors",
+          "extractor",
+          "custom_instruction",
+          "total",
+          "processed",
+          "tossed",
+          "to_process"
+        ],
+        "title": "ParseStatus"
+      },
+      "ProposedBatch": {
+        "properties": {
+          "batch_id": {
+            "type": "integer",
+            "title": "Batch Id"
+          },
+          "start_datetime": {
+            "type": "string",
+            "title": "Start Datetime"
+          },
+          "end_datetime": {
+            "type": "string",
+            "title": "End Datetime"
+          },
+          "file_count": {
+            "type": "integer",
+            "title": "File Count"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/BatchFile"
+            },
+            "type": "array",
+            "title": "Files"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "batch_id",
+          "start_datetime",
+          "end_datetime",
+          "file_count",
+          "files"
+        ],
+        "title": "ProposedBatch"
+      },
+      "QueueItem": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "document_type": {
+            "type": "string",
+            "enum": [
+              "receipt",
+              "other",
+              "corrupted"
+            ],
+            "title": "Document Type"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "document_type",
+          "label"
+        ],
+        "title": "QueueItem"
+      },
+      "ReviewDocument": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "defaults": {
+            "$ref": "#/components/schemas/FormDefaultsOut"
+          },
+          "initial_name": {
+            "type": "string",
+            "title": "Initial Name"
+          },
+          "ocr_text": {
+            "type": "string",
+            "title": "Ocr Text"
+          },
+          "pages": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewPage"
+            },
+            "type": "array",
+            "title": "Pages"
+          },
+          "smart_matches": {
+            "items": {
+              "$ref": "#/components/schemas/SmartMatch"
+            },
+            "type": "array",
+            "title": "Smart Matches"
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DecisionOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "defaults",
+          "initial_name",
+          "ocr_text",
+          "pages",
+          "smart_matches",
+          "decision"
+        ],
+        "title": "ReviewDocument"
+      },
+      "ReviewPage": {
+        "properties": {
+          "file_key": {
+            "type": "string",
+            "title": "File Key"
+          },
+          "filename": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filename"
+          },
+          "image_available": {
+            "type": "boolean",
+            "title": "Image Available"
+          },
+          "boxes": {
+            "items": {
+              "$ref": "#/components/schemas/FieldBoxOut"
+            },
+            "type": "array",
+            "title": "Boxes"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "file_key",
+          "filename",
+          "image_available",
+          "boxes"
+        ],
+        "title": "ReviewPage"
+      },
+      "ReviewQueue": {
+        "properties": {
+          "blocker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocker"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/ReviewSummary"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/QueueItem"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "blocker",
+          "summary",
+          "items"
+        ],
+        "title": "ReviewQueue",
+        "description": "``blocker`` explains why there is nothing to review yet (no index, no extractions)."
+      },
+      "ReviewSummary": {
+        "properties": {
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "pending": {
+            "type": "integer",
+            "title": "Pending"
+          },
+          "verdicts": {
+            "items": {
+              "$ref": "#/components/schemas/VerdictCount"
+            },
+            "type": "array",
+            "title": "Verdicts"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "total",
+          "pending",
+          "verdicts"
+        ],
+        "title": "ReviewSummary"
+      },
+      "RotateIn": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "top_points": {
+            "type": "string",
+            "enum": [
+              "left",
+              "right",
+              "down"
+            ],
+            "title": "Top Points"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "top_points"
+        ],
+        "title": "RotateIn"
+      },
+      "SaveGroupingIn": {
+        "properties": {
+          "batch_id": {
+            "type": "integer",
+            "title": "Batch Id"
+          },
+          "groups": {
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Groups"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "batch_id",
+          "groups"
+        ],
+        "title": "SaveGroupingIn"
+      },
+      "SaveGroupingOut": {
+        "properties": {
+          "changed": {
+            "type": "boolean",
+            "title": "Changed"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "changed"
+        ],
+        "title": "SaveGroupingOut"
+      },
+      "SmartMatch": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "name_score": {
+            "type": "number",
+            "title": "Name Score"
+          },
+          "phone_score": {
+            "type": "number",
+            "title": "Phone Score"
+          },
+          "quick_apply": {
+            "type": "boolean",
+            "title": "Quick Apply"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "name_score",
+          "phone_score",
+          "quick_apply",
+          "label"
+        ],
+        "title": "SmartMatch"
+      },
+      "StartOcrIn": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "batch_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Batch Id"
+          },
+          "reprocess": {
+            "type": "boolean",
+            "title": "Reprocess",
+            "default": false
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "provider"
+        ],
+        "title": "StartOcrIn"
+      },
+      "StartParseIn": {
+        "properties": {
+          "extractor": {
+            "type": "string",
+            "title": "Extractor"
+          },
+          "reprocess": {
+            "type": "boolean",
+            "title": "Reprocess",
+            "default": false
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit",
+            "default": 0
+          },
+          "custom_instruction": {
+            "type": "string",
+            "title": "Custom Instruction",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "extractor"
+        ],
+        "title": "StartParseIn"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "VerdictCount": {
+        "properties": {
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "marked",
+              "tossed"
+            ],
+            "title": "Verdict"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "color": {
+            "type": "string",
+            "title": "Color"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "verdict",
+          "label",
+          "color",
+          "count"
+        ],
+        "title": "VerdictCount"
+      },
+      "VizItem": {
+        "properties": {
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "merchant": {
+            "type": "string",
+            "title": "Merchant"
+          },
+          "merchant_group": {
+            "type": "string",
+            "title": "Merchant Group"
+          },
+          "receipt_date": {
+            "type": "string",
+            "title": "Receipt Date"
+          },
+          "parsed_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parsed Date"
+          },
+          "item_name": {
+            "type": "string",
+            "title": "Item Name"
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity"
+          },
+          "unit_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit Price"
+          },
+          "total_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Price"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "filename",
+          "merchant",
+          "merchant_group",
+          "receipt_date",
+          "parsed_date",
+          "item_name",
+          "quantity",
+          "unit_price",
+          "total_price",
+          "currency"
+        ],
+        "title": "VizItem",
+        "description": "One line item across all archived receipts."
+      },
+      "VizRecord": {
+        "properties": {
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "paths": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Paths"
+          },
+          "document_type": {
+            "type": "string",
+            "title": "Document Type"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "date": {
+            "type": "string",
+            "title": "Date"
+          },
+          "time": {
+            "type": "string",
+            "title": "Time"
+          },
+          "cost": {
+            "type": "number",
+            "title": "Cost"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "comment": {
+            "type": "string",
+            "title": "Comment"
+          },
+          "address": {
+            "type": "string",
+            "title": "Address"
+          },
+          "language": {
+            "type": "string",
+            "title": "Language"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LineItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "ocr_markdown": {
+            "type": "string",
+            "title": "Ocr Markdown"
+          },
+          "parsed_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parsed Date"
+          },
+          "year": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year"
+          },
+          "month": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Month"
+          },
+          "brand_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Id"
+          },
+          "brand_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Label"
+          },
+          "brand_location": {
+            "type": "string",
+            "title": "Brand Location"
+          },
+          "merchant_group": {
+            "type": "string",
+            "title": "Merchant Group"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "filename",
+          "path",
+          "paths",
+          "document_type",
+          "name",
+          "date",
+          "time",
+          "cost",
+          "currency",
+          "comment",
+          "address",
+          "language",
+          "items",
+          "ocr_markdown",
+          "parsed_date",
+          "year",
+          "month",
+          "brand_id",
+          "brand_label",
+          "brand_location",
+          "merchant_group"
+        ],
+        "title": "VizRecord",
+        "description": "One archived document (multi-page documents collapsed to their first page)."
+      }
+    }
+  }
+}

@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+from analytics import item_breakdown, merchant_metrics, monthly_spend, visit_cadence
 from brand_registry import load_brand_directory
 from viz_data import (
     get_output_path,
@@ -65,19 +66,14 @@ if match_mode == "Brand":
 
 dated = merchant_df[merchant_df["parsed_date"].notna()].sort_values("parsed_date")
 
-total_spend = merchant_df["cost"].sum()
-visit_count = len(merchant_df)
-avg_ticket = total_spend / visit_count if visit_count else 0
-
-currency_mode = merchant_df["currency"].mode()
-currency = currency_mode.iloc[0] if not currency_mode.empty else ""
-
-first_visit = dated["parsed_date"].min() if not dated.empty else None
-last_visit = dated["parsed_date"].max() if not dated.empty else None
-
-avg_gap = None
-if len(dated) >= 2:
-    avg_gap = dated["parsed_date"].diff().dt.days.dropna().mean()
+_m = merchant_metrics(merchant_df)
+total_spend = _m["total_spend"]
+visit_count = _m["visit_count"]
+avg_ticket = _m["avg_ticket"]
+currency = _m["currency"]
+first_visit = _m["first_visit"]
+last_visit = _m["last_visit"]
+avg_gap = _m["avg_gap"]
 
 c1, c2, c3 = st.columns(3)
 c1.metric("Total Spend", f"{total_spend:,.0f} {currency}")
@@ -100,21 +96,15 @@ c1, c2 = st.columns(2)
 with c1:
     if not dated.empty:
         st.subheader("Spending Trend")
-        monthly = dated.groupby(dated["parsed_date"].dt.to_period("M"))["cost"].sum().rename("spend").reset_index()
-        monthly.columns = ["period", "spend"]
-        monthly["month"] = monthly["period"].dt.to_timestamp()
-        fig = px.bar(monthly, x="month", y="spend")
+        monthly = monthly_spend(dated)
+        fig = px.bar(monthly, x="month_ts", y="spend")
         fig.update_layout(xaxis_title="", yaxis_title=f"Spend ({currency})")
         st.plotly_chart(fig, width="stretch")
 
 with c2:
     if len(dated) >= 3:
         st.subheader("Visit Cadence")
-        sorted_dates = dated["parsed_date"].reset_index(drop=True)
-        gap_df = pd.DataFrame({
-            "visit_date": sorted_dates.iloc[1:].values,
-            "days_since_last": sorted_dates.diff().dt.days.iloc[1:].values,
-        })
+        gap_df = visit_cadence(dated)
         fig2 = px.scatter(gap_df, x="visit_date", y="days_since_last")
         fig2.update_layout(xaxis_title="", yaxis_title="Days Since Last Visit")
         st.plotly_chart(fig2, width="stretch")
@@ -125,11 +115,7 @@ merchant_items = items_df[items_df["merchant"].isin(matched_names_set)] if not i
 
 if not merchant_items.empty:
     st.subheader("Item Breakdown")
-    agg = merchant_items.groupby("item_name").agg(
-        times_purchased=("item_name", "size"),
-        total_spent=("total_price", "sum"),
-        avg_unit_price=("unit_price", "mean"),
-    ).reset_index()
+    agg = item_breakdown(merchant_items)
     st.dataframe(
         agg.sort_values("times_purchased", ascending=False),
         column_config={

@@ -1,0 +1,37 @@
+{
+  "original_filename": "01152025090500_102.png",
+  "batch_id": 5,
+  "serial": 102,
+  "review": {
+    "verdict": "accepted",
+    "document_type": "receipt",
+    "name": "セブン-イレブン 上野店",
+    "date": "2025-01-15",
+    "time": "09:05:00",
+    "cost": 640.0,
+    "currency": "JPY",
+    "comment": ""
+  },
+  "ocr": {
+    "markdown": "セブン-イレブン 上野店\n合計 ¥640",
+    "succeeded": true
+  },
+  "extraction": {
+    "document_type": "receipt",
+    "language": "ja",
+    "date": "2025-01-15",
+    "time": "09:05:00",
+    "name": "セブン-イレブン 上野店",
+    "phone": "",
+    "currency": "JPY",
+    "address": "",
+    "items": [
+      {
+        "name": "パン",
+        "total_price": 640.0
+      }
+    ],
+    "cost": 640.0,
+    "field_sources": {}
+  }
+}
