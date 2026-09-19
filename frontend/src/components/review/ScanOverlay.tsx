@@ -1,5 +1,6 @@
 import type { BoxRect, FieldBox, ReviewPage, TopPoints } from '../../api/types.ts'
 import { Empty } from '../ui.tsx'
+import './ScanOverlay.css'
 
 /** Colors per extracted field, matching box_drawing.FIELD_COLORS in the Streamlit app. */
 export const FIELD_COLORS: Record<string, string> = {
@@ -12,6 +13,13 @@ export const FIELD_COLORS: Record<string, string> = {
 const DEFAULT_FIELD_COLOR = '#787878'
 
 export const fieldColor = (field: string | undefined) => (field && FIELD_COLORS[field]) || DEFAULT_FIELD_COLOR
+
+/** A box no field cites (every box OCR found, before Parse): its own colour, as box_drawing.draw_all_boxes. */
+const BOX_COLORS = ['#4285f4', '#ea4335', '#34a853', '#fbbc04', '#00bcd4', '#9c27b0', '#ff7043', '#3f51b5']
+const boxColor = (box: FieldBox) =>
+  box.fields.length ? fieldColor(box.fields[0]) : BOX_COLORS[box.index % BOX_COLORS.length] ?? DEFAULT_FIELD_COLOR
+/** A cited box is labelled with its fields; an uncited one with its index, as the prompt tags it (P1-BOX-3). */
+const boxLabel = (box: FieldBox) => (box.fields.length ? box.fields.join(', ') : String(box.index))
 
 const pct = (v: number) => `${v / 10}%`
 
@@ -73,13 +81,13 @@ export function ScanOverlay({
                     className={`field-box${isActive(box) ? ' active' : ''}${r.y1 < 40 ? ' label-below' : ''}`}
                     style={{
                       left: pct(r.x1), top: pct(r.y1), width: pct(r.x2 - r.x1), height: pct(r.y2 - r.y1),
-                      ['--box-color' as string]: fieldColor(box.fields[0]),
+                      ['--box-color' as string]: boxColor(box),
                     }}
-                    title={`${box.fields.join(', ')}${box.text ? ` — ${box.text}` : ''}`}
+                    title={`${boxLabel(box)}${box.text ? ` — ${box.text}` : ''}`}
                     onMouseEnter={() => onHoverField(box.fields[0] ?? null)}
                     onMouseLeave={() => onHoverField(null)}
                   >
-                    {j === 0 && <span className="field-box__label">{box.fields.join(', ')}</span>}
+                    {j === 0 && <span className="field-box__label">{boxLabel(box)}</span>}
                   </div>
                 )
               }))}

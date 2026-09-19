@@ -106,6 +106,8 @@ if not (BOX / "config.json").exists():
 
 import settings
 settings.CONFIG_PATH = BOX / "config.json"
+import experiment_runs
+experiment_runs.ROOT = BOX / "experiment"
 from api import ingest_registry
 ingest_registry.ocr_providers = lambda: {"Fake OCR (sandbox)": FakeOcr()}
 ingest_registry.extractors = lambda: {"Fake LLM (sandbox)": fake_extract}

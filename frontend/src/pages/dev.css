@@ -1,0 +1,64 @@
+/* Dev pages: Sanity Check, Index Audit, Experiment.
+
+   Sanity Check and Index Audit are stacks of reports (tiles, a table, file lists), so they take the form
+   bound and centre, like the ingest pages. The Experiment bench takes the window: three columns in the
+   order things happen — the image, OCR and what it read, Parse and what it extracted. */
+.dev-page { max-width: var(--form-max); margin-inline: auto; }
+.dev-page .card + .card { margin-top: 16px; }
+.dev-page .tiles { margin: 4px 0 12px; }
+.dev-ok { color: #28a745; font-weight: 600; }
+p.dev-ok { margin: 0; font-size: 13px; }
+.dev-list-title { margin: 10px 0 0; }
+
+/* --- Experiment ------------------------------------------------------------------------------------ */
+/* Unlike Review's columns, these share the window evenly: each holds controls above a result that can
+   run long (OCR text, a list of items), and on a wide screen more width means less scrolling. Below
+   ~1400px three columns get too narrow for the controls, so they stack, still in that order. The scan
+   is bounded like Review's (about 1:3, so its width decides its height). */
+.experiment-layout {
+  display: grid; gap: 14px; align-items: start; grid-template-columns: repeat(3, minmax(0, 1fr));
+  --scan-width: min(100%, 32rem);
+}
+.experiment-layout > .card + .card { margin-top: 0; }
+@media (max-width: 1400px) { .experiment-layout { grid-template-columns: minmax(0, 1fr); } }
+.experiment-page .textdump.experiment-text { max-height: none; overflow: visible; }
+.experiment-drop {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 14px; padding: 10px 12px;
+  border: 1px dashed var(--border); border-radius: var(--radius); transition: background-color .12s ease;
+}
+.experiment-drop.dragging { border-color: var(--accent); background: var(--accent-soft); }
+.experiment-file { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.experiment-file strong { color: var(--text); font-weight: 600; }
+
+.experiment-views { margin-bottom: 10px; }
+.experiment-layout > .card > .field, .experiment-layout > .card > .curate-grid { margin-top: 12px; }
+.experiment-layout > .card > .field:first-of-type { margin-top: 0; }
+.experiment-checks { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.experiment-checks label, .experiment-check { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text); }
+.experiment-check { margin-top: 10px; }
+.experiment-page .ingest-details { margin-top: 10px; }
+.experiment-page .ingest-details .textdump { margin-top: 6px; }
+
+/* What a step produced, under its controls and split from them by a rule. */
+.experiment-step {
+  margin: 18px 0 8px; padding-top: 14px; border-top: 1px solid var(--border);
+  font-size: 11.5px; font-weight: 650; color: var(--muted); text-transform: uppercase; letter-spacing: .05em;
+}
+.experiment-page .parse-instructions { margin-bottom: 0; }
+
+/* A run's progress sits under its button, flattened into the column as in the Workshop. */
+.experiment-layout .job-panel {
+  margin-top: 12px; padding: 12px 0 0; border: 0; border-top: 1px solid var(--border); border-radius: 0; background: none;
+}
+
+/* Parse's result, under its button: the fields (a cited one carries its box colour, and hovering it lights
+   its boxes on the image), then the items. */
+.experiment-fields, .experiment-items { margin-top: 8px; font-size: 13px; }
+.experiment-fields th {
+  width: 7rem; padding: 5px 10px 5px 8px; text-align: left; font-weight: 500; color: var(--muted); white-space: nowrap;
+  border-left: 3px solid transparent;
+}
+.experiment-fields th.cited { border-left-color: var(--box-color); }
+.experiment-fields td { padding: 5px 8px; overflow-wrap: anywhere; }
+.experiment-fields tr.active { background: color-mix(in srgb, var(--box-color, var(--accent)) 14%, transparent); }
+.experiment-items thead th { position: static; }

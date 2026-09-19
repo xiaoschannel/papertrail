@@ -50,6 +50,15 @@ export type WorkshopReprocessIn = Schemas['WorkshopReprocessIn']
 export type WorkshopDecisionIn = Schemas['WorkshopDecisionIn']
 /** The scan treatment, without the bits that say which document and models to use. */
 export type Enhancement = Omit<WorkshopReprocessIn, 'key' | 'ocr_model' | 'extractor'>
+export type SanityReport = Schemas['SanityOut']
+export type BatchSanity = Schemas['BatchSanityOut']
+export type IndexAudit = Schemas['IndexAuditOut']
+export type ExperimentOptions = Schemas['ExperimentOut']
+export type ExperimentRun = Schemas['ExperimentRunOut']
+/** The Workshop's treatment plus denoising, which only the Experiment bench offers. */
+export type ExperimentTreatment = Schemas['ExperimentTreatmentIn']
+export type ExperimentOcrIn = Schemas['ExperimentOcrIn']
+export type ExperimentParseIn = Schemas['ExperimentParseIn']
 
 /** The label column of a totals row: `merchant_group` when grouped by brand, `name` otherwise. */
 export const totalsLabel = (row: MerchantTotals): string => ('merchant_group' in row ? row.merchant_group : row.name)

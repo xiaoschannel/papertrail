@@ -1,8 +1,8 @@
 import createClient from 'openapi-fetch'
 import type { paths } from './schema'
 import type {
-  AppConfig, BrandIn, ConfirmIndexIn, DecisionIn, Draft, MerchantTotals, ReceiptEditIn, StartOcrIn,
-  StartParseIn, TopPoints, Verdict, WorkshopDecisionIn, WorkshopReprocessIn,
+  AppConfig, BrandIn, ConfirmIndexIn, DecisionIn, Draft, ExperimentOcrIn, ExperimentParseIn, ExperimentTreatment,
+  MerchantTotals, ReceiptEditIn, StartOcrIn, StartParseIn, TopPoints, Verdict, WorkshopDecisionIn, WorkshopReprocessIn,
 } from './types.ts'
 
 /** Typed HTTP client. Paths, query parameters and response bodies all come from
@@ -148,6 +148,29 @@ export const api = {
       unwrap(client.GET('/api/curate/workshop/context', { params: { query: { key, ...when } } })),
   },
 
+  dev: {
+    sanity: () => unwrap(client.GET('/api/dev/sanity')),
+    indexAudit: () => unwrap(client.GET('/api/dev/index-audit')),
+    experiment: () => unwrap(client.GET('/api/dev/experiment')),
+    run: (runId: string) => unwrap(client.GET('/api/dev/experiment/{run_id}', { params: { path: { run_id: runId } } })),
+    /** Start a run from an image. OpenAPI types the file as a string ("binary"); the serializer sends the File. */
+    upload: (file: File) => unwrap(client.POST('/api/dev/experiment', {
+      body: { file: file.name },
+      bodySerializer: () => {
+        const form = new FormData()
+        form.append('file', file)
+        return form
+      },
+    })),
+    prompt: (runId: string, customInstruction: string) => unwrap(client.POST('/api/dev/experiment/{run_id}/prompt', {
+      params: { path: { run_id: runId } }, body: { custom_instruction: customInstruction },
+    })),
+    ocr: (runId: string, body: ExperimentOcrIn) =>
+      unwrap(client.POST('/api/dev/experiment/{run_id}/ocr', { params: { path: { run_id: runId } }, body })),
+    parse: (runId: string, body: ExperimentParseIn) =>
+      unwrap(client.POST('/api/dev/experiment/{run_id}/parse', { params: { path: { run_id: runId } }, body })),
+  },
+
   jobs: {
     list: () => unwrap(client.GET('/api/jobs')),
     cancel: (jobId: string) => unwrap(client.POST('/api/jobs/{job_id}/cancel', { params: { path: { job_id: jobId } } })),
@@ -166,11 +189,20 @@ export type OcrQuery = { provider?: string | undefined; batchId?: number | undef
 /** Server-Sent Events URL streaming a job's progress (each `data:` event is a JobOut). */
 export const jobEventsUrl = (jobId: string): string => `/api/jobs/${encodeURIComponent(jobId)}/events`
 
+const withQuery = (path: string, query: Record<string, string | number | boolean>): string =>
+  `${path}?${new URLSearchParams(Object.entries(query).map(([key, value]) => [key, String(value)])).toString()}`
+
 /** A marked scan as OCR would see it, with the workshop's treatment applied by the server. */
 export const workshopScanUrl = (filename: string, enhancement: Record<string, string | number>): string =>
-  `/api/curate/workshop/scan?${new URLSearchParams({ filename, ...Object.fromEntries(
-    Object.entries(enhancement).map(([key, value]) => [key, String(value)]),
-  ) }).toString()}`
+  withQuery('/api/curate/workshop/scan', { filename, ...enhancement })
+
+/** An Experiment image with a treatment applied by the server: what OCR would read with these settings. */
+export const experimentScanUrl = (runId: string, treatment: ExperimentTreatment): string =>
+  withQuery(`/api/dev/experiment/${encodeURIComponent(runId)}/scan`, treatment)
+
+/** The image the last Experiment OCR run read; `version` changes with each run. */
+export const experimentSeenUrl = (runId: string, version: string): string =>
+  withQuery(`/api/dev/experiment/${encodeURIComponent(runId)}/seen`, { v: version })
 
 /** A scan in the input folder at full size. */
 export const inputUrl = (filename: string): string => `/api/media/input/${encodeURIComponent(filename)}`

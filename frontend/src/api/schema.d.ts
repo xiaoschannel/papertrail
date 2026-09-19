@@ -1103,6 +1103,184 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/dev/sanity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Sanity
+         * @description Is every indexed file where it should be, and does every archived scan have its sidecar?
+         */
+        get: operations["sanity_api_dev_sanity_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/dev/index-audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Index Audit
+         * @description What batches.json says: totals, filenames indexed twice, each batch, and the scan folder against it.
+         */
+        get: operations["index_audit_api_dev_index_audit_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/dev/experiment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Experiment */
+        get: operations["experiment_api_dev_experiment_get"];
+        put?: never;
+        /**
+         * Upload
+         * @description Start a run from an uploaded image. It's kept in a scratch folder, not the archive.
+         */
+        post: operations["upload_api_dev_experiment_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/dev/experiment/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Run Detail */
+        get: operations["run_detail_api_dev_experiment__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/dev/experiment/{run_id}/scan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Treated Scan
+         * @description The image with a treatment applied — the pixels an OCR run with these settings would read.
+         */
+        get: operations["treated_scan_api_dev_experiment__run_id__scan_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/dev/experiment/{run_id}/seen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Seen Scan
+         * @description The image the last OCR run read. Its boxes were measured on it, whatever the controls say now.
+         */
+        get: operations["seen_scan_api_dev_experiment__run_id__seen_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/dev/experiment/{run_id}/prompt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Prompt
+         * @description The prompt Parse would send for the current OCR text with these instructions.
+         */
+        post: operations["prompt_api_dev_experiment__run_id__prompt_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/dev/experiment/{run_id}/ocr": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Ocr
+         * @description Read the treated image with one OCR model, as a job: the model loads onto the GPU.
+         */
+        post: operations["run_ocr_api_dev_experiment__run_id__ocr_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/dev/experiment/{run_id}/parse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Parse
+         * @description Extract from the last OCR reading, as Parse would. A hosted model holds nothing locally.
+         */
+        post: operations["run_parse_api_dev_experiment__run_id__parse_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -1313,6 +1491,41 @@ export interface components {
             /** File Count */
             file_count: number;
         };
+        /** BatchSanityOut */
+        BatchSanityOut: {
+            /** Batch Id */
+            batch_id: number;
+            /** Archived */
+            archived: boolean;
+            /** Files */
+            files: number;
+            /** Organized */
+            organized: number;
+            /** Missing From Archive */
+            missing_from_archive: string[];
+            /** Missing From Input */
+            missing_from_input: string[] | null;
+        };
+        /** BatchStatOut */
+        BatchStatOut: {
+            /** Batch Id */
+            batch_id: number;
+            /** Files */
+            files: number;
+            /** Running Total */
+            running_total: number;
+            /** Archived */
+            archived: boolean;
+            /** Start */
+            start: string;
+            /** End */
+            end: string;
+        };
+        /** Body_upload_api_dev_experiment_post */
+        Body_upload_api_dev_experiment_post: {
+            /** File */
+            file: string;
+        };
         /**
          * BoxRect
          * @description Corner-normalized rectangle on the OCR's 0-1000 scale, relative to the page image.
@@ -1459,6 +1672,14 @@ export interface components {
             /** Current */
             current: boolean;
         };
+        /** CorruptedResult */
+        CorruptedResult: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            document_type: "corrupted";
+        };
         /** DateRange */
         DateRange: {
             /** Min */
@@ -1573,6 +1794,240 @@ export interface components {
             cost: number | null;
             /** Currency */
             currency: string;
+        };
+        /** DuplicateFilenameOut */
+        DuplicateFilenameOut: {
+            /** Filename */
+            filename: string;
+            /** Count */
+            count: number;
+            /** Batch Ids */
+            batch_ids: number[];
+        };
+        /** ExperimentOcrIn */
+        ExperimentOcrIn: {
+            /**
+             * Top Points
+             * @default
+             * @enum {string}
+             */
+            top_points: "" | "left" | "right" | "down";
+            /**
+             * Treatment
+             * @default none
+             * @enum {string}
+             */
+            treatment: "none" | "clahe" | "contrast" | "whiten";
+            /**
+             * Clip
+             * @default 3
+             */
+            clip: number;
+            /**
+             * Grid
+             * @default 8
+             */
+            grid: number;
+            /**
+             * Contrast
+             * @default 2.5
+             */
+            contrast: number;
+            /**
+             * Gamma
+             * @default 0.5
+             */
+            gamma: number;
+            /**
+             * Lightness
+             * @default 200
+             */
+            lightness: number;
+            /**
+             * Chroma
+             * @default 10
+             */
+            chroma: number;
+            /**
+             * Denoise Before
+             * @default false
+             */
+            denoise_before: boolean;
+            /**
+             * Denoise After
+             * @default false
+             */
+            denoise_after: boolean;
+            /**
+             * Denoise Strength
+             * @default 6
+             */
+            denoise_strength: number;
+            /** Model */
+            model: string;
+            /**
+             * With Boxes
+             * @default true
+             */
+            with_boxes: boolean;
+        };
+        /** ExperimentOcrOut */
+        ExperimentOcrOut: {
+            /** Model */
+            model: string;
+            /** Read At */
+            read_at: number;
+            /** With Boxes */
+            with_boxes: boolean;
+            treatment: components["schemas"]["ExperimentTreatmentIn"];
+            /** Markdown */
+            markdown: string;
+            /** Structured Raw */
+            structured_raw: string | null;
+            /** Boxes */
+            boxes: components["schemas"]["FieldBoxOut"][];
+            /** Seconds */
+            seconds: number;
+            /** Structured Seconds */
+            structured_seconds: number | null;
+        };
+        /**
+         * ExperimentOut
+         * @description The bench's options, and the run it was last used on.
+         */
+        ExperimentOut: {
+            /** Ocr Models */
+            ocr_models: string[];
+            /** Grounding Models */
+            grounding_models: string[];
+            /** Extractors */
+            extractors: string[];
+            /** Local Extractors */
+            local_extractors: string[];
+            /** Ocr Model */
+            ocr_model: string;
+            /** Extractor */
+            extractor: string;
+            /** With Boxes */
+            with_boxes: boolean;
+            /** Custom Instruction */
+            custom_instruction: string;
+            /** Latest */
+            latest: string | null;
+        };
+        /** ExperimentParseIn */
+        ExperimentParseIn: {
+            /** Extractor */
+            extractor: string;
+            /**
+             * Custom Instruction
+             * @default
+             */
+            custom_instruction: string;
+        };
+        /** ExperimentParseOut */
+        ExperimentParseOut: {
+            /** Extractor */
+            extractor: string;
+            /** Custom Instruction */
+            custom_instruction: string;
+            /** Extraction */
+            extraction: components["schemas"]["ReceiptResult"] | components["schemas"]["OtherResult"] | components["schemas"]["CorruptedResult"];
+            /** Field Boxes */
+            field_boxes: components["schemas"]["FieldBoxOut"][];
+            /** Seconds */
+            seconds: number;
+        };
+        /** ExperimentPromptIn */
+        ExperimentPromptIn: {
+            /**
+             * Custom Instruction
+             * @default
+             */
+            custom_instruction: string;
+        };
+        /** ExperimentPromptOut */
+        ExperimentPromptOut: {
+            /** Prompt */
+            prompt: string;
+            /** Has Boxes */
+            has_boxes: boolean;
+        };
+        /** ExperimentRunOut */
+        ExperimentRunOut: {
+            /** Id */
+            id: string;
+            /** Filename */
+            filename: string;
+            /** Width */
+            width: number;
+            /** Height */
+            height: number;
+            ocr: components["schemas"]["ExperimentOcrOut"] | null;
+            parse: components["schemas"]["ExperimentParseOut"] | null;
+        };
+        /**
+         * ExperimentTreatmentIn
+         * @description The Workshop's treatments, plus the denoising Streamlit's Experiment page had.
+         */
+        ExperimentTreatmentIn: {
+            /**
+             * Top Points
+             * @default
+             * @enum {string}
+             */
+            top_points: "" | "left" | "right" | "down";
+            /**
+             * Treatment
+             * @default none
+             * @enum {string}
+             */
+            treatment: "none" | "clahe" | "contrast" | "whiten";
+            /**
+             * Clip
+             * @default 3
+             */
+            clip: number;
+            /**
+             * Grid
+             * @default 8
+             */
+            grid: number;
+            /**
+             * Contrast
+             * @default 2.5
+             */
+            contrast: number;
+            /**
+             * Gamma
+             * @default 0.5
+             */
+            gamma: number;
+            /**
+             * Lightness
+             * @default 200
+             */
+            lightness: number;
+            /**
+             * Chroma
+             * @default 10
+             */
+            chroma: number;
+            /**
+             * Denoise Before
+             * @default false
+             */
+            denoise_before: boolean;
+            /**
+             * Denoise After
+             * @default false
+             */
+            denoise_after: boolean;
+            /**
+             * Denoise Strength
+             * @default 6
+             */
+            denoise_strength: number;
         };
         /** FieldBoxOut */
         FieldBoxOut: {
@@ -1699,6 +2154,38 @@ export interface components {
             /** Accept Error */
             accept_error: string | null;
         };
+        /** IndexAuditOut */
+        IndexAuditOut: {
+            index_file: components["schemas"]["IndexFileOut"] | null;
+            /** Total Batches */
+            total_batches: number;
+            /** Archived */
+            archived: number;
+            /** Non Archived */
+            non_archived: number;
+            /** Total Entries */
+            total_entries: number;
+            /** Unique Filenames */
+            unique_filenames: number;
+            /** Lost To Dedup */
+            lost_to_dedup: number;
+            /** Duplicates */
+            duplicates: components["schemas"]["DuplicateFilenameOut"][];
+            /** Batches */
+            batches: components["schemas"]["BatchStatOut"][];
+            input: components["schemas"]["InputComparisonOut"] | null;
+        };
+        /**
+         * IndexFileOut
+         * @description batches.json itself. No creation time: every save writes a new file and swaps it in, so it would
+         *     always equal the last change.
+         */
+        IndexFileOut: {
+            /** Size */
+            size: number;
+            /** Modified */
+            modified: string;
+        };
         /**
          * IndexStatus
          * @description ``blocker`` explains why indexing can't be shown (paths not configured, input folder missing).
@@ -1730,6 +2217,15 @@ export interface components {
             offending: string[];
             /** Token */
             token: string;
+        };
+        /** InputComparisonOut */
+        InputComparisonOut: {
+            /** On Disk */
+            on_disk: number;
+            /** Indexed Not On Disk */
+            indexed_not_on_disk: number;
+            /** On Disk Not Indexed */
+            on_disk_not_indexed: string[];
         };
         /** ItemBreakdownRow */
         ItemBreakdownRow: {
@@ -2005,6 +2501,29 @@ export interface components {
             /** Waiting */
             waiting: number;
         };
+        /** OtherResult */
+        OtherResult: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            document_type: "other";
+            /** Language */
+            language: string;
+            /** Date */
+            date: string;
+            /** Time */
+            time: string;
+            /** Title */
+            title: string;
+            /**
+             * Field Sources
+             * @default {}
+             */
+            field_sources: {
+                [key: string]: string[];
+            };
+        };
         /** PageIn */
         PageIn: {
             /** Key */
@@ -2117,6 +2636,56 @@ export interface components {
              */
             comment: string;
         };
+        /** ReceiptItem */
+        ReceiptItem: {
+            /** Name */
+            name: string;
+            /** Quantity */
+            quantity?: number | null;
+            /** Unit Price */
+            unit_price?: number | null;
+            /** Total Price */
+            total_price?: number | null;
+        };
+        /** ReceiptResult */
+        ReceiptResult: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            document_type: "receipt";
+            /** Language */
+            language: string;
+            /** Date */
+            date: string;
+            /** Time */
+            time: string;
+            /** Name */
+            name: string;
+            /**
+             * Phone
+             * @default
+             */
+            phone: string;
+            /** Currency */
+            currency: string;
+            /** Address */
+            address: string;
+            /**
+             * Items
+             * @default []
+             */
+            items: components["schemas"]["ReceiptItem"][];
+            /** Cost */
+            cost: number;
+            /**
+             * Field Sources
+             * @default {}
+             */
+            field_sources: {
+                [key: string]: string[];
+            };
+        };
         /** RestoreIn */
         RestoreIn: {
             /** Paths */
@@ -2183,6 +2752,15 @@ export interface components {
              */
             top_points: "left" | "right" | "down";
         };
+        /** SanityOut */
+        SanityOut: {
+            /** Indexed */
+            indexed: boolean;
+            /** Batches */
+            batches: components["schemas"]["BatchSanityOut"][];
+            /** Sidecar Mismatches */
+            sidecar_mismatches: components["schemas"]["SidecarMismatchOut"][];
+        };
         /** SaveGroupingIn */
         SaveGroupingIn: {
             /** Batch Id */
@@ -2194,6 +2772,18 @@ export interface components {
         SaveGroupingOut: {
             /** Changed */
             changed: boolean;
+        };
+        /**
+         * SidecarMismatchOut
+         * @description An archive folder where a scan has no sidecar, or a sidecar has no scan.
+         */
+        SidecarMismatchOut: {
+            /** Folder */
+            folder: string;
+            /** Missing Sidecar */
+            missing_sidecar: string[];
+            /** Extra Sidecar */
+            extra_sidecar: string[];
         };
         /** SmartMatch */
         SmartMatch: {
@@ -4469,6 +5059,309 @@ export interface operations {
                 };
                 content: {
                     "text/event-stream": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sanity_api_dev_sanity_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SanityOut"];
+                };
+            };
+        };
+    };
+    index_audit_api_dev_index_audit_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IndexAuditOut"];
+                };
+            };
+        };
+    };
+    experiment_api_dev_experiment_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExperimentOut"];
+                };
+            };
+        };
+    };
+    upload_api_dev_experiment_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_api_dev_experiment_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExperimentRunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_detail_api_dev_experiment__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExperimentRunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    treated_scan_api_dev_experiment__run_id__scan_get: {
+        parameters: {
+            query?: {
+                top_points?: "" | "left" | "right" | "down";
+                treatment?: "none" | "clahe" | "contrast" | "whiten";
+                clip?: number;
+                grid?: number;
+                contrast?: number;
+                gamma?: number;
+                lightness?: number;
+                chroma?: number;
+                denoise_before?: boolean;
+                denoise_after?: boolean;
+                denoise_strength?: number;
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description a PNG image */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    seen_scan_api_dev_experiment__run_id__seen_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description a PNG image */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    prompt_api_dev_experiment__run_id__prompt_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExperimentPromptIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExperimentPromptOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_ocr_api_dev_experiment__run_id__ocr_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExperimentOcrIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_parse_api_dev_experiment__run_id__parse_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExperimentParseIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobOut"];
                 };
             };
             /** @description Validation Error */

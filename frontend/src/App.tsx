@@ -14,9 +14,13 @@ import Dedupe from './pages/Dedupe.tsx'
 import Normalize from './pages/Normalize.tsx'
 import Workshop from './pages/Workshop.tsx'
 import Config from './pages/Config.tsx'
+import Experiment from './pages/Experiment.tsx'
+import SanityCheck from './pages/SanityCheck.tsx'
+import IndexAudit from './pages/IndexAudit.tsx'
 import { JobIndicator, JobWatcher } from './components/jobs.tsx'
 
-// Ordered the way the work runs: Ingest -> Curate -> Visualize, as in the Streamlit app.
+// Ordered the way the work runs: Ingest -> Curate -> Visualize, as in the Streamlit app. Settings is for
+// everyone; the Dev pages, for working on the app itself, come after it.
 const NAV = [
   {
     group: 'Ingest',
@@ -51,6 +55,14 @@ const NAV = [
   {
     group: 'Settings',
     items: [{ to: '/config', label: 'Config' }],
+  },
+  {
+    group: 'Dev',
+    items: [
+      { to: '/experiment', label: 'Experiment' },
+      { to: '/sanity-check', label: 'Sanity Check' },
+      { to: '/index-audit', label: 'Index Audit' },
+    ],
   },
 ]
 
@@ -99,6 +111,9 @@ export default function App() {
           <Route path="/dedupe" element={<Dedupe />} />
           <Route path="/normalize" element={<Normalize />} />
           <Route path="/brands" element={<Brands />} />
+          <Route path="/experiment" element={<Experiment />} />
+          <Route path="/sanity-check" element={<SanityCheck />} />
+          <Route path="/index-audit" element={<IndexAudit />} />
           <Route path="/config" element={<Config />} />
         </Routes>
       </main>

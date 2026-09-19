@@ -16,7 +16,7 @@ load_env()  # API keys: process env, then <repo>/.env, then the shared user-leve
 
 from fastapi import FastAPI
 
-from api.routers import brands, config, curate, ingest, jobs, media, review, viz, workshop
+from api.routers import brands, config, curate, dev, ingest, jobs, media, review, viz, workshop
 from api.schemas import Health
 
 
@@ -31,6 +31,7 @@ def create_app() -> FastAPI:
     app.include_router(review.router)
     app.include_router(ingest.router)
     app.include_router(jobs.router)
+    app.include_router(dev.router)
 
     @app.get("/api/health", response_model=Health)
     def health() -> dict:

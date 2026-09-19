@@ -13,5 +13,6 @@ scikit-learn
 plotly
 pytest
 fastapi
+python-multipart
 uvicorn
 httpx

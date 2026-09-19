@@ -100,6 +100,12 @@ def test_every_enhancement_returns_a_usable_image(treatment):
     assert result.size == (40, 80) and result.mode == "RGB"
 
 
+def test_denoising_around_a_treatment_keeps_the_image_usable():
+    original = Image.new("RGB", (40, 80), "white")
+    result = enhance(original, Enhancement(treatment="clahe", denoise_before=True, denoise_after=True))
+    assert result.size == (40, 80) and result.mode == "RGB"
+
+
 def test_enhancement_rotates_before_treating():
     original = Image.new("RGB", (40, 80), "white")
     assert enhance(original, Enhancement(top_points="left")).size == (80, 40)

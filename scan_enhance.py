@@ -31,22 +31,37 @@ class Enhancement:
     gamma: float = 0.5
     lightness: int = 200                 # whiten background
     chroma: int = 10
+    denoise_before: bool = False         # smooth grain before the treatment, after it, or both
+    denoise_after: bool = False          # (Experiment only; the Workshop doesn't offer it)
+    denoise_strength: int = 6
 
 
 def enhance(image: Image.Image, settings: Enhancement) -> Image.Image:
-    """The scan as OCR should see it: rotated upright, then the chosen treatment."""
+    """The scan as OCR should see it: rotated upright, then the chosen treatment (denoised around it if asked)."""
     working = image.convert("RGB")
     rotation = ROTATIONS.get(settings.top_points)
     if rotation is not None:
         working = working.transpose(rotation)
+    if settings.denoise_before:
+        working = _denoise(working, settings.denoise_strength)
 
     if settings.treatment == "clahe":
-        return _clahe(working, settings.clip, settings.grid)
-    if settings.treatment == "whiten":
-        return _whiten_background(working, settings.lightness, settings.chroma)
-    if settings.treatment == "contrast":
-        return _contrast_gamma(working, settings.contrast, settings.gamma)
+        working = _clahe(working, settings.clip, settings.grid)
+    elif settings.treatment == "whiten":
+        working = _whiten_background(working, settings.lightness, settings.chroma)
+    elif settings.treatment == "contrast":
+        working = _contrast_gamma(working, settings.contrast, settings.gamma)
+
+    if settings.denoise_after:
+        working = _denoise(working, settings.denoise_strength)
     return working
+
+
+def _denoise(image: Image.Image, strength: int) -> Image.Image:
+    """Smooth scanner grain and paper texture (non-local means), which OCR can read as specks of text."""
+    import cv2
+
+    return Image.fromarray(cv2.fastNlMeansDenoisingColored(np.array(image), None, strength, strength, 7, 21))
 
 
 def _clahe(image: Image.Image, clip: float, grid: int) -> Image.Image:

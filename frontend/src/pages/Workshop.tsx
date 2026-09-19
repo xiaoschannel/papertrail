@@ -11,22 +11,13 @@ import {
   INPUT_SOURCES, ReviewForm, initialForm, parseCost, type FormState,
 } from '../components/review/ReviewForm.tsx'
 import { ScanOverlay } from '../components/review/ScanOverlay.tsx'
+import { CompareButton, DEFAULT_ENHANCEMENT, TreatmentControls, isTreated } from '../components/ScanTreatment.tsx'
 import { useGridColumnCount } from '../components/useGridColumnCount.ts'
 import { afterArchiveEdit } from '../api/invalidate.ts'
 import { money } from '../format.ts'
 import { Card, Empty, ErrorState, Loading } from '../components/ui.tsx'
 import '../components/review/review.css'
 import './curate.css'
-
-const TREATMENTS = [
-  ['none', 'As scanned'], ['clahe', 'Local contrast'], ['contrast', 'Contrast + gamma'], ['whiten', 'Whiten paper'],
-] as const
-
-const ORIENTATIONS = [['', '↑ upright'], ['left', '← top left'], ['right', '→ top right'], ['down', '↓ upside down']] as const
-
-const DEFAULT_ENHANCEMENT: Enhancement = {
-  top_points: '', treatment: 'none', clip: 3, grid: 8, contrast: 2.5, gamma: 0.5, lightness: 200, chroma: 10,
-}
 
 /** Colors per verdict, as review_logic's VERDICT_COLORS. */
 const VERDICT_COLORS: Record<string, string> = { accepted: '#28a745', marked: '#ffc107', tossed: '#6c757d' }
@@ -151,11 +142,8 @@ function Scan({
   const running = job?.status === 'running'
   // Dragging a slider shouldn't ask the server for a full-size render per step.
   const settled = useDebounced(enhancement, 250)
-  const set = <K extends keyof Enhancement>(field: K, value: Enhancement[K]) =>
-    onChange({ ...enhancement, [field]: value })
   const hasScans = document.pages.some((page) => page.image_available)
-  const treated = enhancement.top_points !== '' || enhancement.treatment !== 'none'
-  useHeldKey('o', setComparing, treated)
+  const treated = isTreated(enhancement)
 
   const reprocess = useMutation({
     mutationFn: () => api.workshop.reprocess({
@@ -163,12 +151,6 @@ function Scan({
     }),
     onSuccess: onStarted,
   })
-  const hold = {
-    onPointerDown: () => setComparing(true),
-    onPointerUp: () => setComparing(false),
-    onPointerLeave: () => setComparing(false),
-    onPointerCancel: () => setComparing(false),
-  }
 
   return (
     <Card title="Scan" className="review-col"
@@ -182,55 +164,8 @@ function Scan({
           showOriginal={comparing && treated} turn={settled.top_points} missing="is not in marked/" />
       )}
 
-      <div className="start-bar workshop-compare">
-        <button disabled={!treated} {...hold}>Hold to see the original</button>
-        <span className="config-hint">{treated ? 'or hold O' : 'nothing is treated yet'}</span>
-      </div>
-
-      <div className="field">
-        <label>The top of the page points</label>
-        <div className="segmented">
-          {ORIENTATIONS.map(([value, label]) => (
-            <button key={value} className={enhancement.top_points === value ? 'on' : ''}
-              onClick={() => set('top_points', value)}>{label}</button>
-          ))}
-        </div>
-      </div>
-
-      <div className="field">
-        <label>Treatment</label>
-        <div className="segmented">
-          {TREATMENTS.map(([value, label]) => (
-            <button key={value} className={enhancement.treatment === value ? 'on' : ''}
-              onClick={() => set('treatment', value)}>{label}</button>
-          ))}
-        </div>
-      </div>
-
-      {enhancement.treatment === 'clahe' && (
-        <div className="curate-grid">
-          <Slider label="Strength" value={enhancement.clip} min={1} max={10} step={0.5}
-            onChange={(v) => set('clip', v)} />
-          <Slider label="Detail size" value={enhancement.grid} min={2} max={16} step={1}
-            onChange={(v) => set('grid', v)} />
-        </div>
-      )}
-      {enhancement.treatment === 'contrast' && (
-        <div className="curate-grid">
-          <Slider label="Contrast" value={enhancement.contrast} min={0.5} max={3} step={0.1}
-            onChange={(v) => set('contrast', v)} />
-          <Slider label="Gamma" value={enhancement.gamma} min={0.2} max={3} step={0.1}
-            onChange={(v) => set('gamma', v)} />
-        </div>
-      )}
-      {enhancement.treatment === 'whiten' && (
-        <div className="curate-grid">
-          <Slider label="Lightness floor" value={enhancement.lightness} min={128} max={255} step={1}
-            onChange={(v) => set('lightness', v)} />
-          <Slider label="Colour floor" value={enhancement.chroma} min={1} max={80} step={1}
-            onChange={(v) => set('chroma', v)} />
-        </div>
-      )}
+      <CompareButton treated={treated} onHold={setComparing} />
+      <TreatmentControls value={enhancement} onChange={(patch) => onChange({ ...enhancement, ...patch })} />
 
       <div className="curate-grid">
         <div className="field">
@@ -263,36 +198,6 @@ function Scan({
       {job && <JobPanel job={job} />}
     </Card>
   )
-}
-
-/** Holding `key` (outside a text field) turns `on` while it is down. */
-function useHeldKey(key: string, set: (down: boolean) => void, enabled: boolean) {
-  const latest = useRef(set)
-  useEffect(() => {
-    latest.current = set
-  })
-  useEffect(() => {
-    if (!enabled) return undefined
-    const typing = (event: KeyboardEvent) =>
-      event.target instanceof HTMLElement && event.target.closest('input, textarea, select, [contenteditable="true"]')
-    const down = (event: KeyboardEvent) => {
-      if (event.key.toLowerCase() !== key || event.ctrlKey || event.metaKey || event.altKey || typing(event)) return
-      latest.current(true)
-    }
-    const up = (event: KeyboardEvent) => {
-      if (event.key.toLowerCase() === key) latest.current(false)
-    }
-    const release = () => latest.current(false)
-    window.addEventListener('keydown', down)
-    window.addEventListener('keyup', up)
-    window.addEventListener('blur', release)      // a key released in another window never sends keyup here
-    return () => {
-      window.removeEventListener('keydown', down)
-      window.removeEventListener('keyup', up)
-      window.removeEventListener('blur', release)
-      latest.current(false)
-    }
-  }, [key, enabled])
 }
 
 function Decision({ document, form, onChange, activeFields, onActivate, onDecided }: {
@@ -420,21 +325,4 @@ function ContextCard({ scan }: { scan: ContextScan }) {
   return scan.receipt
     ? <DocumentCard as={Link} to={`/receipt?file=${encodeURIComponent(scan.receipt)}`} {...props} />
     : <DocumentCard {...props} />
-}
-
-function Slider({ label, value, min, max, step, onChange }: {
-  label: string
-  value: number
-  min: number
-  max: number
-  step: number
-  onChange: (value: number) => void
-}) {
-  return (
-    <div className="field">
-      <label>{label} <strong>{value}</strong></label>
-      <input type="range" min={min} max={max} step={step} value={value}
-        onChange={(e) => onChange(Number(e.target.value))} />
-    </div>
-  )
 }

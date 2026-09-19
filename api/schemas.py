@@ -17,6 +17,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from models import DocumentExtraction
+
 
 class _Model(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -731,3 +733,143 @@ class PathCheck(_Model):
     path: str
     exists: bool
     is_dir: bool
+
+
+# --- Dev: sanity check, index audit ------------------------------------------------------------------
+class BatchSanityOut(_Model):
+    batch_id: int
+    archived: bool
+    files: int
+    organized: int
+    #: an archived batch: its files the archive doesn't have
+    missing_from_archive: list[str]
+    #: a batch still being ingested: its files not in the scan folder (null when there is no scan folder)
+    missing_from_input: list[str] | None
+
+
+class SidecarMismatchOut(_Model):
+    """An archive folder where a scan has no sidecar, or a sidecar has no scan."""
+
+    folder: str
+    missing_sidecar: list[str]
+    extra_sidecar: list[str]
+
+
+class SanityOut(_Model):
+    indexed: bool                        # False until File Index has written batches.json
+    batches: list[BatchSanityOut]
+    sidecar_mismatches: list[SidecarMismatchOut]
+
+
+class IndexFileOut(_Model):
+    """batches.json itself. No creation time: every save writes a new file and swaps it in, so it would
+    always equal the last change."""
+
+    size: int
+    modified: str
+
+
+class DuplicateFilenameOut(_Model):
+    filename: str
+    count: int
+    batch_ids: list[int]
+
+
+class BatchStatOut(_Model):
+    batch_id: int
+    files: int
+    running_total: int
+    archived: bool
+    start: str
+    end: str
+
+
+class InputComparisonOut(_Model):
+    on_disk: int
+    indexed_not_on_disk: int             # archived or moved: expected, so only counted
+    on_disk_not_indexed: list[str]
+
+
+class IndexAuditOut(_Model):
+    index_file: IndexFileOut | None      # None until File Index has written batches.json
+    total_batches: int
+    archived: int
+    non_archived: int
+    total_entries: int
+    unique_filenames: int
+    lost_to_dedup: int
+    duplicates: list[DuplicateFilenameOut]
+    batches: list[BatchStatOut]
+    input: InputComparisonOut | None     # None without a scan folder
+
+
+# --- Dev: Experiment ---------------------------------------------------------------------------------
+class ExperimentTreatmentIn(EnhancementIn):
+    """The Workshop's treatments, plus the denoising Streamlit's Experiment page had."""
+
+    denoise_before: bool = False
+    denoise_after: bool = False
+    denoise_strength: int = Field(6, ge=3, le=15)
+
+
+class ExperimentOcrIn(ExperimentTreatmentIn):
+    model: str
+    with_boxes: bool = True              # also run the grounding pass (models that have one)
+
+
+class ExperimentParseIn(_Model):
+    extractor: str
+    custom_instruction: str = ""
+
+
+class ExperimentPromptIn(_Model):
+    custom_instruction: str = ""
+
+
+class ExperimentPromptOut(_Model):
+    prompt: str
+    has_boxes: bool
+
+
+class ExperimentOcrOut(_Model):
+    model: str
+    read_at: float                       # epoch seconds; changes with every run
+    with_boxes: bool
+    treatment: ExperimentTreatmentIn
+    markdown: str
+    structured_raw: str | None
+    #: every box the grounding pass found (no fields: nothing has cited them yet)
+    boxes: list[FieldBoxOut]
+    seconds: float
+    structured_seconds: float | None
+
+
+class ExperimentParseOut(_Model):
+    extractor: str
+    custom_instruction: str
+    extraction: DocumentExtraction
+    field_boxes: list[FieldBoxOut]       # the boxes the extraction cites, as Review draws them
+    seconds: float
+
+
+class ExperimentRunOut(_Model):
+    id: str
+    filename: str
+    width: int
+    height: int
+    ocr: ExperimentOcrOut | None
+    parse: ExperimentParseOut | None
+
+
+class ExperimentOut(_Model):
+    """The bench's options, and the run it was last used on."""
+
+    ocr_models: list[str]
+    grounding_models: list[str]          # the OCR models that can return boxes
+    extractors: list[str]
+    local_extractors: list[str]          # run on this machine's GPU, so they wait for OCR
+    ocr_model: str
+    extractor: str
+    with_boxes: bool
+    custom_instruction: str
+    latest: str | None
