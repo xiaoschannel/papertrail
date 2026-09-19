@@ -17,9 +17,17 @@ router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 HEARTBEAT_SECONDS = 15.0
 
 
+@router.get("", response_model=list[JobOut])
+def jobs():
+    """Every running job, plus the last finished job of each kind with none running - what the pages
+    show: live progress, or how their last run ended."""
+    return runner.recent()
+
+
 @router.get("/current", response_model=JobOut | None)
 def current_job():
-    """The running job, or the last one to run (None before any job)."""
+    """A running job (the latest started), or the last one to run; None before any job. Several jobs can
+    run at once - ``GET /api/jobs`` lists them."""
     return runner.current()
 
 

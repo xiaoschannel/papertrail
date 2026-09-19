@@ -16,13 +16,16 @@ load_env()  # API keys: process env, then <repo>/.env, then the shared user-leve
 
 from fastapi import FastAPI
 
-from api.routers import config, ingest, jobs, media, review, viz
+from api.routers import brands, config, curate, ingest, jobs, media, review, viz, workshop
 from api.schemas import Health
 
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Papertrail API", version="0.1.0")
     app.include_router(config.router)
+    app.include_router(brands.router)
+    app.include_router(curate.router)
+    app.include_router(workshop.router)
     app.include_router(viz.router)
     app.include_router(media.router)
     app.include_router(review.router)

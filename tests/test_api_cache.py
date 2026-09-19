@@ -7,7 +7,7 @@ from viz_records import build_viz_records
 def test_repeated_requests_parse_archive_once(api_client, monkeypatch):
     calls = []
     real = cache.build_viz_records
-    monkeypatch.setattr(cache, "build_viz_records", lambda p: calls.append(p) or real(p))
+    monkeypatch.setattr(cache, "build_viz_records", lambda p, state=None: calls.append(p) or real(p, state))
 
     for path in ("/api/years", "/api/analytics/monthly-spend",
                  "/api/analytics/top-merchants", "/api/viz/items"):
@@ -19,7 +19,7 @@ def test_repeated_requests_parse_archive_once(api_client, monkeypatch):
 def test_merchant_page_no_longer_parses_twice(api_client, monkeypatch):
     calls = []
     real = cache.build_viz_records
-    monkeypatch.setattr(cache, "build_viz_records", lambda p: calls.append(p) or real(p))
+    monkeypatch.setattr(cache, "build_viz_records", lambda p, state=None: calls.append(p) or real(p, state))
 
     assert api_client.get("/api/analytics/merchant", params={"brand_id": "seven-eleven"}).status_code == 200
     assert len(calls) == 1  # records + items used to mean two full parses
@@ -41,7 +41,7 @@ def test_ttl_expiry_rebuilds(api_client, monkeypatch):
 
     calls = []
     real = cache.build_viz_records
-    monkeypatch.setattr(cache, "build_viz_records", lambda p: calls.append(p) or real(p))
+    monkeypatch.setattr(cache, "build_viz_records", lambda p, state=None: calls.append(p) or real(p, state))
     api_client.get("/api/years")
     assert len(calls) == 1
 

@@ -14,7 +14,7 @@ export default function Ocr() {
   const [limit, setLimit] = useState(0)
   const [provider, setProvider] = useState<string | null>(null)
   const [confirming, setConfirming] = useState(false)
-  const gate = useJobGate('ocr')
+  const gate = useJobGate('ocr', { gpu: true })   // every OCR model runs on this machine's GPU
   const track = useTrackJob()
 
   const status = useQuery({
@@ -73,6 +73,10 @@ export default function Ocr() {
               <Tile label="Scan missing" value={s.missing_images} />
               <Tile label="To process" value={s.to_process} />
             </div>
+            {s.waiting > 0 && <p className="ingest-note">
+              {s.waiting} more page{s.waiting === 1 ? ' is' : 's are'} in a batch another job is using; the next
+              run picks {s.waiting === 1 ? 'it' : 'them'} up.
+            </p>}
             {s.batches.length === 0 && <p className="ingest-note ingest-blocker">
               No unarchived batches. Add a batch in File Index first.
             </p>}

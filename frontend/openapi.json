@@ -171,6 +171,1141 @@
         }
       }
     },
+    "/api/brands": {
+      "get": {
+        "tags": [
+          "brands"
+        ],
+        "summary": "List Brands",
+        "description": "Every brand with how many archived receipts it matches, plus the unmatched ones.",
+        "operationId": "list_brands_api_brands_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrandsOut"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "brands"
+        ],
+        "summary": "Create Brand",
+        "operationId": "create_brand_api_brands_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrandIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrandOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/brands/{brand_id}": {
+      "patch": {
+        "tags": [
+          "brands"
+        ],
+        "summary": "Update Brand",
+        "description": "Rename a brand or replace its prefixes. The id never changes, so receipts keep their grouping.",
+        "operationId": "update_brand_api_brands__brand_id__patch",
+        "parameters": [
+          {
+            "name": "brand_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Brand Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrandIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrandOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "brands"
+        ],
+        "summary": "Delete Brand",
+        "description": "Remove a brand. Its receipts stay where they are; they simply stop being grouped.",
+        "operationId": "delete_brand_api_brands__brand_id__delete",
+        "parameters": [
+          {
+            "name": "brand_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Brand Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrandOverview"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/brands/{brand_id}/prefixes": {
+      "post": {
+        "tags": [
+          "brands"
+        ],
+        "summary": "Add Prefix",
+        "description": "Add one prefix — the quick action on a suggestion.",
+        "operationId": "add_prefix_api_brands__brand_id__prefixes_post",
+        "parameters": [
+          {
+            "name": "brand_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Brand Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrandPrefixIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrandOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/brands/suggestions": {
+      "get": {
+        "tags": [
+          "brands"
+        ],
+        "summary": "Suggestions",
+        "description": "Prefixes shared by unmatched receipt names. The settings are remembered, as in Streamlit.",
+        "operationId": "suggestions_api_brands_suggestions_get",
+        "parameters": [
+          {
+            "name": "boundary_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Boundary Only"
+            }
+          },
+          {
+            "name": "max_length",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 80,
+                  "minimum": 4
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Length"
+            }
+          },
+          {
+            "name": "min_length",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 24,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Length"
+            }
+          },
+          {
+            "name": "min_count",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 50,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Count"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PrefixSuggestionOut"
+                  },
+                  "title": "Response Suggestions Api Brands Suggestions Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/curate/dedupe": {
+      "get": {
+        "tags": [
+          "curate"
+        ],
+        "summary": "Dedupe Clusters",
+        "description": "Archived documents that look like the same purchase scanned twice: equal cost, minutes apart.\n\nClustered per DOCUMENT, not per file: the pages of one multi-page receipt share a date, time and\ncost, so clustering files (as the Streamlit page did) reported every multi-page document as its\nown duplicate.",
+        "operationId": "dedupe_clusters_api_curate_dedupe_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DedupeOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/curate/dedupe/keep": {
+      "post": {
+        "tags": [
+          "curate"
+        ],
+        "summary": "Keep Both",
+        "description": "Say these documents are different purchases, so the cluster stops coming back.",
+        "operationId": "keep_both_api_curate_dedupe_keep_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KeepIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DedupeOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "curate"
+        ],
+        "summary": "Consider Again",
+        "description": "Undo that, so the pair is offered again.",
+        "operationId": "consider_again_api_curate_dedupe_keep_delete",
+        "parameters": [
+          {
+            "name": "first",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "First"
+            }
+          },
+          {
+            "name": "second",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Second"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DedupeOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/curate/dedupe/toss": {
+      "post": {
+        "tags": [
+          "curate"
+        ],
+        "summary": "Toss Duplicate",
+        "description": "Move one archived document's pages into ``tossed/``. The scans stay on disk, out of the archive.",
+        "operationId": "toss_duplicate_api_curate_dedupe_toss_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TossIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TossOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/curate/dedupe/restore": {
+      "post": {
+        "tags": [
+          "curate"
+        ],
+        "summary": "Restore Tossed",
+        "description": "Undo a toss: put the pages back in the archive under the verdict they had.",
+        "operationId": "restore_tossed_api_curate_dedupe_restore_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestoreIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DedupeOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/curate/normalize": {
+      "get": {
+        "tags": [
+          "curate"
+        ],
+        "summary": "Normalize Clusters",
+        "description": "Names one engine thinks are the same shop. Embedding clustering asks Ollama for any new name,\nso it takes the single model slot and is refused while a job holds it.",
+        "operationId": "normalize_clusters_api_curate_normalize_get",
+        "parameters": [
+          {
+            "name": "engine",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Engine"
+            }
+          },
+          {
+            "name": "threshold",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Threshold"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NormalizeOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/curate/normalize/preview": {
+      "post": {
+        "tags": [
+          "curate"
+        ],
+        "summary": "Preview Merge",
+        "description": "Exactly what the merge would rewrite and re-file, before anything is written.",
+        "operationId": "preview_merge_api_curate_normalize_preview_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MergeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MergeOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/curate/normalize/merge": {
+      "post": {
+        "tags": [
+          "curate"
+        ],
+        "summary": "Merge Names",
+        "description": "Rewrite every variant to the chosen name and re-file the documents it renames.",
+        "operationId": "merge_names_api_curate_normalize_merge_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MergeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MergeOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/curate/normalize/distinct": {
+      "post": {
+        "tags": [
+          "curate"
+        ],
+        "summary": "Confirm Distinct",
+        "description": "Remember that these names are different shops, so the cluster stops coming back.",
+        "operationId": "confirm_distinct_api_curate_normalize_distinct_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DistinctIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DistinctOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "curate"
+        ],
+        "summary": "Forget Distinct",
+        "operationId": "forget_distinct_api_curate_normalize_distinct_delete",
+        "parameters": [
+          {
+            "name": "first",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "First"
+            }
+          },
+          {
+            "name": "second",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Second"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DistinctOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/curate/workshop": {
+      "get": {
+        "tags": [
+          "workshop"
+        ],
+        "summary": "Workshop Queue",
+        "description": "Marked documents, and everything the form needs for the one being worked on.",
+        "operationId": "workshop_queue_api_curate_workshop_get",
+        "parameters": [
+          {
+            "name": "key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkshopOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/curate/workshop/scan": {
+      "get": {
+        "tags": [
+          "workshop"
+        ],
+        "summary": "Enhanced Scan",
+        "description": "The treated scan — the same pixels a reprocess would hand to OCR, so the preview can't lie.",
+        "operationId": "enhanced_scan_api_curate_workshop_scan_get",
+        "parameters": [
+          {
+            "name": "filename",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Filename"
+            }
+          },
+          {
+            "name": "top_points",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Top Points"
+            }
+          },
+          {
+            "name": "treatment",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "none",
+              "title": "Treatment"
+            }
+          },
+          {
+            "name": "clip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "maximum": 10.0,
+              "minimum": 1.0,
+              "default": 3.0,
+              "title": "Clip"
+            }
+          },
+          {
+            "name": "grid",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 16,
+              "minimum": 2,
+              "default": 8,
+              "title": "Grid"
+            }
+          },
+          {
+            "name": "contrast",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "maximum": 3.0,
+              "minimum": 0.5,
+              "default": 2.5,
+              "title": "Contrast"
+            }
+          },
+          {
+            "name": "gamma",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "maximum": 3.0,
+              "minimum": 0.2,
+              "default": 0.5,
+              "title": "Gamma"
+            }
+          },
+          {
+            "name": "lightness",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 255,
+              "minimum": 128,
+              "default": 200,
+              "title": "Lightness"
+            }
+          },
+          {
+            "name": "chroma",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 80,
+              "minimum": 1,
+              "default": 10,
+              "title": "Chroma"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "the scan as OCR would see it",
+            "content": {
+              "image/png": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/curate/workshop/context": {
+      "get": {
+        "tags": [
+          "workshop"
+        ],
+        "summary": "Context",
+        "description": "The week around the form's date and time, and the rest of the document's batch (as Streamlit showed).",
+        "operationId": "context_api_curate_workshop_context_get",
+        "parameters": [
+          {
+            "name": "key",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Key"
+            }
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Date"
+            }
+          },
+          {
+            "name": "time",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Time"
+            }
+          },
+          {
+            "name": "document_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "receipt",
+              "title": "Document Type"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkshopContextOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/curate/workshop/hints": {
+      "post": {
+        "tags": [
+          "workshop"
+        ],
+        "summary": "Hints",
+        "description": "The same hint rules, name status and accept blocker Review shows, for a marked document.",
+        "operationId": "hints_api_curate_workshop_hints_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkshopHintsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HintsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/curate/workshop/reprocess": {
+      "post": {
+        "tags": [
+          "workshop"
+        ],
+        "summary": "Reprocess",
+        "description": "Read the treated scan again and extract from it, as a job: it loads the same models as ingest.",
+        "operationId": "reprocess_api_curate_workshop_reprocess_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkshopReprocessIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/curate/workshop/decide": {
+      "post": {
+        "tags": [
+          "workshop"
+        ],
+        "summary": "Decide",
+        "description": "Accept the document into the archive, or toss it. Every page of it moves together.",
+        "operationId": "decide_api_curate_workshop_decide_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkshopDecisionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkshopOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/viz/records": {
       "get": {
         "tags": [
@@ -1094,25 +2229,24 @@
         }
       }
     },
-    "/api/review/decision": {
-      "delete": {
+    "/api/review/undo": {
+      "post": {
         "tags": [
           "review"
         ],
         "summary": "Undo Endpoint",
-        "description": "Remove one document's decision, returning it to the queue (Undo).",
-        "operationId": "undo_endpoint_api_review_decision_delete",
-        "parameters": [
-          {
-            "name": "key",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Key"
+        "description": "Take back a decision, returning the document to the queue (Undo).\n\nThe body is the decision as it was made, and it is removed only if it is still the one on file.\nA key names a position in its batch, so after a regroup it can name another document; and the same\ndocument may have been decided again since. Either way the undo is refused rather than guessed at.",
+        "operationId": "undo_endpoint_api_review_undo_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecisionIn"
+              }
             }
-          }
-        ],
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -1705,13 +2839,39 @@
         }
       }
     },
+    "/api/jobs": {
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "Jobs",
+        "description": "Every running job, plus the last finished job of each kind with none running - what the pages\nshow: live progress, or how their last run ended.",
+        "operationId": "jobs_api_jobs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/JobOut"
+                  },
+                  "type": "array",
+                  "title": "Response Jobs Api Jobs Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/jobs/current": {
       "get": {
         "tags": [
           "jobs"
         ],
         "summary": "Current Job",
-        "description": "The running job, or the last one to run (None before any job).",
+        "description": "A running job (the latest started), or the last one to run; None before any job. Several jobs can\nrun at once - ``GET /api/jobs`` lists them.",
         "operationId": "current_job_api_jobs_current_get",
         "responses": {
           "200": {
@@ -2367,6 +3527,152 @@
         "title": "BoxRect",
         "description": "Corner-normalized rectangle on the OCR's 0-1000 scale, relative to the page image."
       },
+      "BrandBranchOut": {
+        "properties": {
+          "location": {
+            "type": "string",
+            "title": "Location"
+          },
+          "receipts": {
+            "type": "integer",
+            "title": "Receipts"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "location",
+          "receipts"
+        ],
+        "title": "BrandBranchOut"
+      },
+      "BrandIn": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "prefixes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Prefixes"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "label",
+          "prefixes"
+        ],
+        "title": "BrandIn"
+      },
+      "BrandOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "prefixes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Prefixes"
+          },
+          "receipt_count": {
+            "type": "integer",
+            "title": "Receipt Count"
+          },
+          "tree": {
+            "items": {
+              "$ref": "#/components/schemas/BrandPrefixOut"
+            },
+            "type": "array",
+            "title": "Tree"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "prefixes",
+          "receipt_count",
+          "tree"
+        ],
+        "title": "BrandOut"
+      },
+      "BrandOverview": {
+        "properties": {
+          "receipts": {
+            "type": "integer",
+            "title": "Receipts"
+          },
+          "matched": {
+            "type": "integer",
+            "title": "Matched"
+          },
+          "unmatched": {
+            "type": "integer",
+            "title": "Unmatched"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "receipts",
+          "matched",
+          "unmatched"
+        ],
+        "title": "BrandOverview"
+      },
+      "BrandPrefixIn": {
+        "properties": {
+          "prefix": {
+            "type": "string",
+            "title": "Prefix"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "prefix"
+        ],
+        "title": "BrandPrefixIn"
+      },
+      "BrandPrefixOut": {
+        "properties": {
+          "prefix": {
+            "type": "string",
+            "title": "Prefix"
+          },
+          "receipts": {
+            "type": "integer",
+            "title": "Receipts"
+          },
+          "branches": {
+            "items": {
+              "$ref": "#/components/schemas/BrandBranchOut"
+            },
+            "type": "array",
+            "title": "Branches"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "prefix",
+          "receipts",
+          "branches"
+        ],
+        "title": "BrandPrefixOut"
+      },
       "BrandTotals": {
         "properties": {
           "merchant_group": {
@@ -2407,6 +3713,35 @@
           "avg_per_visit"
         ],
         "title": "BrandTotals"
+      },
+      "BrandsOut": {
+        "properties": {
+          "brands": {
+            "items": {
+              "$ref": "#/components/schemas/BrandOut"
+            },
+            "type": "array",
+            "title": "Brands"
+          },
+          "overview": {
+            "$ref": "#/components/schemas/BrandOverview"
+          },
+          "unmatched": {
+            "items": {
+              "$ref": "#/components/schemas/NameCount"
+            },
+            "type": "array",
+            "title": "Unmatched"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "brands",
+          "overview",
+          "unmatched"
+        ],
+        "title": "BrandsOut"
       },
       "CadencePoint": {
         "properties": {
@@ -2500,6 +3835,86 @@
           "token"
         ],
         "title": "ConfirmIndexIn"
+      },
+      "ContextScanOut": {
+        "properties": {
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "marked",
+              "tossed",
+              ""
+            ],
+            "title": "Verdict"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "date": {
+            "type": "string",
+            "title": "Date"
+          },
+          "time": {
+            "type": "string",
+            "title": "Time"
+          },
+          "cost": {
+            "type": "number",
+            "title": "Cost"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "image": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image"
+          },
+          "receipt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receipt"
+          },
+          "current": {
+            "type": "boolean",
+            "title": "Current"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "filename",
+          "verdict",
+          "name",
+          "date",
+          "time",
+          "cost",
+          "currency",
+          "image",
+          "receipt",
+          "current"
+        ],
+        "title": "ContextScanOut",
+        "description": "A document beside the one being worked on, and where its scan can be seen."
       },
       "DateRange": {
         "properties": {
@@ -2620,6 +4035,149 @@
           "comment"
         ],
         "title": "DecisionOut"
+      },
+      "DedupeCluster": {
+        "properties": {
+          "date": {
+            "type": "string",
+            "title": "Date"
+          },
+          "time": {
+            "type": "string",
+            "title": "Time"
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/DedupeMember"
+            },
+            "type": "array",
+            "title": "Members"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "date",
+          "time",
+          "members"
+        ],
+        "title": "DedupeCluster",
+        "description": "Documents with the same cost within a few minutes of each other."
+      },
+      "DedupeMember": {
+        "properties": {
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "date": {
+            "type": "string",
+            "title": "Date"
+          },
+          "time": {
+            "type": "string",
+            "title": "Time"
+          },
+          "cost": {
+            "type": "number",
+            "title": "Cost"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "pages": {
+            "type": "integer",
+            "title": "Pages"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "filename",
+          "path",
+          "name",
+          "date",
+          "time",
+          "cost",
+          "currency",
+          "pages"
+        ],
+        "title": "DedupeMember"
+      },
+      "DedupeOut": {
+        "properties": {
+          "archived": {
+            "type": "integer",
+            "title": "Archived"
+          },
+          "tossed": {
+            "type": "integer",
+            "title": "Tossed"
+          },
+          "clusters": {
+            "items": {
+              "$ref": "#/components/schemas/DedupeCluster"
+            },
+            "type": "array",
+            "title": "Clusters"
+          },
+          "kept": {
+            "items": {
+              "$ref": "#/components/schemas/KeptPair"
+            },
+            "type": "array",
+            "title": "Kept"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "archived",
+          "tossed",
+          "clusters",
+          "kept"
+        ],
+        "title": "DedupeOut"
+      },
+      "DistinctIn": {
+        "properties": {
+          "names": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Names"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "names"
+        ],
+        "title": "DistinctIn"
+      },
+      "DistinctOut": {
+        "properties": {
+          "pairs": {
+            "type": "integer",
+            "title": "Pairs"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "pairs"
+        ],
+        "title": "DistinctOut"
       },
       "DraftIn": {
         "properties": {
@@ -3276,6 +4834,21 @@
           "version": {
             "type": "integer",
             "title": "Version"
+          },
+          "batches": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Batches"
+          },
+          "gpu": {
+            "type": "boolean",
+            "title": "Gpu"
+          },
+          "everything": {
+            "type": "boolean",
+            "title": "Everything"
           }
         },
         "additionalProperties": false,
@@ -3294,9 +4867,55 @@
           "seconds_per_item",
           "eta_seconds",
           "cancel_requested",
-          "version"
+          "version",
+          "batches",
+          "gpu",
+          "everything"
         ],
         "title": "JobOut"
+      },
+      "KeepIn": {
+        "properties": {
+          "documents": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Documents"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "documents"
+        ],
+        "title": "KeepIn"
+      },
+      "KeptPair": {
+        "properties": {
+          "documents": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Documents"
+          },
+          "names": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Names"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "documents",
+          "names"
+        ],
+        "title": "KeptPair",
+        "description": "Two documents you said are different purchases, and their names for the undo list."
       },
       "LineItem": {
         "properties": {
@@ -3367,6 +4986,51 @@
         ],
         "title": "LocationCount",
         "description": "One branch of a brand: the part of the name after the brand prefix, and how many receipts."
+      },
+      "MarkedDocumentOut": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "pages": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Pages"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "comment": {
+            "type": "string",
+            "title": "Comment"
+          },
+          "batch_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Batch Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "pages",
+          "name",
+          "comment",
+          "batch_id"
+        ],
+        "title": "MarkedDocumentOut",
+        "description": "One document waiting in ``marked/`` — every page of it, not one entry per page."
       },
       "MerchantMetrics": {
         "properties": {
@@ -3486,6 +5150,86 @@
         ],
         "title": "MerchantProfile"
       },
+      "MergeIn": {
+        "properties": {
+          "target": {
+            "type": "string",
+            "title": "Target"
+          },
+          "variants": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Variants"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "target",
+          "variants"
+        ],
+        "title": "MergeIn"
+      },
+      "MergeOut": {
+        "properties": {
+          "target": {
+            "type": "string",
+            "title": "Target"
+          },
+          "variants": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Variants"
+          },
+          "documents": {
+            "type": "integer",
+            "title": "Documents"
+          },
+          "moves": {
+            "items": {
+              "$ref": "#/components/schemas/MoveOut"
+            },
+            "type": "array",
+            "title": "Moves"
+          },
+          "decisions": {
+            "type": "integer",
+            "title": "Decisions"
+          },
+          "smart_matches": {
+            "type": "integer",
+            "title": "Smart Matches"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "target",
+          "variants",
+          "documents",
+          "moves",
+          "decisions",
+          "smart_matches",
+          "error"
+        ],
+        "title": "MergeOut",
+        "description": "What a merge would do (preview) or did. ``moves`` is every document that is re-filed."
+      },
       "MonthlySpend": {
         "properties": {
           "period": {
@@ -3533,6 +5277,83 @@
           "month_ts"
         ],
         "title": "MonthlyVolume"
+      },
+      "MoveOut": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "destination": {
+            "type": "string",
+            "title": "Destination"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "source",
+          "destination"
+        ],
+        "title": "MoveOut"
+      },
+      "NameCount": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "count"
+        ],
+        "title": "NameCount"
+      },
+      "NameGroupOut": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "names": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Names"
+          },
+          "counts": {
+            "items": {
+              "$ref": "#/components/schemas/NameCount"
+            },
+            "type": "array",
+            "title": "Counts"
+          },
+          "canonical": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Canonical"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "names",
+          "counts",
+          "canonical"
+        ],
+        "title": "NameGroupOut",
+        "description": "Names one engine thinks are the same shop, with how many documents carry each."
       },
       "NameTotals": {
         "properties": {
@@ -3594,6 +5415,57 @@
         ],
         "title": "NormalizeEngineOut"
       },
+      "NormalizeOut": {
+        "properties": {
+          "engines": {
+            "items": {
+              "$ref": "#/components/schemas/NormalizeEngineOut"
+            },
+            "type": "array",
+            "title": "Engines"
+          },
+          "engine": {
+            "type": "string",
+            "title": "Engine"
+          },
+          "threshold": {
+            "type": "number",
+            "title": "Threshold"
+          },
+          "names": {
+            "type": "integer",
+            "title": "Names"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/NameGroupOut"
+            },
+            "type": "array",
+            "title": "Groups"
+          },
+          "distinct_pairs": {
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Distinct Pairs"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "engines",
+          "engine",
+          "threshold",
+          "names",
+          "groups",
+          "distinct_pairs"
+        ],
+        "title": "NormalizeOut"
+      },
       "OcrStatus": {
         "properties": {
           "blocker": {
@@ -3648,6 +5520,10 @@
           "to_process": {
             "type": "integer",
             "title": "To Process"
+          },
+          "waiting": {
+            "type": "integer",
+            "title": "Waiting"
           }
         },
         "additionalProperties": false,
@@ -3662,7 +5538,8 @@
           "processed",
           "failed",
           "missing_images",
-          "to_process"
+          "to_process",
+          "waiting"
         ],
         "title": "OcrStatus"
       },
@@ -3700,6 +5577,13 @@
             "type": "array",
             "title": "Extractors"
           },
+          "local_extractors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Local Extractors"
+          },
           "extractor": {
             "type": "string",
             "title": "Extractor"
@@ -3723,6 +5607,10 @@
           "to_process": {
             "type": "integer",
             "title": "To Process"
+          },
+          "waiting": {
+            "type": "integer",
+            "title": "Waiting"
           }
         },
         "additionalProperties": false,
@@ -3730,12 +5618,14 @@
         "required": [
           "blocker",
           "extractors",
+          "local_extractors",
           "extractor",
           "custom_instruction",
           "total",
           "processed",
           "tossed",
-          "to_process"
+          "to_process",
+          "waiting"
         ],
         "title": "ParseStatus"
       },
@@ -3763,6 +5653,33 @@
         ],
         "title": "PathCheck",
         "description": "Whether a folder typed into the Config page exists (checked on the server, not the browser)."
+      },
+      "PrefixSuggestionOut": {
+        "properties": {
+          "prefix": {
+            "type": "string",
+            "title": "Prefix"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "names": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Names"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "prefix",
+          "count",
+          "names"
+        ],
+        "title": "PrefixSuggestionOut"
       },
       "ProposedBatch": {
         "properties": {
@@ -3901,6 +5818,33 @@
         ],
         "title": "ReceiptEditIn",
         "description": "New values for an archived document (``file`` is its VizRecord filename/identity)."
+      },
+      "RestoreIn": {
+        "properties": {
+          "paths": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Paths"
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "marked",
+              "tossed"
+            ],
+            "title": "Verdict"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "paths",
+          "verdict"
+        ],
+        "title": "RestoreIn"
       },
       "ReviewDocument": {
         "properties": {
@@ -4217,6 +6161,53 @@
           "extractor"
         ],
         "title": "StartParseIn"
+      },
+      "TossIn": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "title": "TossIn"
+      },
+      "TossOut": {
+        "properties": {
+          "tossed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tossed"
+          },
+          "previous_verdict": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "marked",
+              "tossed"
+            ],
+            "title": "Previous Verdict"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "tossed",
+          "previous_verdict",
+          "name"
+        ],
+        "title": "TossOut",
+        "description": "Where the pages went, and the verdict they had — everything an undo needs."
       },
       "ValidationError": {
         "properties": {
@@ -4535,6 +6526,244 @@
         ],
         "title": "VizRecord",
         "description": "One archived document (multi-page documents collapsed to their first page)."
+      },
+      "WorkshopContextOut": {
+        "properties": {
+          "week": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ContextScanOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Week"
+          },
+          "batch_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Batch Id"
+          },
+          "batch": {
+            "items": {
+              "$ref": "#/components/schemas/ContextScanOut"
+            },
+            "type": "array",
+            "title": "Batch"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "week",
+          "batch_id",
+          "batch"
+        ],
+        "title": "WorkshopContextOut",
+        "description": "What helps place a marked document: the week around it, and the batch it was scanned in."
+      },
+      "WorkshopDecisionIn": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "tossed"
+            ],
+            "title": "Verdict"
+          },
+          "draft": {
+            "$ref": "#/components/schemas/DraftIn"
+          },
+          "comment": {
+            "type": "string",
+            "title": "Comment",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "verdict",
+          "draft"
+        ],
+        "title": "WorkshopDecisionIn",
+        "description": "The workshop finishes a document: into the archive, or into ``tossed/``. Marking it again\nwould leave it in a state the workshop itself can no longer reach."
+      },
+      "WorkshopHintsIn": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "draft": {
+            "$ref": "#/components/schemas/DraftIn"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "draft"
+        ],
+        "title": "WorkshopHintsIn"
+      },
+      "WorkshopOut": {
+        "properties": {
+          "documents": {
+            "items": {
+              "$ref": "#/components/schemas/MarkedDocumentOut"
+            },
+            "type": "array",
+            "title": "Documents"
+          },
+          "document": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReviewDocument"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ocr_models": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Ocr Models"
+          },
+          "extractors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Extractors"
+          },
+          "ocr_model": {
+            "type": "string",
+            "title": "Ocr Model"
+          },
+          "extractor": {
+            "type": "string",
+            "title": "Extractor"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "documents",
+          "document",
+          "ocr_models",
+          "extractors",
+          "ocr_model",
+          "extractor"
+        ],
+        "title": "WorkshopOut"
+      },
+      "WorkshopReprocessIn": {
+        "properties": {
+          "top_points": {
+            "type": "string",
+            "enum": [
+              "",
+              "left",
+              "right",
+              "down"
+            ],
+            "title": "Top Points",
+            "default": ""
+          },
+          "treatment": {
+            "type": "string",
+            "enum": [
+              "none",
+              "clahe",
+              "contrast",
+              "whiten"
+            ],
+            "title": "Treatment",
+            "default": "none"
+          },
+          "clip": {
+            "type": "number",
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Clip",
+            "default": 3.0
+          },
+          "grid": {
+            "type": "integer",
+            "maximum": 16.0,
+            "minimum": 2.0,
+            "title": "Grid",
+            "default": 8
+          },
+          "contrast": {
+            "type": "number",
+            "maximum": 3.0,
+            "minimum": 0.5,
+            "title": "Contrast",
+            "default": 2.5
+          },
+          "gamma": {
+            "type": "number",
+            "maximum": 3.0,
+            "minimum": 0.2,
+            "title": "Gamma",
+            "default": 0.5
+          },
+          "lightness": {
+            "type": "integer",
+            "maximum": 255.0,
+            "minimum": 128.0,
+            "title": "Lightness",
+            "default": 200
+          },
+          "chroma": {
+            "type": "integer",
+            "maximum": 80.0,
+            "minimum": 1.0,
+            "title": "Chroma",
+            "default": 10
+          },
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "ocr_model": {
+            "type": "string",
+            "title": "Ocr Model"
+          },
+          "extractor": {
+            "type": "string",
+            "title": "Extractor"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "ocr_model",
+          "extractor"
+        ],
+        "title": "WorkshopReprocessIn"
       }
     }
   }

@@ -21,9 +21,18 @@ def extractors() -> dict[str, Callable]:
     return EXTRACTORS
 
 
+def extractor_needs_gpu(name: str) -> bool:
+    """Ollama models run on this machine's GPU; hosted APIs (OpenAI) hold nothing locally.
+
+    This decides whether a Parse run claims the GPU, so it can run beside OCR or has to wait for it.
+    Every OCR model runs locally, so OCR always claims the GPU.
+    """
+    return name.startswith("Ollama")
+
+
 def unload_extractor(name: str) -> Callable[[], None]:
     """How to free an extractor's model: Ollama models are unloaded; hosted APIs hold nothing locally."""
-    if name.startswith("Ollama"):
+    if extractor_needs_gpu(name):
         from extraction import unload_ollama
 
         return unload_ollama

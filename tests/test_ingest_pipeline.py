@@ -228,9 +228,31 @@ def test_run_parse_keeps_other_extractions_and_previous_result_on_failure(ingest
     assert sorted(progress.ticks) == [(False, "1:3", "ValueError: model returned junk"), (True, "1:1", "")]
 
 
+def test_run_parse_does_not_undo_what_changed_the_file_while_it_ran(ingest_dir):
+    """Regrouping another batch clears its extractions mid-Parse; the next save must not bring them back."""
+    from data import clear_extractions_decisions_for_batch, save_extractions
+
+    extractions = load_extractions(ingest_dir)
+    extractions["2:1"] = _receipt("Batch two, about to be regrouped")
+    save_extractions(ingest_dir, extractions)
+    plan = ip.plan_parse(ingest_dir, reprocess=True, limit=2)
+    calls = []
+
+    def extract(ocr_text, has_boxes, custom_instruction):
+        calls.append(1)
+        if len(calls) == 1:
+            clear_extractions_decisions_for_batch(ingest_dir, 2)   # File Index, on another batch, meanwhile
+        return _receipt("Parsed")
+
+    ip.run_parse(ingest_dir, plan, extract, "", FakeProgress(), shuffle=False, save_every=0.0)
+    after = load_extractions(ingest_dir)
+    assert "2:1" not in after                                        # the regroup stuck
+    assert sum(getattr(e, "name", None) == "Parsed" for e in after.values()) == 2   # and Parse's own results landed
+
+
 def test_run_parse_saves_periodically(ingest_dir, monkeypatch):
     saves = []
-    monkeypatch.setattr(ip, "save_extractions", lambda path, ex: saves.append(len(ex)))
+    monkeypatch.setattr(ip, "merge_extractions", lambda path, produced: saves.append(len(produced)))
     plan = ip.plan_parse(ingest_dir, reprocess=True, limit=3)
     now = iter([0.0, 5.0, 20.0, 20.0, 40.0, 40.0])  # start, item 1, item 2 (+save), item 3 (+save)
     ip.run_parse(ingest_dir, plan, lambda *a, **k: _receipt(), "", FakeProgress(), shuffle=False,

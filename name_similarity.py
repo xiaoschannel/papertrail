@@ -94,6 +94,12 @@ def quick_apply_label(c: SmartMatchCandidate) -> str:
     return f"{c.confirmed_name} — {suffix}" if suffix else c.confirmed_name
 
 
+def unload_embeddings() -> None:
+    """Free the embedding model in Ollama, as the OCR and extraction models do."""
+    # An embedding-only model has no /api/generate, so unload it the way it was loaded.
+    embed(model=EMBED_MODEL, input=[], keep_alive=0)
+
+
 def ensure_embeddings(
     output_path: Path,
     names: list[str],

@@ -5,10 +5,15 @@ export type ShortcutMap = Record<string, (() => void) | undefined>
 
 const TYPING = 'input, textarea, select, [contenteditable="true"]'
 
+/** Keys that act again while held (the OS's key repeat): moving, which is harmless to overshoot. */
+const REPEATS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'])
+
 /**
  * Single-key shortcuts that stay out of the way of typing: ignored while focus is in a form field,
  * with Ctrl/Alt/Meta held, or while a modal is open (`[data-modal-open]`). Escape in a field blurs
  * it, so you can type a value and go straight back to shortcuts.
+ *
+ * Every other key fires once per press: holding A must not accept each document as it comes up.
  */
 export function useShortcuts(shortcuts: ShortcutMap, enabled = true) {
   const latest = useRef(shortcuts)
@@ -30,7 +35,7 @@ export function useShortcuts(shortcuts: ShortcutMap, enabled = true) {
       const handler = latest.current[key]
       if (handler) {
         event.preventDefault()
-        handler()
+        if (!event.repeat || REPEATS.has(key)) handler()
       }
     }
     window.addEventListener('keydown', onKeyDown)

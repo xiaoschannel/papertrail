@@ -79,7 +79,7 @@
 /* --- ReceiptGallery ---------------------------------------------------------- */
 .receipt-gallery {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(8.25rem, 1fr));
   gap: 12px;
   align-items: start;   /* don't stretch short cards to the tallest one in the row */
 }

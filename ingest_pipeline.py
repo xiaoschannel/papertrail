@@ -39,14 +39,14 @@ from data import (
     load_smart_match_cache,
     replace_groups_for_batch,
     save_decisions,
-    save_extractions,
+    merge_extractions,
     save_ocr_results,
     save_scan_index,
     save_smart_match_cache,
     scan_organized_filenames,
     write_sidecar,
 )
-from document_grouping import build_display_state, rotate_upright, split_groups_at_tossed_boundaries
+from document_grouping import build_display_state, rotate_file_upright, split_groups_at_tossed_boundaries
 from grounding import parse_grounding_output
 from indexing_schemes import SCHEMES, parse_canon_filename
 from models import (
@@ -305,8 +305,6 @@ def set_page_tossed(output_path: Path, key: str, tossed: bool) -> None:
 
 def rotate_page_image(output_path: Path, input_path: Path, key: str, top_points: str) -> None:
     """Rotate an unarchived page's scan in place (like Streamlit's ←/→/↓ buttons)."""
-    from PIL import Image
-
     parsed = parse_batch_serial_key(key)
     if parsed is None:
         raise KeyError(f"not a page key: {key}")
@@ -314,17 +312,7 @@ def rotate_page_image(output_path: Path, input_path: Path, key: str, top_points:
     filename = batch.files.get(parsed[1])
     if filename is None:
         raise KeyError(f"no page {key}")
-    path = input_path / filename
-    with Image.open(path) as img:
-        image_format = img.format
-        upright = rotate_upright(img.convert("RGB"), top_points)
-    # The scan is the only copy: write a sibling file and swap it in, so a crash can't truncate it.
-    tmp = path.with_name(f"{path.stem}.rotating{path.suffix}")
-    try:
-        upright.save(tmp, format=image_format, **({"quality": 95} if image_format == "JPEG" else {}))
-        tmp.replace(path)
-    finally:
-        tmp.unlink(missing_ok=True)
+    rotate_file_upright(input_path / filename, top_points)
 
 
 # =====================================================================================
@@ -337,11 +325,20 @@ class OcrPlan:
     failed: int
     missing_images: int
     items: list[tuple[str, Path]]
+    #: pages that would be read but sit in a batch another job holds; the next run picks them up
+    waiting: int = 0
+
+    @property
+    def batches(self) -> frozenset[int]:
+        """The batches this run reads, which it holds while it runs."""
+        return frozenset(parse_batch_serial_key(key)[0] for key, _ in self.items)
 
 
-def plan_ocr(output_path: Path, input_path: Path, batch_id: int | None, reprocess: bool, limit: int) -> OcrPlan:
+def plan_ocr(output_path: Path, input_path: Path, batch_id: int | None, reprocess: bool, limit: int,
+             held: frozenset[int] = frozenset()) -> OcrPlan:
     """Pages to OCR in scope (all unarchived batches, or one). Without ``reprocess`` only pages
-    without a successful result; ``limit`` > 0 caps the run."""
+    without a successful result; ``limit`` > 0 caps the run. Pages in ``held`` batches (another job is
+    working on them) are left out and counted as waiting."""
     index = _load_index(output_path)
     if index is None:
         return OcrPlan(0, 0, 0, 0, [])
@@ -349,7 +346,7 @@ def plan_ocr(output_path: Path, input_path: Path, batch_id: int | None, reproces
               if batch_id is None or b == batch_id]
     results = load_ocr_results(output_path)
     items: list[tuple[str, Path]] = []
-    processed = failed = missing = 0
+    processed = failed = missing = waiting = 0
     for b, s, fn in scoped:
         key = batch_serial_key(b, s)
         result = results.get(key)
@@ -361,10 +358,14 @@ def plan_ocr(output_path: Path, input_path: Path, batch_id: int | None, reproces
             missing += 1
             continue
         if reprocess or result is None or not result.succeeded:
-            items.append((key, path))
+            if b in held:
+                waiting += 1
+            else:
+                items.append((key, path))
     if limit > 0:
         items = items[:limit]
-    return OcrPlan(total=len(scoped), processed=processed, failed=failed, missing_images=missing, items=items)
+    return OcrPlan(total=len(scoped), processed=processed, failed=failed, missing_images=missing, items=items,
+                   waiting=waiting)
 
 
 def run_ocr(output_path: Path, items: list[tuple[str, Path]], provider: OcrProvider, structured: bool,
@@ -405,11 +406,19 @@ class ParsePlan:
     documents: list[DocumentKey]
     index: DocumentIndex = field(repr=False)
     ocr_results: dict[str, OcrResult] = field(repr=False)
+    #: documents that would be parsed but sit in a batch another job holds
+    waiting: int = 0
+
+    @property
+    def batches(self) -> frozenset[int]:
+        """The batches this run extracts, which it holds while it runs."""
+        return frozenset(doc.batch_id for doc in self.documents)
 
 
-def plan_parse(output_path: Path, reprocess: bool, limit: int) -> ParsePlan:
+def plan_parse(output_path: Path, reprocess: bool, limit: int, held: frozenset[int] = frozenset()) -> ParsePlan:
     """Documents whose pages all have OCR and that aren't tossed: without ``reprocess`` only those
-    without an extraction."""
+    without an extraction. Documents in ``held`` batches (another job is working on them) are left
+    out and counted as waiting."""
     index_file = _load_index(output_path)
     indexed_keys = ({batch_serial_key(b, s) for b, s, _ in iter_indexed_files(index_file, include_archived=False)}
                     if index_file else set())
@@ -421,21 +430,27 @@ def plan_parse(output_path: Path, reprocess: bool, limit: int) -> ParsePlan:
     eligible = [dk for dk in with_ocr if not (decisions.get(str(dk)) and decisions[str(dk)].verdict == "tossed")]
     extractions = load_extractions(output_path)
     processed = sum(1 for dk in eligible if str(dk) in extractions)
-    documents = eligible if reprocess else [dk for dk in eligible if str(dk) not in extractions]
+    wanted = eligible if reprocess else [dk for dk in eligible if str(dk) not in extractions]
+    documents = [dk for dk in wanted if dk.batch_id not in held]
     if limit > 0:
         documents = documents[:limit]
     return ParsePlan(total=len(with_ocr), processed=processed, tossed=len(with_ocr) - len(eligible),
-                     documents=documents, index=index, ocr_results=ocr)
+                     documents=documents, index=index, ocr_results=ocr, waiting=len(wanted) - len(documents))
 
 
 def run_parse(output_path: Path, plan: ParsePlan, extract: ExtractFn, custom_instruction: str, progress: Progress,
               shuffle: bool = True, save_every: float = 15.0, clock: Callable[[], float] = time.monotonic) -> str:
-    """Extract each document, saving every ``save_every`` seconds and at the end (also on errors)."""
+    """Extract each document, saving every ``save_every`` seconds and at the end (also on errors).
+
+    A save writes only what THIS run extracted, merged into the file as it is at that moment. Other
+    things change ``extractions.json`` while a long Parse runs — regrouping another batch clears that
+    batch's extractions — and writing back a copy loaded when the run started would quietly undo them.
+    """
     work = list(plan.documents)
     if shuffle:
         random.shuffle(work)
     progress.set_total(len(work))
-    extractions = load_extractions(output_path)
+    extractions: dict[str, DocumentExtraction] = {}       # this run's results only
     ran = failed = 0
     last_save = clock()
     try:
@@ -452,10 +467,10 @@ def run_parse(output_path: Path, plan: ParsePlan, extract: ExtractFn, custom_ins
             failed += 0 if ok else 1
             progress.tick(ok, item=str(doc_key), error=error)
             if clock() - last_save > save_every:
-                save_extractions(output_path, extractions)
+                merge_extractions(output_path, extractions)
                 last_save = clock()
     finally:
-        save_extractions(output_path, extractions)
+        merge_extractions(output_path, extractions)
     return _outcome("Parsed", ran, failed, len(work), "document")
 
 

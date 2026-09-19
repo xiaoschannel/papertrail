@@ -15,7 +15,6 @@ export default function Parse() {
   const [extractor, setExtractor] = useState<string | null>(null)
   const [instruction, setInstruction] = useState<string | null>(null)
   const [confirming, setConfirming] = useState(false)
-  const gate = useJobGate('parse')
   const track = useTrackJob()
   // Streamlit saved instructions as you typed; keep them when you navigate away without starting a run.
   const saveInstruction = useSaveConfig()
@@ -28,6 +27,8 @@ export default function Parse() {
   })
   const chosen = extractor ?? status.data?.extractor ?? ''
   const customInstruction = instruction ?? status.data?.custom_instruction ?? ''
+  // A hosted model (OpenAI) runs beside OCR; one on this machine's GPU has to wait for it.
+  const gate = useJobGate('parse', { gpu: status.data?.local_extractors.includes(chosen) ?? false })
   const start = useMutation({
     mutationFn: () => api.ingest.startParse({ extractor: chosen, reprocess, limit, custom_instruction: customInstruction }),
     onSuccess: (job) => {
@@ -81,6 +82,10 @@ export default function Parse() {
               <Tile label="Tossed (skipped)" value={s.tossed} />
               <Tile label="To process" value={s.to_process} />
             </div>
+            {s.waiting > 0 && <p className="ingest-note">
+              {s.waiting} more document{s.waiting === 1 ? ' is' : 's are'} in a batch another job is using; the
+              next run picks {s.waiting === 1 ? 'it' : 'them'} up.
+            </p>}
             {start.error && <div className="error-banner" role="alert">{start.error.message}</div>}
             <StartBar label={`Parse ${s.to_process} document${s.to_process === 1 ? '' : 's'}`}
               disabled={!s.to_process || !chosen} blockedBy={gate.blockedBy} running={gate.job?.status === 'running'}

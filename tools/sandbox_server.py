@@ -7,7 +7,8 @@ OCR run), and listens on 8001 — the live API keeps 8000 — so both can run at
     npm --prefix frontend run dev:sandbox
 
 Then open http://127.0.0.1:5174 and walk File Index -> OCR -> Parse -> Review -> Archive. Everything
-lives under <repo>/.sandbox (gitignored) and is rebuilt from scratch on every start.
+lives under <repo>/.sandbox (gitignored). A restart keeps whatever is there, so you don't lose a
+half-finished batch when the server picks up new code; pass --fresh to start from nothing.
 """
 import json, os, re, shutil, sys, time
 from pathlib import Path
@@ -18,12 +19,14 @@ REPO = Path(__file__).resolve().parent.parent
 BOX = REPO / ".sandbox"
 sys.path.insert(0, str(REPO))
 
-if BOX.exists():
+FRESH = "--fresh" in sys.argv[1:]
+REUSING = BOX.exists() and not FRESH
+if BOX.exists() and FRESH:
     shutil.rmtree(BOX)
 archive = BOX / "archive"
-archive.mkdir(parents=True)
 scans = BOX / "scans"
-scans.mkdir()
+archive.mkdir(parents=True, exist_ok=True)
+scans.mkdir(exist_ok=True)
 
 font = ImageFont.truetype(r"C:\Windows\Fonts\meiryo.ttc", 30)
 TEXT: dict[str, list[tuple[tuple[int, int, int, int], str]]] = {}
@@ -36,10 +39,12 @@ def scan(name, lines, rotate=None):
     d.rectangle([4, 4, w - 5, h - 5], outline="#bbb", width=3)
     for (x1, y1, x2, y2), text in lines:
         d.text((x1 / 1000 * w + 4, y1 / 1000 * h + 2), text, fill="black", font=font)
+    TEXT[name] = lines
+    if REUSING and (scans / name).exists():
+        return          # the scan may have been rotated or re-filed since; leave it alone
     if rotate:
         img = img.transpose(rotate)
     img.save(scans / name)
-    TEXT[name] = lines
 
 
 def receipt(name, shop, when, total, rotate=None, extra=()):
@@ -64,7 +69,8 @@ class FakeOcr:
 
     def run(self, path, structured=False):
         time.sleep(0.6)
-        lines = TEXT.get(path.name, [])
+        # the workshop hands OCR a treated copy ("<name>.enhanced.png"): answer for the original
+        lines = TEXT.get(path.name) or TEXT.get(path.name.replace(".enhanced", ""), [])
         if structured:
             return "\n".join(f"<|ref|>{t}<|/ref|><|det|>[[{x1}, {y1}, {x2}, {y2}]]<|/det|>" for (x1, y1, x2, y2), t in lines)
         return "\n".join(t for _, t in lines)
@@ -76,19 +82,27 @@ class FakeOcr:
 def fake_extract(ocr_text, has_boxes=False, custom_instruction=""):
     from models import ReceiptResult, CorruptedResult
     time.sleep(0.5)
-    lines = [l for l in ocr_text.splitlines() if l.strip()]
+    # Given boxes ("[P1-BOX-3] text"), cite them like a grounding extractor, so the scans get field boxes.
+    cited = [(f"{m[1]}:{m[2]}", m[3]) for m in (re.match(r"\[P(\d+)-BOX-(\d+)\] (.*)", l) for l in ocr_text.splitlines()) if m]
+    lines = [text for _, text in cited] if cited else \
+        [l for l in ocr_text.splitlines() if l.strip() and not l.startswith("--- Page")]
+    refs = dict((text, ref) for ref, text in reversed(cited))
     if not lines or lines[0].startswith("(blank"):
         return CorruptedResult(document_type="corrupted")
     when = next((l for l in lines if re.match(r"\d{4}/\d\d/\d\d", l)), "")
     total = next((l for l in lines if l.startswith("合計")), "¥0")
     date, _, clock = when.partition(" ")
+    sources = {field: [refs[text]] for field, text in (("name", lines[0]), ("date", when), ("time", when),
+                                                      ("cost", total)) if text in refs}
     return ReceiptResult(document_type="receipt", language="ja", date=date.replace("/", "-"), time=clock,
-                         name=lines[0], currency="JPY", address="", cost=float(total.split("¥")[-1]))
+                         name=lines[0], currency="JPY", address="", cost=float(total.split("¥")[-1]),
+                         field_sources=sources)
 
 
-cfg = {"batch_output_path": str(archive), "input_image_path": str(scans), "normalize_engine": "string",
-       "indexing_scheme": "Canon ImageFormula"}
-(BOX / "config.json").write_text(json.dumps(cfg, indent=2), encoding="utf-8")
+if not (BOX / "config.json").exists():
+    cfg = {"batch_output_path": str(archive), "input_image_path": str(scans), "normalize_engine": "string",
+           "indexing_scheme": "Canon ImageFormula"}
+    (BOX / "config.json").write_text(json.dumps(cfg, indent=2), encoding="utf-8")
 
 import settings
 settings.CONFIG_PATH = BOX / "config.json"

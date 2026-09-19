@@ -5,7 +5,7 @@ import { useLayoutEffect, useState, type RefObject } from 'react'
  *
  * Reads the resolved `grid-template-columns` (one px length per track) instead of
  * re-deriving it from widths in JS, so the grid's own CSS — e.g.
- * `repeat(auto-fill, minmax(132px, 1fr))` — stays the single source of truth.
+ * `repeat(auto-fill, minmax(8.25rem, 1fr))` — stays the single source of truth.
  * With `auto-fill`, empty tracks are kept, so this is the columns that FIT, not
  * the number of items.
  *

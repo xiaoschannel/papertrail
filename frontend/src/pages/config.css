@@ -1,7 +1,10 @@
 /* Config page: a column of cards, each a grid of labelled fields, with a sticky save bar. */
 
+/* Nothing here is data; it is all fields, so the PAGE takes the form bound and
+   centres, and the cards simply fill it. */
+.config-page { max-width: var(--form-max); margin-inline: auto; }
 .config-page .card + .card { margin-top: 16px; }
-.config-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px 20px; }
+.config-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(16.25rem, 1fr)); gap: 14px 20px; }
 .config-page .field select,
 .config-page .field input[type="text"] { max-width: none; width: 100%; box-sizing: border-box; }
 .config-page .field input:disabled { opacity: .6; }

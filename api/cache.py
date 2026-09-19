@@ -28,6 +28,8 @@ from pathlib import Path
 import pandas as pd
 
 from brand_registry import brand_registry_mtime
+from data import load_reorganized_state
+from models import Sidecar
 from viz_records import build_viz_records, viz_items_from_records
 
 TTL_SECONDS = 120.0
@@ -38,6 +40,8 @@ class _Entry:
     signature: tuple
     built_at: float
     records: pd.DataFrame
+    # tossed page filenames, and every archived page by its original filename -> (sidecar, path)
+    state: tuple[set[str], dict[str, tuple[Sidecar, str]]]
     items: pd.DataFrame | None = None
     lock: threading.Lock = field(default_factory=threading.Lock)
 
@@ -81,13 +85,19 @@ def _entry(output_path: Path) -> _Entry:
         entry = _entries.get(key)
         if entry is not None and entry.signature == signature and now - entry.built_at < TTL_SECONDS:
             return entry
-        entry = _Entry(signature=signature, built_at=now, records=build_viz_records(output_path))
+        state = load_reorganized_state(output_path)
+        entry = _Entry(signature=signature, built_at=now, records=build_viz_records(output_path, state), state=state)
         _entries[key] = entry
         return entry
 
 
 def viz_records(output_path: Path) -> pd.DataFrame:
     return _entry(output_path).records
+
+
+def archive_state(output_path: Path) -> tuple[set[str], dict[str, tuple[Sidecar, str]]]:
+    """Where every scan ended up: tossed filenames, and archived pages by original filename."""
+    return _entry(output_path).state
 
 
 def viz_items(output_path: Path) -> pd.DataFrame:

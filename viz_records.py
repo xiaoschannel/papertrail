@@ -23,9 +23,13 @@ def page_order(sidecar: Sidecar, rel_path: str) -> tuple:
     return (1, 0, 0, rel_path)   # older sidecars without batch/serial keep filename order
 
 
-def build_viz_records(output_path: Path) -> pd.DataFrame:
-    """One row per archived document (multi-page docs collapsed to their first page)."""
-    _tossed, accepted_metadata = load_reorganized_state(output_path)
+def build_viz_records(output_path: Path,
+                      state: tuple[set[str], dict[str, tuple[Sidecar, str]]] | None = None) -> pd.DataFrame:
+    """One row per archived document (multi-page docs collapsed to their first page).
+
+    ``state`` is ``load_reorganized_state``'s result, for a caller that has already read the archive.
+    """
+    _tossed, accepted_metadata = state if state is not None else load_reorganized_state(output_path)
 
     doc_groups: dict[str, list[tuple[str, Sidecar]]] = {}
     for fn, (sidecar, rel_path) in accepted_metadata.items():

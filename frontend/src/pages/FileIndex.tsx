@@ -3,14 +3,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, inputThumbUrl, inputUrl } from '../api/client.ts'
 import type { Grouping, GroupingPage, IndexStatus, TopPoints } from '../api/types.ts'
 import { ConfirmDialog } from '../components/ConfirmDialog.tsx'
-import { useCurrentJob } from '../components/jobs.tsx'
+import { useBatchHolder, useEverythingHolder } from '../components/jobs.tsx'
 import { Card, Empty, ErrorState, Loading, Tile } from '../components/ui.tsx'
 import { useGridColumnCount } from '../components/useGridColumnCount.ts'
 import './ingest.css'
 
 export default function FileIndex() {
   return (
-    <div className="ingest-page">
+    <div className="ingest-page ingest-page--wide">
       <h1>File Index</h1>
       <p className="page-sub">Add newly scanned files as batches, then group pages that belong to one document.</p>
       <Batches />
@@ -23,7 +23,8 @@ export default function FileIndex() {
 function Batches() {
   const queryClient = useQueryClient()
   const [scheme, setScheme] = useState<string | undefined>(undefined)
-  const job = useCurrentJob()
+  // A new batch belongs to no job yet, so only a job holding everything (Archive) can stop you adding it.
+  const archiving = useEverythingHolder()
   const status = useQuery({
     queryKey: ['ingest', 'index', scheme],
     queryFn: () => api.ingest.index(scheme),
@@ -42,7 +43,6 @@ function Batches() {
   if (status.error) return <ErrorState error={status.error} />
   const s = status.data
   if (s.blocker) return <Card title="Batches"><Empty>{s.blocker}</Empty></Card>
-  const busy = job?.status === 'running'
 
   return (
     <Card title="Batches" hint={`${s.existing_batches} batch(es) indexed`}>
@@ -95,10 +95,10 @@ function Batches() {
           ))}
           {confirm.error && <div className="error-banner" role="alert">{confirm.error.message}</div>}
           <div className="start-bar">
-            <button className="primary" disabled={busy || confirm.isPending} onClick={() => confirm.mutate(s)}>
+            <button className="primary" disabled={archiving !== null || confirm.isPending} onClick={() => confirm.mutate(s)}>
               Add {s.proposal.length} batch{s.proposal.length === 1 ? '' : 'es'}
             </button>
-            {busy && <span className="ingest-note">Waiting for {job.title} to finish.</span>}
+            {archiving && <span className="ingest-note">Waiting for {archiving.title} to finish.</span>}
           </div>
         </>
       )}
@@ -196,7 +196,9 @@ function DocumentGrouping() {
 
 function GroupingEditor({ data, batchId, onBatch }: { data: Grouping; batchId: number; onBatch: (id: number) => void }) {
   const queryClient = useQueryClient()
-  const job = useCurrentJob()
+  // Only a job working on this batch (OCR reading it, Parse extracting it, or Archive) locks its pages.
+  const holder = useBatchHolder(batchId)
+  const archiving = useEverythingHolder()
   const [draft, setDraftState] = useState<Draft>(() => rebase(unsavedDrafts.get(batchId) ?? draftFrom(data), data))
   const setDraft = (next: Draft) => {
     unsavedDrafts.set(batchId, next)
@@ -249,8 +251,6 @@ function GroupingEditor({ data, batchId, onBatch }: { data: Grouping; batchId: n
   const pageCount = Math.max(1, Math.ceil(current.keys.length / perPage))
   const shownPage = Math.min(page, pageCount - 1)
   const start = shownPage * perPage
-  const busy = job?.status === 'running'
-  const archiving = busy && job.kind === 'archive'
 
   const toggleLink = (activeIndex: number) => {
     setSaved('')
@@ -281,7 +281,8 @@ function GroupingEditor({ data, batchId, onBatch }: { data: Grouping; batchId: n
   )
 
   return (
-    <Card title="Document grouping" hint="Link adjacent pages into one document; ⇄ swaps the order of linked pages.">
+    <Card title="Document grouping" className="card--full"
+      hint="Link adjacent pages into one document; ⇄ swaps the order of linked pages.">
       <div className="controls">
         <div className="field">
           <label htmlFor="grouping-batch">Batch</label>
@@ -309,7 +310,7 @@ function GroupingEditor({ data, batchId, onBatch }: { data: Grouping; batchId: n
           const group = groupOf.get(key)
           return (
             <PageTile key={key} page={pageInfo} group={group} onZoom={() => setZoomed(pageInfo)}
-              busy={pageAction.isPending} rotateLocked={busy} tossLocked={archiving}
+              busy={pageAction.isPending} rotateLocked={holder !== null} tossLocked={archiving !== null}
               onRotate={(top) => pageAction.mutate({ action: 'rotate', key, top })}
               onToss={() => pageAction.mutate({ action: pageInfo.tossed ? 'recover' : 'toss', key })}
               link={next === undefined ? null : (
@@ -331,11 +332,11 @@ function GroupingEditor({ data, batchId, onBatch }: { data: Grouping; batchId: n
       </p>
       {save.error && <div className="error-banner" role="alert">{save.error.message}</div>}
       <div className="start-bar">
-        <button className="primary" disabled={!changed || busy || save.isPending} onClick={() => setConfirmingSave(true)}>
+        <button className="primary" disabled={!changed || holder !== null || save.isPending} onClick={() => setConfirmingSave(true)}>
           Save document groups
         </button>
         {changed && <button disabled={save.isPending} onClick={() => setDraft(draftFrom(data))}>Discard changes</button>}
-        {changed && busy && <span className="ingest-note">Waiting for {job.title} to finish.</span>}
+        {changed && holder && <span className="ingest-note">Waiting for {holder.title}: it is using batch {batchId}.</span>}
         {!changed && <span className={`ingest-note${saved ? ' ok' : ''}`}>{saved || 'No unsaved changes.'}</span>}
       </div>
 

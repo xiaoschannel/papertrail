@@ -1,4 +1,4 @@
-import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
 import Dashboard from './pages/Dashboard.tsx'
 import Merchant from './pages/Merchant.tsx'
 import CalendarPage from './pages/CalendarPage.tsx'
@@ -9,9 +9,14 @@ import FileIndex from './pages/FileIndex.tsx'
 import Ocr from './pages/Ocr.tsx'
 import Parse from './pages/Parse.tsx'
 import Archive from './pages/Archive.tsx'
+import Brands from './pages/Brands.tsx'
+import Dedupe from './pages/Dedupe.tsx'
+import Normalize from './pages/Normalize.tsx'
+import Workshop from './pages/Workshop.tsx'
 import Config from './pages/Config.tsx'
 import { JobIndicator, JobWatcher } from './components/jobs.tsx'
 
+// Ordered the way the work runs: Ingest -> Curate -> Visualize, as in the Streamlit app.
 const NAV = [
   {
     group: 'Ingest',
@@ -21,6 +26,15 @@ const NAV = [
       { to: '/parse', label: 'Parse' },
       { to: '/review', label: 'Review' },
       { to: '/archive', label: 'Archive' },
+    ],
+  },
+  {
+    group: 'Curate',
+    items: [
+      { to: '/workshop', label: 'Marked Workshop' },
+      { to: '/dedupe', label: 'Dedupe' },
+      { to: '/normalize', label: 'Normalize' },
+      { to: '/brands', label: 'Brand registry' },
     ],
   },
   {
@@ -40,12 +54,7 @@ const NAV = [
   },
 ]
 
-// Grid and multi-column workspace pages take the full width (see .main-inner.wide).
-const WIDE_ROUTES = ['/calendar', '/review', '/file-index']
-
 export default function App() {
-  const { pathname } = useLocation()
-  const wide = WIDE_ROUTES.some((p) => pathname.startsWith(p))
   return (
     <div className="app">
       <nav className="sidebar">
@@ -71,23 +80,27 @@ export default function App() {
       </nav>
       <JobWatcher />
 
+      {/* No width wrapper: every page is as wide as the window and bounds its own
+          blocks (see the WIDTH note at the top of styles.css). */}
       <main className="main">
-        <div className={`main-inner${wide ? ' wide' : ''}`}>
-          <Routes>
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/merchant" element={<Merchant />} />
-            <Route path="/calendar" element={<CalendarPage />} />
-            <Route path="/timecapsule" element={<TimeCapsule />} />
-            <Route path="/receipt" element={<Receipt />} />
-            <Route path="/file-index" element={<FileIndex />} />
-            <Route path="/ocr" element={<Ocr />} />
-            <Route path="/parse" element={<Parse />} />
-            <Route path="/review" element={<Review />} />
-            <Route path="/archive" element={<Archive />} />
-            <Route path="/config" element={<Config />} />
-          </Routes>
-        </div>
+        <Routes>
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/merchant" element={<Merchant />} />
+          <Route path="/calendar" element={<CalendarPage />} />
+          <Route path="/timecapsule" element={<TimeCapsule />} />
+          <Route path="/receipt" element={<Receipt />} />
+          <Route path="/file-index" element={<FileIndex />} />
+          <Route path="/ocr" element={<Ocr />} />
+          <Route path="/parse" element={<Parse />} />
+          <Route path="/review" element={<Review />} />
+          <Route path="/archive" element={<Archive />} />
+          <Route path="/workshop" element={<Workshop />} />
+          <Route path="/dedupe" element={<Dedupe />} />
+          <Route path="/normalize" element={<Normalize />} />
+          <Route path="/brands" element={<Brands />} />
+          <Route path="/config" element={<Config />} />
+        </Routes>
       </main>
     </div>
   )

@@ -1,8 +1,10 @@
 """Ingest step endpoints: File Index (batches, grouping, rotate, toss), OCR, Parse and Archive.
 
-Thin wrappers over ingest_pipeline. OCR, Parse and Archive run as background jobs (api.jobs); starting
-one while another runs is a 409. Steps that rewrite what a running job reads or writes are refused
-while a job runs, too, and hold the runner's edit lock so no job is planned or started mid-edit.
+Thin wrappers over ingest_pipeline. OCR, Parse and Archive run as background jobs (api.jobs), side by
+side when they don't collide: each holds the batches it works on (and the GPU, if it loads a model), a
+new run plans around batches another job holds, and a start that needs something held is a 409 that
+says who holds it. Edits claim just the batch they change, so they only wait for a job on that batch;
+Archive holds everything.
 """
 
 from __future__ import annotations
@@ -15,8 +17,8 @@ import ingest_pipeline as pipeline
 from api import cache, ingest_registry as registry
 from api import ingest_store as store
 from api.deps import get_input_path, get_output_path
-from api.guards import no_job_running
-from api.jobs import runner
+from api.guards import no_job_running, planning_a_job
+from api.jobs import EVERYTHING, NOTHING_HELD, Claim, JobConflict, runner
 from api.model_manager import models
 from api.schemas import (
     ArchiveMoveOut, ArchiveStatus, BatchFile, BatchOut, ConfirmIndexIn, GroupingOut, GroupingPageOut, IndexStatus,
@@ -24,7 +26,7 @@ from api.schemas import (
     StartParseIn,
 )
 from indexing_schemes import SCHEMES
-from models import ScanBatch
+from models import ScanBatch, parse_batch_serial_key
 from settings import get_config, update_config
 
 router = APIRouter(prefix="/api/ingest", tags=["ingest"])
@@ -41,10 +43,17 @@ def _unarchived_batches(output_path: Path) -> list[BatchOut]:
 
 
 def _start(kind: str, title: str, prepare) -> dict:
-    """Plan and start a job atomically: ``prepare()`` (run with no job running and no edit in progress)
-    validates, plans and returns the job function."""
-    with no_job_running(f"start {title}"):
-        return runner.start(kind, title, prepare())
+    """Plan and start a job atomically: ``prepare(held)`` runs with no edit or other start in progress,
+    plans around the ``held`` batches, and returns the job function and what it will hold."""
+    with planning_a_job():
+        fn, claim = prepare(runner.held_batches())
+        return runner.start(kind, title, fn, claim)
+
+
+def _page_claim(key: str) -> Claim:
+    """An edit to one page holds that page's batch (an unparseable key 404s in the pipeline)."""
+    parsed = parse_batch_serial_key(key)
+    return Claim(batches=frozenset({parsed[0]})) if parsed else NOTHING_HELD
 
 
 # --- File Index --------------------------------------------------------------------------------
@@ -82,7 +91,7 @@ def confirm_index(
 ):
     """Add the proposed batches to batches.json (only if the proposal is unchanged)."""
     try:
-        with no_job_running("add batches"):
+        with no_job_running("add batches", claim=NOTHING_HELD):   # a new batch isn't held by anyone yet
             pipeline.confirm_index(input_path, output_path, body.scheme, body.token)
     except pipeline.StaleProposal as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -127,7 +136,8 @@ def grouping(
 def save_grouping(body: SaveGroupingIn, output_path: Path = Depends(get_output_path)):
     """Save multi-page groups. A change clears the batch's parse results and review decisions."""
     try:
-        with no_job_running("change document grouping"), store.decisions_lock:
+        with no_job_running("change document grouping", claim=Claim(batches=frozenset({body.batch_id}))), \
+                store.decisions_lock:
             changed = pipeline.save_grouping(output_path, body.batch_id, body.groups)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc.args[0])) from exc
@@ -165,7 +175,7 @@ def rotate_page(
 ):
     """Rotate a page's scan in place so it is upright."""
     try:
-        with no_job_running("rotate scans"):
+        with no_job_running("rotate scans", claim=_page_claim(body.key)):
             pipeline.rotate_page_image(output_path, input_path, body.key, body.top_points)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc.args[0])) from exc
@@ -192,12 +202,12 @@ def ocr_status(
         raise HTTPException(status_code=422, detail=f"unknown OCR model: {provider}")
     chosen = provider or (configured if configured in providers else (names[0] if names else ""))
     blocker = None if (output_path / "batches.json").exists() else "Run File Index first to create batches.json."
-    plan = pipeline.plan_ocr(output_path, input_path, batch_id, reprocess, limit)
+    plan = pipeline.plan_ocr(output_path, input_path, batch_id, reprocess, limit, held=runner.held_batches())
     return OcrStatus(
         blocker=blocker, providers=names, provider=chosen,
         grounding=bool(getattr(providers.get(chosen), "grounding", False)) and get_config().extract_structured,
         batches=_unarchived_batches(output_path), total=plan.total, processed=plan.processed, failed=plan.failed,
-        missing_images=plan.missing_images, to_process=len(plan.items),
+        missing_images=plan.missing_images, to_process=len(plan.items), waiting=plan.waiting,
     )
 
 
@@ -213,9 +223,11 @@ def start_ocr(
     if provider is None:
         raise HTTPException(status_code=422, detail=f"unknown OCR model: {body.provider}")
 
-    def prepare():
-        plan = pipeline.plan_ocr(output_path, input_path, body.batch_id, body.reprocess, body.limit)
+    def prepare(held):
+        plan = pipeline.plan_ocr(output_path, input_path, body.batch_id, body.reprocess, body.limit, held=held)
         if not plan.items:
+            if plan.waiting:
+                raise JobConflict(f"Every page left to read ({plan.waiting}) is in a batch another job is using.")
             raise HTTPException(status_code=422, detail="No pages to OCR.")
         update_config(ocr_model=body.provider)
         structured = bool(getattr(provider, "grounding", False)) and get_config().extract_structured
@@ -223,7 +235,8 @@ def start_ocr(
         def job(progress) -> str:
             models.acquire(f"ocr:{body.provider}", provider.teardown)
             return pipeline.run_ocr(output_path, plan.items, provider, structured, progress)
-        return job
+        # Every OCR model runs on this machine, so OCR always holds the GPU.
+        return job, Claim(batches=plan.batches, gpu=True)
 
     return _start("ocr", f"OCR with {body.provider}", prepare)
 
@@ -239,12 +252,14 @@ def parse_status(
     cfg = get_config()
     chosen = cfg.extractor_model if cfg.extractor_model in names else (names[0] if names else "")
     blocker = None if (output_path / "batches.json").exists() else "Run File Index first to create batches.json."
-    plan = pipeline.plan_parse(output_path, reprocess, limit)
+    plan = pipeline.plan_parse(output_path, reprocess, limit, held=runner.held_batches())
     if blocker is None and plan.total == 0:
         blocker = "No OCR results. Run OCR first."
     return ParseStatus(blocker=blocker, extractors=names, extractor=chosen,
+                       local_extractors=[name for name in names if registry.extractor_needs_gpu(name)],
                        custom_instruction=cfg.parse_custom_instruction, total=plan.total,
-                       processed=plan.processed, tossed=plan.tossed, to_process=len(plan.documents))
+                       processed=plan.processed, tossed=plan.tossed, to_process=len(plan.documents),
+                       waiting=plan.waiting)
 
 
 @router.post("/parse", response_model=JobOut)
@@ -254,16 +269,23 @@ def start_parse(body: StartParseIn, output_path: Path = Depends(get_output_path)
     if extract is None:
         raise HTTPException(status_code=422, detail=f"unknown extractor: {body.extractor}")
 
-    def prepare():
-        plan = pipeline.plan_parse(output_path, body.reprocess, body.limit)
+    def prepare(held):
+        plan = pipeline.plan_parse(output_path, body.reprocess, body.limit, held=held)
         if not plan.documents:
+            if plan.waiting:
+                raise JobConflict(
+                    f"Every document left to parse ({plan.waiting}) is in a batch another job is using.")
             raise HTTPException(status_code=422, detail="No documents to parse.")
         update_config(extractor_model=body.extractor, parse_custom_instruction=body.custom_instruction)
+        local = registry.extractor_needs_gpu(body.extractor)
 
         def job(progress) -> str:
-            models.acquire(f"extract:{body.extractor}", registry.unload_extractor(body.extractor))
+            # A hosted model loads nothing here, so it mustn't touch the model slot: acquiring would
+            # unload the OCR model a concurrent run is using.
+            if local:
+                models.acquire(f"extract:{body.extractor}", registry.unload_extractor(body.extractor))
             return pipeline.run_parse(output_path, plan, extract, body.custom_instruction, progress)
-        return job
+        return job, Claim(batches=plan.batches, gpu=local)
 
     return _start("parse", f"Parse with {body.extractor}", prepare)
 
@@ -284,7 +306,10 @@ def archive_status(output_path: Path = Depends(get_output_path)):
 def start_archive(output_path: Path = Depends(get_output_path), input_path: Path = Depends(get_input_path)):
     """Archive every reviewed file as a background job."""
 
-    def prepare():
+    def prepare(held):
+        busy = runner.running()   # Archive holds everything: say so before planning a run that can't start
+        if busy is not None:
+            raise JobConflict(f"Archive has to wait: {busy['title']} is running.")
         blocker = pipeline.plan_archive(output_path).blocker
         if blocker:
             raise HTTPException(status_code=422, detail=blocker)
@@ -296,6 +321,6 @@ def start_archive(output_path: Path = Depends(get_output_path), input_path: Path
             finally:
                 cache.clear()  # the archive changed: visualize pages must re-read it
                 store.clear()
-        return job
+        return job, EVERYTHING   # it moves every reviewed file and deletes the working files
 
     return _start("archive", "Archive", prepare)

@@ -1,9 +1,16 @@
-"""Background jobs for long pipeline steps (OCR, Parse, Archive), one at a time.
+"""Background jobs for long pipeline steps (OCR, Parse, Archive), run side by side when they can be.
 
 A job runs on a worker thread and reports progress through a :class:`JobContext`; the web page
-follows it over Server-Sent Events and can cancel it (checked between items). There is one GPU, so
-only one job may be queued or running at once — starting another is refused. Whatever happens, the
-model manager unloads the job's model when it ends.
+follows it over Server-Sent Events and can cancel it (checked between items).
+
+Jobs run at the same time unless they would collide, and what decides that is a :class:`Claim` —
+what the job holds while it runs: the batches it works on, the GPU if it loads a model onto it, or
+everything (Archive: it moves every reviewed file and deletes the working files). So OCR can read
+batch 12 while Parse extracts batch 11 with a hosted model and you review batch 10; a second job that
+wants the GPU, or a batch someone else holds, is refused and told who holds it. Edits claim the same
+way (see ``api.guards``), so regrouping batch 13 doesn't wait for OCR on batch 12.
+
+Whatever happens, a job that took the GPU unloads its model when it ends.
 """
 
 from __future__ import annotations
@@ -25,7 +32,40 @@ MAX_REPORTED_ERRORS = 200
 
 
 class JobConflict(Exception):
-    """Another job is still running."""
+    """What was asked for is held by a running job."""
+
+
+@dataclass(frozen=True)
+class Claim:
+    """What a job holds while it runs, or what an edit is about to touch.
+
+    Two claims collide when they share a batch, both need the GPU (one card: two models don't fit),
+    or either claims ``everything``.
+    """
+
+    batches: frozenset[int] = frozenset()
+    gpu: bool = False
+    everything: bool = False
+
+    def collides_with(self, other: Claim) -> bool:
+        return (self.everything or other.everything or (self.gpu and other.gpu)
+                or bool(self.batches & other.batches))
+
+    def shared_with(self, other: Claim) -> str:
+        """What the two claims fight over, in words, for the message that explains a refusal."""
+        if self.gpu and other.gpu:
+            return "the GPU"
+        shared = sorted(self.batches & other.batches)
+        if shared:
+            return (f"batch {shared[0]}" if len(shared) == 1
+                    else "batches " + ", ".join(map(str, shared[:-1])) + f" and {shared[-1]}")
+        return "the archive"
+
+
+#: Archive, and any job that hasn't said what it touches: collides with every other claim.
+EVERYTHING = Claim(everything=True)
+#: An edit that only collides with a job holding everything (adding a batch: no job holds it yet).
+NOTHING_HELD = Claim()
 
 
 @dataclass
@@ -33,6 +73,7 @@ class Job:
     id: str
     kind: str
     title: str
+    claim: Claim = EVERYTHING
     status: JobStatus = "running"
     total: int = 0
     done: int = 0
@@ -64,6 +105,10 @@ class Job:
             "eta_seconds": round(eta) if eta is not None else None,
             "cancel_requested": self.cancel_requested,
             "version": self.version,
+            # what it holds, so pages can tell which of their controls it locks
+            "batches": sorted(self.claim.batches),
+            "gpu": self.claim.gpu,
+            "everything": self.claim.everything,
         }
 
 
@@ -102,33 +147,57 @@ class JobRunner:
         self._lock = threading.Lock()
         self._changed = threading.Condition(self._lock)
         self._jobs: dict[str, Job] = {}
-        self._current: Job | None = None
-        # Held by edits that must not overlap a job, and while a job is planned and started, so
-        # "no job is running" stays true for the whole edit (see exclusive()).
+        self._order: list[str] = []          # start order, oldest first
+        # Held while an edit checks and makes its change, and while a job is planned and started, so
+        # what the check saw stays true until the change is done (see exclusive() and planning()).
         self._edit_lock = threading.RLock()
 
     # --- starting and stopping --------------------------------------------------
     @contextmanager
-    def exclusive(self, what: str, kind: str | None = None) -> Iterator[None]:
-        """Run the body with no job (of ``kind``, or any) running and none able to start until it ends.
-
-        Raises JobConflict if one is running. Starting a job inside the body is allowed (the lock is
-        re-entrant), so a job can be planned and started atomically.
-        """
+    def planning(self) -> Iterator[None]:
+        """Hold off edits and other starts while a job is planned from what's on disk and started."""
         with self._edit_lock:
-            job = self.running(kind)
-            if job is not None:
-                raise JobConflict(f"Can't {what} while {job['title']} is running.")
             yield
 
-    def start(self, kind: str, title: str, fn: JobFn) -> dict:
-        """Run ``fn`` on a worker thread. ``fn`` returns a final message (or None)."""
+    @contextmanager
+    def exclusive(self, what: str, kind: str | None = None, claim: Claim | None = None) -> Iterator[None]:
+        """Run the body with nothing it touches held by a job, and no such job able to start until it ends.
+
+        Refused (JobConflict) if a running job holds what ``claim`` touches; with ``kind`` instead, if a
+        job of that kind runs; with neither, if any job runs. Starting a job inside the body is allowed
+        (the lock is re-entrant).
+        """
+        with self._edit_lock:
+            for job in self._running():
+                if kind is not None:
+                    hit = job.kind == kind
+                elif claim is not None:
+                    hit = claim.collides_with(job.claim)
+                else:
+                    hit = True
+                if hit:
+                    held = claim.shared_with(job.claim) if claim is not None else None
+                    raise JobConflict(f"Can't {what} while {job.title} is running." if held in (None, "the archive")
+                                      else f"Can't {what} while {job.title} is using {held}.")
+            yield
+
+    def start(self, kind: str, title: str, fn: JobFn, claim: Claim = EVERYTHING) -> dict:
+        """Run ``fn`` on a worker thread, holding ``claim``. ``fn`` returns a final message (or None).
+
+        Refused if a job of the same kind runs (each page follows one job of its kind) or a running job
+        holds anything ``claim`` needs.
+        """
         with self._edit_lock, self._lock:
-            if self._current is not None and self._current.status not in FINISHED:
-                raise JobConflict(f"{self._current.title} is still running")
-            job = Job(id=uuid.uuid4().hex, kind=kind, title=title)
+            for other in self._running_locked():
+                if other.kind == kind:
+                    raise JobConflict(f"{other.title} is still running.")
+                if claim.collides_with(other.claim):
+                    held = claim.shared_with(other.claim)
+                    raise JobConflict(f"{title} has to wait: {other.title} is running." if held == "the archive"
+                                      else f"{title} has to wait: {other.title} is using {held}.")
+            job = Job(id=uuid.uuid4().hex, kind=kind, title=title, claim=claim)
             self._jobs[job.id] = job
-            self._current = job
+            self._order.append(job.id)
             snapshot = job.snapshot()
         threading.Thread(target=self._run, args=(job, fn), name=f"job-{kind}", daemon=True).start()
         return snapshot
@@ -153,10 +222,12 @@ class JobRunner:
             final = f"{type(exc).__name__}: {exc}"
             traceback.print_exc()
         finally:
-            # Unload first, so the next job can't start while this one's model is still resident;
-            # always finish the job, or every later start would be refused as a conflict.
+            # Unload first, so the next GPU job can't start while this one's model is still resident;
+            # always finish the job, or everything it held would stay held. Only a job that held the GPU
+            # unloads: a hosted-model Parse ending must not unload the model an OCR run is still using.
             try:
-                models.release()
+                if job.claim.gpu or job.claim.everything:
+                    models.release()
             finally:
                 self._update(job, status=status, message=final, finished_at=time.time())
 
@@ -166,17 +237,49 @@ class JobRunner:
             job = self._jobs.get(job_id)
             return job.snapshot() if job else None
 
+    def _running_locked(self) -> list[Job]:
+        return [self._jobs[i] for i in self._order if self._jobs[i].status not in FINISHED]
+
+    def _running(self) -> list[Job]:
+        with self._lock:
+            return self._running_locked()
+
     def running(self, kind: str | None = None) -> dict | None:
-        """The job still running (optionally only of ``kind``), or None."""
-        job = self.current()
-        if job is None or job["status"] in FINISHED or (kind is not None and job["kind"] != kind):
-            return None
-        return job
+        """A job still running (optionally only of ``kind``), or None."""
+        with self._lock:
+            job = next((j for j in self._running_locked() if kind is None or j.kind == kind), None)
+            return job.snapshot() if job else None
+
+    def running_jobs(self) -> list[dict]:
+        with self._lock:
+            return [job.snapshot() for job in self._running_locked()]
+
+    def held_batches(self) -> frozenset[int]:
+        """Batches running jobs hold, so a job being planned can leave them out."""
+        with self._lock:
+            return frozenset().union(*(job.claim.batches for job in self._running_locked()))
+
+    def recent(self) -> list[dict]:
+        """Every running job, plus the latest finished job of each kind that has none running — what
+        the pages show: live progress, or how their last run ended."""
+        with self._lock:
+            jobs = [self._jobs[i] for i in reversed(self._order)]
+            running_kinds = {j.kind for j in jobs if j.status not in FINISHED}
+            shown, seen = [], set()
+            for job in jobs:
+                if job.status not in FINISHED:
+                    shown.append(job)
+                elif job.kind not in running_kinds and job.kind not in seen:
+                    shown.append(job)
+                    seen.add(job.kind)
+            return [job.snapshot() for job in reversed(shown)]
 
     def current(self) -> dict | None:
-        """The running job, or the most recent one if none is running."""
+        """A running job (the latest started), or the latest one if none is running."""
         with self._lock:
-            return self._current.snapshot() if self._current else None
+            running = self._running_locked()
+            job = running[-1] if running else (self._jobs[self._order[-1]] if self._order else None)
+            return job.snapshot() if job else None
 
     def wait_for_change(self, job_id: str, seen_version: int, timeout: float) -> dict | None:
         """Block until the job's version passes ``seen_version`` (or timeout); return its snapshot."""

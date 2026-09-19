@@ -8,7 +8,7 @@ import './ingest.css'
 
 export default function Archive() {
   const [confirming, setConfirming] = useState(false)
-  const gate = useJobGate('archive')
+  const gate = useJobGate('archive', { everything: true })   // it moves every reviewed file
   const track = useTrackJob()
   const status = useQuery({ queryKey: ['ingest', 'archive'], queryFn: api.ingest.archive })
   const start = useMutation({
@@ -54,8 +54,8 @@ export default function Archive() {
       {gate.job && <JobPanel job={gate.job} />}
 
       {s.moves.length > 0 && (
-        <Card title="Preview" hint={`${s.moves.length} file(s)`} className="archive-preview">
-          <div className="table-wrap tall">
+        <Card title="Preview" hint={`${s.moves.length} file(s)`} className="card--uncapped">
+          <div className="table-wrap">
             <table>
               <thead><tr><th>Page</th><th>Scan</th><th>Destination</th></tr></thead>
               <tbody>

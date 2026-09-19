@@ -4,7 +4,7 @@ import pytest
 
 from pathlib import Path
 
-import receipt_edit
+import document_files
 from data import load_smart_match_cache, read_sidecar
 from models import ReviewDecision
 from organize_utils import build_accepted_name
@@ -77,7 +77,7 @@ def test_re_saving_a_multi_page_document_does_not_swap_its_pages(archive_dir):
 
 def test_a_page_is_never_left_without_its_sidecar(archive_dir, monkeypatch):
     row = next(r for _, r in build_viz_records(archive_dir).iterrows() if len(r["paths"]) > 1)
-    real_move = receipt_edit.shutil.move
+    real_move = document_files.shutil.move
     calls = []
 
     def flaky_move(src, dst):
@@ -86,7 +86,7 @@ def test_a_page_is_never_left_without_its_sidecar(archive_dir, monkeypatch):
             raise OSError("disk hiccup")
         return real_move(src, dst)
 
-    monkeypatch.setattr(receipt_edit.shutil, "move", flaky_move)
+    monkeypatch.setattr(document_files.shutil, "move", flaky_move)
     with pytest.raises(OSError):
         apply_receipt_edit(archive_dir, list(row["paths"]), _edit(row, name="Half Done"))
 

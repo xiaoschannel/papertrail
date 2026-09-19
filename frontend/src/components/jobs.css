@@ -18,11 +18,11 @@
 .job-actions { display: flex; gap: 8px; margin-top: 10px; }
 .job-actions:empty { display: none; }
 
-.job-errors { list-style: none; margin: 10px 0 0; padding: 0; max-height: 320px; overflow: auto; display: grid; gap: 8px; }
+.job-errors { list-style: none; margin: 10px 0 0; padding: 0; max-height: 20rem; overflow: auto; display: grid; gap: 8px; }
 .job-errors li { font-size: 12.5px; }
 .job-errors pre {
   margin: 4px 0 0; padding: 6px 8px; border-radius: 6px; background: var(--panel-2);
-  white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11.5px; max-height: 160px; overflow: auto;
+  white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11.5px; max-height: 10rem; overflow: auto;
 }
 
 .job-indicator {

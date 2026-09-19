@@ -1,84 +1,121 @@
 import { useEffect, useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { api, jobEventsUrl } from '../api/client.ts'
 import type { Job } from '../api/types.ts'
 import './jobs.css'
 
 /**
- * Background jobs (OCR, Parse, Archive). The server runs one at a time; `JobWatcher` (mounted once in
- * the app shell) follows the running job over Server-Sent Events and writes each update into the query
- * cache, so every page and the sidebar read the same live job without opening their own streams.
+ * Background jobs (OCR, Parse, Archive, Workshop reprocess). Several can run at once — each holds the
+ * batches it works on, the GPU if it loads a model, or everything (Archive) — so OCR can read one batch
+ * while Parse extracts another. `JobWatcher` (mounted once in the app shell) follows every running job
+ * over Server-Sent Events and writes each update into the query cache, so pages and the sidebar read the
+ * same live jobs without opening their own streams.
  */
-export const CURRENT_JOB = ['job', 'current'] as const
+export const JOBS = ['job', 'list'] as const
 
-export function useCurrentJob(): Job | null | undefined {
+/** Every running job, plus the last finished one of each kind with none running. */
+export function useJobs(): Job[] {
   return useQuery({
-    queryKey: CURRENT_JOB,
-    queryFn: api.jobs.current,
-    // While a job runs, the watcher's event stream keeps this current. Otherwise poll gently, so a job
-    // started in another tab still shows up here (and its pages lock) without waiting for a refused request.
-    refetchInterval: (query) => (query.state.data?.status === 'running' ? false : 10_000),
+    queryKey: JOBS,
+    queryFn: api.jobs.list,
+    // While jobs run, the watcher's streams keep this current. Otherwise poll gently, so a job started in
+    // another tab still shows up here (and its locks apply) without waiting for a refused request.
+    refetchInterval: (query) => ((query.state.data ?? []).some(isRunning) ? false : 10_000),
     refetchOnWindowFocus: true,
     staleTime: 0,
-  }).data
+  }).data ?? []
 }
 
-/** Put a job the page just started into the cache, so the watcher starts following it. */
+const isRunning = (job: Job) => job.status === 'running'
+
+function upsert(queryClient: QueryClient, job: Job) {
+  queryClient.setQueryData<Job[]>(JOBS, (jobs = []) =>
+    jobs.some((j) => j.id === job.id) ? jobs.map((j) => (j.id === job.id ? job : j))
+      // a new run replaces the last finished one of its kind
+      : [...jobs.filter((j) => j.kind !== job.kind || isRunning(j)), job])
+}
+
+/** Put a job the page just started (or cancelled) into the cache, so the watcher follows it. */
 export function useTrackJob() {
   const queryClient = useQueryClient()
-  return (job: Job) => queryClient.setQueryData(CURRENT_JOB, job)
+  return (job: Job) => upsert(queryClient, job)
 }
 
 export function JobWatcher() {
-  const queryClient = useQueryClient()
-  const job = useCurrentJob()
-  const runningId = job?.status === 'running' ? job.id : null
+  const running = useJobs().filter(isRunning)
+  return <>{running.map((job) => <JobStream key={job.id} id={job.id} />)}</>
+}
 
+/** One running job's event stream, written into the job list as it changes. */
+function JobStream({ id }: { id: string }) {
+  const queryClient = useQueryClient()
   useEffect(() => {
-    if (!runningId) return undefined
-    const source = new EventSource(jobEventsUrl(runningId))
+    const source = new EventSource(jobEventsUrl(id))
     source.onmessage = (event: MessageEvent<string>) => {
       const next = JSON.parse(event.data) as Job
-      queryClient.setQueryData(CURRENT_JOB, next)
+      upsert(queryClient, next)
       if (next.status !== 'running') {
         source.close()
-        // OCR/Parse/Archive changed what every ingest page (and, after Archive, the visualize pages) shows.
+        // OCR/Parse/Archive changed what the ingest pages (and, after Archive, the visualize pages) show.
         void queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] !== 'job' })
       }
     }
     source.onerror = () => {
       // EventSource retries dropped connections by itself; once it gives up (e.g. the server restarted
       // and forgot the job), ask the server what is running now.
-      if (source.readyState === EventSource.CLOSED) void queryClient.invalidateQueries({ queryKey: CURRENT_JOB })
+      if (source.readyState === EventSource.CLOSED) void queryClient.invalidateQueries({ queryKey: JOBS })
     }
     return () => source.close()
-  }, [runningId, queryClient])
-
+  }, [id, queryClient])
   return null
 }
 
-/** Sidebar line for the running job, so it stays visible from any page. */
+/** Sidebar lines for the running jobs, so they stay visible from any page. */
 export function JobIndicator() {
-  const job = useCurrentJob()
-  if (job?.status !== 'running') return null
+  const running = useJobs().filter(isRunning)
   return (
-    <div className="job-indicator" title={job.message}>
-      <span className="job-indicator__dot" />
-      {job.title} · {job.done}/{job.total || '…'}
-    </div>
+    <>
+      {running.map((job) => (
+        <div key={job.id} className="job-indicator" title={job.message}>
+          <span className="job-indicator__dot" />
+          {job.title} · {job.done}/{job.total || '…'}
+        </div>
+      ))}
+    </>
   )
 }
 
-/** Whether a page of `kind` may start its job, and the job it should show. */
-export function useJobGate(kind: string) {
-  const job = useCurrentJob()
-  const busy = job?.status === 'running'
+/** What a page's job would hold: the GPU if it loads a model, everything if it's Archive. */
+export type JobNeeds = { gpu?: boolean; everything?: boolean }
+
+/**
+ * Whether a page of `kind` may start its job, and the job it should show.
+ *
+ * Batches aren't known until the server plans the run (it plans around batches other jobs hold), so
+ * this only predicts the GPU and everything-collisions; the server stays the authority and says why
+ * when it refuses.
+ */
+export function useJobGate(kind: string, needs: JobNeeds = {}) {
+  const jobs = useJobs()
+  const own = jobs.find((job) => job.kind === kind && isRunning(job)) ?? jobs.findLast((job) => job.kind === kind)
+  const blocker = jobs.find((job) => isRunning(job) && job.kind !== kind
+    && (job.everything || needs.everything || (needs.gpu && job.gpu)))
   return {
-    busy,
     /** The running or last job of this page's kind (to show its progress/result). */
-    job: job && job.kind === kind ? job : null,
-    blockedBy: busy && job.kind !== kind ? job.title : null,
+    job: own ?? null,
+    blockedBy: blocker ? blocker.title : null,
   }
+}
+
+/** The running job holding ``batchId`` (or everything), which locks edits to that batch's pages. */
+export function useBatchHolder(batchId: number | null): Job | null {
+  return useJobs().find((job) => isRunning(job)
+    && (job.everything || (batchId !== null && job.batches.includes(batchId)))) ?? null
+}
+
+/** The running job holding everything (Archive), which locks every ingest edit. */
+export function useEverythingHolder(): Job | null {
+  return useJobs().find((job) => isRunning(job) && job.everything) ?? null
 }
 
 const duration = (seconds: number | null | undefined): string => {

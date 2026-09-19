@@ -67,6 +67,381 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/brands": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Brands
+         * @description Every brand with how many archived receipts it matches, plus the unmatched ones.
+         */
+        get: operations["list_brands_api_brands_get"];
+        put?: never;
+        /** Create Brand */
+        post: operations["create_brand_api_brands_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/brands/{brand_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Brand
+         * @description Remove a brand. Its receipts stay where they are; they simply stop being grouped.
+         */
+        delete: operations["delete_brand_api_brands__brand_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Brand
+         * @description Rename a brand or replace its prefixes. The id never changes, so receipts keep their grouping.
+         */
+        patch: operations["update_brand_api_brands__brand_id__patch"];
+        trace?: never;
+    };
+    "/api/brands/{brand_id}/prefixes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Prefix
+         * @description Add one prefix — the quick action on a suggestion.
+         */
+        post: operations["add_prefix_api_brands__brand_id__prefixes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/brands/suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Suggestions
+         * @description Prefixes shared by unmatched receipt names. The settings are remembered, as in Streamlit.
+         */
+        get: operations["suggestions_api_brands_suggestions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/curate/dedupe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Dedupe Clusters
+         * @description Archived documents that look like the same purchase scanned twice: equal cost, minutes apart.
+         *
+         *     Clustered per DOCUMENT, not per file: the pages of one multi-page receipt share a date, time and
+         *     cost, so clustering files (as the Streamlit page did) reported every multi-page document as its
+         *     own duplicate.
+         */
+        get: operations["dedupe_clusters_api_curate_dedupe_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/curate/dedupe/keep": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Keep Both
+         * @description Say these documents are different purchases, so the cluster stops coming back.
+         */
+        post: operations["keep_both_api_curate_dedupe_keep_post"];
+        /**
+         * Consider Again
+         * @description Undo that, so the pair is offered again.
+         */
+        delete: operations["consider_again_api_curate_dedupe_keep_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/curate/dedupe/toss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Toss Duplicate
+         * @description Move one archived document's pages into ``tossed/``. The scans stay on disk, out of the archive.
+         */
+        post: operations["toss_duplicate_api_curate_dedupe_toss_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/curate/dedupe/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore Tossed
+         * @description Undo a toss: put the pages back in the archive under the verdict they had.
+         */
+        post: operations["restore_tossed_api_curate_dedupe_restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/curate/normalize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Normalize Clusters
+         * @description Names one engine thinks are the same shop. Embedding clustering asks Ollama for any new name,
+         *     so it takes the single model slot and is refused while a job holds it.
+         */
+        get: operations["normalize_clusters_api_curate_normalize_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/curate/normalize/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Merge
+         * @description Exactly what the merge would rewrite and re-file, before anything is written.
+         */
+        post: operations["preview_merge_api_curate_normalize_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/curate/normalize/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Merge Names
+         * @description Rewrite every variant to the chosen name and re-file the documents it renames.
+         */
+        post: operations["merge_names_api_curate_normalize_merge_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/curate/normalize/distinct": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm Distinct
+         * @description Remember that these names are different shops, so the cluster stops coming back.
+         */
+        post: operations["confirm_distinct_api_curate_normalize_distinct_post"];
+        /** Forget Distinct */
+        delete: operations["forget_distinct_api_curate_normalize_distinct_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/curate/workshop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Workshop Queue
+         * @description Marked documents, and everything the form needs for the one being worked on.
+         */
+        get: operations["workshop_queue_api_curate_workshop_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/curate/workshop/scan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Enhanced Scan
+         * @description The treated scan — the same pixels a reprocess would hand to OCR, so the preview can't lie.
+         */
+        get: operations["enhanced_scan_api_curate_workshop_scan_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/curate/workshop/context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Context
+         * @description The week around the form's date and time, and the rest of the document's batch (as Streamlit showed).
+         */
+        get: operations["context_api_curate_workshop_context_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/curate/workshop/hints": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Hints
+         * @description The same hint rules, name status and accept blocker Review shows, for a marked document.
+         */
+        post: operations["hints_api_curate_workshop_hints_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/curate/workshop/reprocess": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reprocess
+         * @description Read the treated scan again and extract from it, as a job: it loads the same models as ingest.
+         */
+        post: operations["reprocess_api_curate_workshop_reprocess_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/curate/workshop/decide": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decide
+         * @description Accept the document into the archive, or toss it. Every page of it moves together.
+         */
+        post: operations["decide_api_curate_workshop_decide_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/viz/records": {
         parameters: {
             query?: never;
@@ -432,7 +807,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/review/decision": {
+    "/api/review/undo": {
         parameters: {
             query?: never;
             header?: never;
@@ -441,12 +816,16 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post?: never;
         /**
          * Undo Endpoint
-         * @description Remove one document's decision, returning it to the queue (Undo).
+         * @description Take back a decision, returning the document to the queue (Undo).
+         *
+         *     The body is the decision as it was made, and it is removed only if it is still the one on file.
+         *     A key names a position in its batch, so after a regroup it can name another document; and the same
+         *     document may have been decided again since. Either way the undo is refused rather than guessed at.
          */
-        delete: operations["undo_endpoint_api_review_decision_delete"];
+        post: operations["undo_endpoint_api_review_undo_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -628,6 +1007,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Jobs
+         * @description Every running job, plus the last finished job of each kind with none running - what the pages
+         *     show: live progress, or how their last run ended.
+         */
+        get: operations["jobs_api_jobs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/jobs/current": {
         parameters: {
             query?: never;
@@ -637,7 +1037,8 @@ export interface paths {
         };
         /**
          * Current Job
-         * @description The running job, or the last one to run (None before any job).
+         * @description A running job (the latest started), or the last one to run; None before any job. Several jobs can
+         *     run at once - ``GET /api/jobs`` lists them.
          */
         get: operations["current_job_api_jobs_current_get"];
         put?: never;
@@ -926,6 +1327,56 @@ export interface components {
             /** Y2 */
             y2: number;
         };
+        /** BrandBranchOut */
+        BrandBranchOut: {
+            /** Location */
+            location: string;
+            /** Receipts */
+            receipts: number;
+        };
+        /** BrandIn */
+        BrandIn: {
+            /** Label */
+            label: string;
+            /** Prefixes */
+            prefixes: string[];
+        };
+        /** BrandOut */
+        BrandOut: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Prefixes */
+            prefixes: string[];
+            /** Receipt Count */
+            receipt_count: number;
+            /** Tree */
+            tree: components["schemas"]["BrandPrefixOut"][];
+        };
+        /** BrandOverview */
+        BrandOverview: {
+            /** Receipts */
+            receipts: number;
+            /** Matched */
+            matched: number;
+            /** Unmatched */
+            unmatched: number;
+        };
+        /** BrandPrefixIn */
+        BrandPrefixIn: {
+            /** Prefix */
+            prefix: string;
+        };
+        /** BrandPrefixOut */
+        BrandPrefixOut: {
+            /** Prefix */
+            prefix: string;
+            /** Receipts */
+            receipts: number;
+            /** Branches */
+            branches: components["schemas"]["BrandBranchOut"][];
+        };
         /** BrandTotals */
         BrandTotals: {
             /** Merchant Group */
@@ -938,6 +1389,14 @@ export interface components {
             brand_id: string | null;
             /** Avg Per Visit */
             avg_per_visit: number;
+        };
+        /** BrandsOut */
+        BrandsOut: {
+            /** Brands */
+            brands: components["schemas"]["BrandOut"][];
+            overview: components["schemas"]["BrandOverview"];
+            /** Unmatched */
+            unmatched: components["schemas"]["NameCount"][];
         };
         /** CadencePoint */
         CadencePoint: {
@@ -970,6 +1429,35 @@ export interface components {
             scheme: string;
             /** Token */
             token: string;
+        };
+        /**
+         * ContextScanOut
+         * @description A document beside the one being worked on, and where its scan can be seen.
+         */
+        ContextScanOut: {
+            /** Filename */
+            filename: string;
+            /**
+             * Verdict
+             * @enum {string}
+             */
+            verdict: "accepted" | "marked" | "tossed" | "";
+            /** Name */
+            name: string;
+            /** Date */
+            date: string;
+            /** Time */
+            time: string;
+            /** Cost */
+            cost: number;
+            /** Currency */
+            currency: string;
+            /** Image */
+            image: string | null;
+            /** Receipt */
+            receipt: string | null;
+            /** Current */
+            current: boolean;
         };
         /** DateRange */
         DateRange: {
@@ -1015,6 +1503,58 @@ export interface components {
             currency: string;
             /** Comment */
             comment: string;
+        };
+        /**
+         * DedupeCluster
+         * @description Documents with the same cost within a few minutes of each other.
+         */
+        DedupeCluster: {
+            /** Date */
+            date: string;
+            /** Time */
+            time: string;
+            /** Members */
+            members: components["schemas"]["DedupeMember"][];
+        };
+        /** DedupeMember */
+        DedupeMember: {
+            /** Filename */
+            filename: string;
+            /** Path */
+            path: string;
+            /** Name */
+            name: string;
+            /** Date */
+            date: string;
+            /** Time */
+            time: string;
+            /** Cost */
+            cost: number;
+            /** Currency */
+            currency: string;
+            /** Pages */
+            pages: number;
+        };
+        /** DedupeOut */
+        DedupeOut: {
+            /** Archived */
+            archived: number;
+            /** Tossed */
+            tossed: number;
+            /** Clusters */
+            clusters: components["schemas"]["DedupeCluster"][];
+            /** Kept */
+            kept: components["schemas"]["KeptPair"][];
+        };
+        /** DistinctIn */
+        DistinctIn: {
+            /** Names */
+            names: string[];
+        };
+        /** DistinctOut */
+        DistinctOut: {
+            /** Pairs */
+            pairs: number;
         };
         /** DraftIn */
         DraftIn: {
@@ -1242,6 +1782,27 @@ export interface components {
             cancel_requested: boolean;
             /** Version */
             version: number;
+            /** Batches */
+            batches: number[];
+            /** Gpu */
+            gpu: boolean;
+            /** Everything */
+            everything: boolean;
+        };
+        /** KeepIn */
+        KeepIn: {
+            /** Documents */
+            documents: string[];
+        };
+        /**
+         * KeptPair
+         * @description Two documents you said are different purchases, and their names for the undo list.
+         */
+        KeptPair: {
+            /** Documents */
+            documents: string[];
+            /** Names */
+            names: string[];
         };
         /** LineItem */
         LineItem: {
@@ -1263,6 +1824,22 @@ export interface components {
             location: string;
             /** Count */
             count: number;
+        };
+        /**
+         * MarkedDocumentOut
+         * @description One document waiting in ``marked/`` — every page of it, not one entry per page.
+         */
+        MarkedDocumentOut: {
+            /** Key */
+            key: string;
+            /** Pages */
+            pages: string[];
+            /** Name */
+            name: string;
+            /** Comment */
+            comment: string;
+            /** Batch Id */
+            batch_id: number | null;
         };
         /** MerchantMetrics */
         MerchantMetrics: {
@@ -1295,6 +1872,33 @@ export interface components {
             /** Receipts */
             receipts: components["schemas"]["GalleryReceipt"][];
         };
+        /** MergeIn */
+        MergeIn: {
+            /** Target */
+            target: string;
+            /** Variants */
+            variants: string[];
+        };
+        /**
+         * MergeOut
+         * @description What a merge would do (preview) or did. ``moves`` is every document that is re-filed.
+         */
+        MergeOut: {
+            /** Target */
+            target: string;
+            /** Variants */
+            variants: string[];
+            /** Documents */
+            documents: number;
+            /** Moves */
+            moves: components["schemas"]["MoveOut"][];
+            /** Decisions */
+            decisions: number;
+            /** Smart Matches */
+            smart_matches: number;
+            /** Error */
+            error: string | null;
+        };
         /** MonthlySpend */
         MonthlySpend: {
             /** Period */
@@ -1312,6 +1916,34 @@ export interface components {
             count: number;
             /** Month Ts */
             month_ts: string;
+        };
+        /** MoveOut */
+        MoveOut: {
+            /** Source */
+            source: string;
+            /** Destination */
+            destination: string;
+        };
+        /** NameCount */
+        NameCount: {
+            /** Name */
+            name: string;
+            /** Count */
+            count: number;
+        };
+        /**
+         * NameGroupOut
+         * @description Names one engine thinks are the same shop, with how many documents carry each.
+         */
+        NameGroupOut: {
+            /** Id */
+            id: number;
+            /** Names */
+            names: string[];
+            /** Counts */
+            counts: components["schemas"]["NameCount"][];
+            /** Canonical */
+            canonical: string[];
         };
         /** NameTotals */
         NameTotals: {
@@ -1332,6 +1964,21 @@ export interface components {
             id: string;
             /** Label */
             label: string;
+        };
+        /** NormalizeOut */
+        NormalizeOut: {
+            /** Engines */
+            engines: components["schemas"]["NormalizeEngineOut"][];
+            /** Engine */
+            engine: string;
+            /** Threshold */
+            threshold: number;
+            /** Names */
+            names: number;
+            /** Groups */
+            groups: components["schemas"]["NameGroupOut"][];
+            /** Distinct Pairs */
+            distinct_pairs: string[][];
         };
         /** OcrStatus */
         OcrStatus: {
@@ -1355,6 +2002,8 @@ export interface components {
             missing_images: number;
             /** To Process */
             to_process: number;
+            /** Waiting */
+            waiting: number;
         };
         /** PageIn */
         PageIn: {
@@ -1367,6 +2016,8 @@ export interface components {
             blocker: string | null;
             /** Extractors */
             extractors: string[];
+            /** Local Extractors */
+            local_extractors: string[];
             /** Extractor */
             extractor: string;
             /** Custom Instruction */
@@ -1379,6 +2030,8 @@ export interface components {
             tossed: number;
             /** To Process */
             to_process: number;
+            /** Waiting */
+            waiting: number;
         };
         /**
          * PathCheck
@@ -1391,6 +2044,15 @@ export interface components {
             exists: boolean;
             /** Is Dir */
             is_dir: boolean;
+        };
+        /** PrefixSuggestionOut */
+        PrefixSuggestionOut: {
+            /** Prefix */
+            prefix: string;
+            /** Count */
+            count: number;
+            /** Names */
+            names: string[];
         };
         /** ProposedBatch */
         ProposedBatch: {
@@ -1454,6 +2116,16 @@ export interface components {
              * @default
              */
             comment: string;
+        };
+        /** RestoreIn */
+        RestoreIn: {
+            /** Paths */
+            paths: string[];
+            /**
+             * Verdict
+             * @enum {string}
+             */
+            verdict: "accepted" | "marked" | "tossed";
         };
         /** ReviewDocument */
         ReviewDocument: {
@@ -1573,6 +2245,26 @@ export interface components {
              */
             custom_instruction: string;
         };
+        /** TossIn */
+        TossIn: {
+            /** Path */
+            path: string;
+        };
+        /**
+         * TossOut
+         * @description Where the pages went, and the verdict they had — everything an undo needs.
+         */
+        TossOut: {
+            /** Tossed */
+            tossed: string[];
+            /**
+             * Previous Verdict
+             * @enum {string}
+             */
+            previous_verdict: "accepted" | "marked" | "tossed";
+            /** Name */
+            name: string;
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -1673,6 +2365,109 @@ export interface components {
             brand_location: string;
             /** Merchant Group */
             merchant_group: string;
+        };
+        /**
+         * WorkshopContextOut
+         * @description What helps place a marked document: the week around it, and the batch it was scanned in.
+         */
+        WorkshopContextOut: {
+            /** Week */
+            week: components["schemas"]["ContextScanOut"][] | null;
+            /** Batch Id */
+            batch_id: number | null;
+            /** Batch */
+            batch: components["schemas"]["ContextScanOut"][];
+        };
+        /**
+         * WorkshopDecisionIn
+         * @description The workshop finishes a document: into the archive, or into ``tossed/``. Marking it again
+         *     would leave it in a state the workshop itself can no longer reach.
+         */
+        WorkshopDecisionIn: {
+            /** Key */
+            key: string;
+            /**
+             * Verdict
+             * @enum {string}
+             */
+            verdict: "accepted" | "tossed";
+            draft: components["schemas"]["DraftIn"];
+            /**
+             * Comment
+             * @default
+             */
+            comment: string;
+        };
+        /** WorkshopHintsIn */
+        WorkshopHintsIn: {
+            /** Key */
+            key: string;
+            draft: components["schemas"]["DraftIn"];
+        };
+        /** WorkshopOut */
+        WorkshopOut: {
+            /** Documents */
+            documents: components["schemas"]["MarkedDocumentOut"][];
+            document: components["schemas"]["ReviewDocument"] | null;
+            /** Ocr Models */
+            ocr_models: string[];
+            /** Extractors */
+            extractors: string[];
+            /** Ocr Model */
+            ocr_model: string;
+            /** Extractor */
+            extractor: string;
+        };
+        /** WorkshopReprocessIn */
+        WorkshopReprocessIn: {
+            /**
+             * Top Points
+             * @default
+             * @enum {string}
+             */
+            top_points: "" | "left" | "right" | "down";
+            /**
+             * Treatment
+             * @default none
+             * @enum {string}
+             */
+            treatment: "none" | "clahe" | "contrast" | "whiten";
+            /**
+             * Clip
+             * @default 3
+             */
+            clip: number;
+            /**
+             * Grid
+             * @default 8
+             */
+            grid: number;
+            /**
+             * Contrast
+             * @default 2.5
+             */
+            contrast: number;
+            /**
+             * Gamma
+             * @default 0.5
+             */
+            gamma: number;
+            /**
+             * Lightness
+             * @default 200
+             */
+            lightness: number;
+            /**
+             * Chroma
+             * @default 10
+             */
+            chroma: number;
+            /** Key */
+            key: string;
+            /** Ocr Model */
+            ocr_model: string;
+            /** Extractor */
+            extractor: string;
         };
     };
     responses: never;
@@ -1807,6 +2602,711 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PathCheck"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_brands_api_brands_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandsOut"];
+                };
+            };
+        };
+    };
+    create_brand_api_brands_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrandIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_brand_api_brands__brand_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                brand_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandOverview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_brand_api_brands__brand_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                brand_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrandIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_prefix_api_brands__brand_id__prefixes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                brand_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrandPrefixIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    suggestions_api_brands_suggestions_get: {
+        parameters: {
+            query?: {
+                boundary_only?: boolean | null;
+                max_length?: number | null;
+                min_length?: number | null;
+                min_count?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrefixSuggestionOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dedupe_clusters_api_curate_dedupe_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DedupeOut"];
+                };
+            };
+        };
+    };
+    keep_both_api_curate_dedupe_keep_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KeepIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DedupeOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    consider_again_api_curate_dedupe_keep_delete: {
+        parameters: {
+            query: {
+                first: string;
+                second: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DedupeOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    toss_duplicate_api_curate_dedupe_toss_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TossIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TossOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_tossed_api_curate_dedupe_restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RestoreIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DedupeOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    normalize_clusters_api_curate_normalize_get: {
+        parameters: {
+            query?: {
+                engine?: string | null;
+                threshold?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NormalizeOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_merge_api_curate_normalize_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MergeIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MergeOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    merge_names_api_curate_normalize_merge_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MergeIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MergeOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_distinct_api_curate_normalize_distinct_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DistinctIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DistinctOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    forget_distinct_api_curate_normalize_distinct_delete: {
+        parameters: {
+            query: {
+                first: string;
+                second: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DistinctOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    workshop_queue_api_curate_workshop_get: {
+        parameters: {
+            query?: {
+                key?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkshopOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    enhanced_scan_api_curate_workshop_scan_get: {
+        parameters: {
+            query: {
+                filename: string;
+                top_points?: string;
+                treatment?: string;
+                clip?: number;
+                grid?: number;
+                contrast?: number;
+                gamma?: number;
+                lightness?: number;
+                chroma?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the scan as OCR would see it */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    context_api_curate_workshop_context_get: {
+        parameters: {
+            query: {
+                key: string;
+                date?: string;
+                time?: string;
+                document_type?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkshopContextOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    hints_api_curate_workshop_hints_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkshopHintsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HintsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reprocess_api_curate_workshop_reprocess_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkshopReprocessIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decide_api_curate_workshop_decide_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkshopDecisionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkshopOut"];
                 };
             };
             /** @description Validation Error */
@@ -2417,16 +3917,18 @@ export interface operations {
             };
         };
     };
-    undo_endpoint_api_review_decision_delete: {
+    undo_endpoint_api_review_undo_post: {
         parameters: {
-            query: {
-                key: string;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecisionIn"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -2843,6 +4345,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobOut"];
+                };
+            };
+        };
+    };
+    jobs_api_jobs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobOut"][];
                 };
             };
         };

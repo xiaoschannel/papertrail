@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class _Model(BaseModel):
@@ -327,6 +327,10 @@ class JobOut(_Model):
     eta_seconds: int | None
     cancel_requested: bool
     version: int
+    #: what the job holds while it runs - which controls it locks on the other pages
+    batches: list[int]
+    gpu: bool
+    everything: bool
 
 
 # --- ingest: file index -------------------------------------------------------------
@@ -418,6 +422,8 @@ class OcrStatus(_Model):
     failed: int
     missing_images: int
     to_process: int
+    #: pages that need reading but are in a batch another job holds
+    waiting: int
 
 
 class StartOcrIn(_Model):
@@ -430,12 +436,16 @@ class StartOcrIn(_Model):
 class ParseStatus(_Model):
     blocker: str | None
     extractors: list[str]
+    #: the extractors that run on this machine's GPU, and so can't run beside OCR
+    local_extractors: list[str]
     extractor: str
     custom_instruction: str
     total: int
     processed: int
     tossed: int
     to_process: int
+    #: documents that need parsing but are in a batch another job holds
+    waiting: int
 
 
 class StartParseIn(_Model):
@@ -462,6 +472,240 @@ class ArchiveStatus(_Model):
     marked: int
     tossed: int
     moves: list[ArchiveMoveOut]
+
+
+# --- curate: marked workshop -------------------------------------------------------------
+class MarkedDocumentOut(_Model):
+    """One document waiting in ``marked/`` — every page of it, not one entry per page."""
+
+    key: str
+    pages: list[str]
+    name: str
+    comment: str
+    batch_id: int | None
+
+
+class WorkshopOut(_Model):
+    documents: list[MarkedDocumentOut]
+    document: ReviewDocument | None
+    ocr_models: list[str]
+    extractors: list[str]
+    ocr_model: str
+    extractor: str
+
+
+class ContextScanOut(_Model):
+    """A document beside the one being worked on, and where its scan can be seen."""
+
+    filename: str
+    verdict: Literal["accepted", "marked", "tossed", ""]   # "" while it is still being ingested
+    name: str
+    date: str
+    time: str
+    cost: float
+    currency: str
+    image: str | None          # a media URL
+    receipt: str | None        # the archived document, for Receipt Detail
+    current: bool
+
+
+class WorkshopContextOut(_Model):
+    """What helps place a marked document: the week around it, and the batch it was scanned in."""
+
+    week: list[ContextScanOut] | None   # None until the form has a receipt date
+    batch_id: int | None
+    batch: list[ContextScanOut]
+
+
+class EnhancementIn(_Model):
+    """How to prepare the scan before OCR reads it (the same values the preview endpoint takes)."""
+
+    top_points: Literal["", "left", "right", "down"] = ""
+    treatment: Literal["none", "clahe", "contrast", "whiten"] = "none"
+    clip: float = Field(3.0, ge=1.0, le=10.0)
+    grid: int = Field(8, ge=2, le=16)
+    contrast: float = Field(2.5, ge=0.5, le=3.0)
+    gamma: float = Field(0.5, ge=0.2, le=3.0)
+    lightness: int = Field(200, ge=128, le=255)
+    chroma: int = Field(10, ge=1, le=80)
+
+
+class WorkshopReprocessIn(EnhancementIn):
+    key: str
+    ocr_model: str
+    extractor: str
+
+
+class WorkshopHintsIn(_Model):
+    key: str
+    draft: DraftIn
+
+
+class WorkshopDecisionIn(_Model):
+    """The workshop finishes a document: into the archive, or into ``tossed/``. Marking it again
+    would leave it in a state the workshop itself can no longer reach."""
+
+    key: str
+    verdict: Literal["accepted", "tossed"]
+    draft: DraftIn
+    comment: str = ""
+
+
+# --- curate: dedupe ----------------------------------------------------------------------
+class DedupeMember(_Model):
+    filename: str
+    path: str
+    name: str
+    date: str
+    time: str
+    cost: float
+    currency: str
+    pages: int
+
+
+class DedupeCluster(_Model):
+    """Documents with the same cost within a few minutes of each other."""
+
+    date: str
+    time: str
+    members: list[DedupeMember]
+
+
+class KeptPair(_Model):
+    """Two documents you said are different purchases, and their names for the undo list."""
+
+    documents: list[str]
+    names: list[str]
+
+
+class DedupeOut(_Model):
+    archived: int
+    tossed: int
+    clusters: list[DedupeCluster]
+    kept: list[KeptPair]
+
+
+class KeepIn(_Model):
+    documents: list[str]
+
+
+class TossIn(_Model):
+    path: str
+
+
+class TossOut(_Model):
+    """Where the pages went, and the verdict they had — everything an undo needs."""
+
+    tossed: list[str]
+    previous_verdict: VerdictName
+    name: str
+
+
+class RestoreIn(_Model):
+    paths: list[str]
+    verdict: VerdictName
+
+
+# --- curate: normalize -------------------------------------------------------------------
+class NameGroupOut(_Model):
+    """Names one engine thinks are the same shop, with how many documents carry each."""
+
+    id: int
+    names: list[str]
+    counts: list[NameCount]
+    canonical: list[str]
+
+
+class NormalizeOut(_Model):
+    engines: list[NormalizeEngineOut]
+    engine: str
+    threshold: float
+    names: int
+    groups: list[NameGroupOut]
+    distinct_pairs: list[list[str]]
+
+
+class MergeIn(_Model):
+    target: str
+    variants: list[str]
+
+
+class MoveOut(_Model):
+    source: str
+    destination: str
+
+
+class MergeOut(_Model):
+    """What a merge would do (preview) or did. ``moves`` is every document that is re-filed."""
+
+    target: str
+    variants: list[str]
+    documents: int
+    moves: list[MoveOut]
+    decisions: int
+    smart_matches: int
+    error: str | None
+
+
+class DistinctIn(_Model):
+    names: list[str]
+
+
+class DistinctOut(_Model):
+    pairs: int
+
+
+# --- brand registry ----------------------------------------------------------------------
+class BrandBranchOut(_Model):
+    location: str
+    receipts: int
+
+
+class BrandPrefixOut(_Model):
+    prefix: str
+    receipts: int
+    branches: list[BrandBranchOut]
+
+
+class BrandOut(_Model):
+    id: str
+    label: str
+    prefixes: list[str]
+    receipt_count: int
+    #: prefix -> branches, in the order the prefixes are written on the brand.
+    tree: list[BrandPrefixOut]
+
+
+class BrandOverview(_Model):
+    receipts: int
+    matched: int
+    unmatched: int
+
+
+class NameCount(_Model):
+    name: str
+    count: int
+
+
+class BrandsOut(_Model):
+    brands: list[BrandOut]
+    overview: BrandOverview
+    unmatched: list[NameCount]
+
+
+class BrandIn(_Model):
+    label: str
+    prefixes: list[str]
+
+
+class BrandPrefixIn(_Model):
+    prefix: str
+
+
+class PrefixSuggestionOut(_Model):
+    prefix: str
+    count: int
+    names: list[str]
 
 
 # --- config options ---------------------------------------------------------------------

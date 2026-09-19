@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { api } from '../api/client.ts'
-import type { Draft, ReviewQueue, Verdict } from '../api/types.ts'
+import { ApiError, api } from '../api/client.ts'
+import type { DecisionIn, Draft, ReviewQueue, Verdict } from '../api/types.ts'
 import { Card, Empty, ErrorState, Loading } from '../components/ui.tsx'
 import { ConfirmDialog } from '../components/ConfirmDialog.tsx'
 import { Markdown } from '../components/Markdown.tsx'
@@ -13,7 +13,7 @@ import { ScanOverlay } from '../components/review/ScanOverlay.tsx'
 import { useShortcuts } from '../components/review/useShortcuts.ts'
 import '../components/review/review.css'
 
-const UNDO_VISIBLE_MS = 10_000
+const RECENT_KEPT = 10
 const QUICK_APPLY_KEYS = 3
 
 const inputImageUrl = (filename: string) => `/api/media/input/${encodeURIComponent(filename)}`
@@ -37,7 +37,9 @@ function useDebounced<T>(value: T, ms: number): T {
 }
 
 type Cursor = { key: string | null; index: number }
-type LastDecision = { key: string; verdict: Verdict; label: string; form: FormState }
+/** A decision you can still take back: what was sent (Undo sends it again, so the server can tell whether
+ *  it is still the one on file) and the form as you left it, to bring back. */
+type Recent = { made: DecisionIn; label: string; form: FormState }
 
 export default function Review() {
   const queryClient = useQueryClient()
@@ -88,16 +90,12 @@ export default function Review() {
   })
 
   const [activeFields, setActiveFields] = useState<readonly string[]>([])
-  const [lastDecision, setLastDecision] = useState<LastDecision | null>(null)
+  // Newest first, one per document. Kept in memory: a reload starts a fresh list, like any editor's undo.
+  const [recent, setRecent] = useState<Recent[]>([])
   const [confirmAccept, setConfirmAccept] = useState(false)
   const [confirmClear, setConfirmClear] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (!lastDecision) return undefined
-    const timer = setTimeout(() => setLastDecision(null), UNDO_VISIBLE_MS)
-    return () => clearTimeout(timer)
-  }, [lastDecision])
   useEffect(() => setError(null), [key])
 
   const decide = useMutation({ mutationFn: api.review.decide })
@@ -122,7 +120,8 @@ export default function Review() {
     const slot = position
     const decidedKey = currentDoc.key
     const decidedForm = form
-    decide.mutate({ key: decidedKey, verdict, draft, comment: form.comment }, {
+    const made: DecisionIn = { key: decidedKey, verdict, draft, comment: form.comment }
+    decide.mutate(made, {
       onSuccess: (summary) => {
         // Drop it from the queue right away (the refetch confirms). Stay in the same slot, unless
         // you already moved to another document while this was saving.
@@ -134,7 +133,8 @@ export default function Review() {
           delete rest[decidedKey]
           return rest
         })
-        setLastDecision({ key: decidedKey, verdict, label: decidedForm.name || decidedKey, form: decidedForm })
+        setRecent((all) => [{ made, label: decidedForm.name, form: decidedForm },
+          ...all.filter((entry) => entry.made.key !== decidedKey)].slice(0, RECENT_KEPT))
         setConfirmAccept(false)
         setError(null)
         void refreshAfterDecisionChange()
@@ -196,19 +196,29 @@ export default function Review() {
     })
   }
 
-  const undoLast = () => {
-    if (!lastDecision || undo.isPending) return
-    const { key: undoneKey, form: undoneForm } = lastDecision
-    undo.mutate(undoneKey, {
+  const forget = (key: string) => setRecent((all) => all.filter((entry) => entry.made.key !== key))
+  /** Take back any recent decision, in any order: decisions on different documents don't depend on each other. */
+  const undoDecision = (entry: Recent) => {
+    if (undo.isPending) return
+    const { made: { key: undoneKey }, form: undoneForm } = entry
+    undo.mutate(entry.made, {
       onSuccess: async () => {
-        setLastDecision(null)
+        forget(undoneKey)
         // bring back exactly what was submitted, not the extraction's defaults
         setDrafts((all) => ({ ...all, [undoneKey]: undoneForm }))
         await refreshAfterDecisionChange()
         setCursor({ key: undoneKey, index: position })
       },
-      onError: (e) => setError(e.message),
+      onError: (e) => {
+        // No longer the decision on file (archived, cleared, decided again or regrouped): it can't come back.
+        if (e instanceof ApiError && (e.status === 404 || e.status === 409)) forget(undoneKey)
+        setError(e.message)
+      },
     })
+  }
+  const undoLast = () => {
+    const [newest] = recent
+    if (newest) undoDecision(newest)
   }
 
   const quickNames = currentDoc?.smart_matches.filter((m) => m.quick_apply).slice(0, QUICK_APPLY_KEYS) ?? []
@@ -224,7 +234,26 @@ export default function Review() {
 
   const summary = queue.data?.summary
   const decidedCount = summary ? summary.verdicts.reduce((n, v) => n + v.count, 0) : 0
-  const verdictLabel = (verdict: Verdict) => summary?.verdicts.find((v) => v.verdict === verdict)?.label ?? verdict
+  const verdictOf = (verdict: Verdict) => summary?.verdicts.find((v) => v.verdict === verdict)
+  const recentList = recent.length > 0 && (
+    <section className="recent-decisions" aria-label="Recent decisions">
+      <div className="config-hint">Recent decisions</div>
+      <div className="name-list">
+        {recent.map((entry, i) => (
+          <div key={entry.made.key} className="name-row">
+            <span className="verdict-dot" style={{ background: verdictOf(entry.made.verdict)?.color }} />
+            <span className="name-row__name">
+              {verdictOf(entry.made.verdict)?.label ?? entry.made.verdict}{' '}
+              {entry.label && <strong>{entry.label}</strong>} <span className="config-hint">{entry.made.key}</span>
+            </span>
+            <button disabled={undo.isPending} onClick={() => undoDecision(entry)}>
+              Undo{i === 0 && <> <kbd>Z</kbd></>}
+            </button>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
 
   return (
     <div className="review-page">
@@ -253,7 +282,7 @@ export default function Review() {
           <>
             <ReviewProgress summary={summary} />
 
-            {items.length === 0 ? <Empty>All items reviewed!</Empty> : (
+            {items.length === 0 ? <><Empty>All items reviewed!</Empty>{recentList}</> : (
               <>
                 <div className="review-nav">
                   <button disabled={position === 0} onClick={() => move(-1)}>← Prev</button>
@@ -293,6 +322,7 @@ export default function Review() {
                             Toss <kbd>T</kbd>
                           </button>
                         </div>
+                        {recentList}
                         <CustomInstructions />
                       </Card>
                     </div>
@@ -301,13 +331,6 @@ export default function Review() {
             )}
           </>
         )}
-
-      {lastDecision && (
-        <div className="toast" role="status">
-          {verdictLabel(lastDecision.verdict)} <strong>{lastDecision.label}</strong>
-          <button onClick={undoLast} disabled={undo.isPending}>Undo <kbd>Z</kbd></button>
-        </div>
-      )}
 
       {confirmAccept && form && (
         <ConfirmDialog title="Accept a new name?" confirmLabel="Accept" busy={decide.isPending}
@@ -322,7 +345,7 @@ export default function Review() {
           onConfirm={() => clearAll.mutate(undefined, {
             onSuccess: async () => {
               setConfirmClear(false)
-              setLastDecision(null)
+              setRecent([])
               setError(null)
               await refreshAfterDecisionChange()
               setCursor({ key: null, index: 0 })

@@ -1,4 +1,4 @@
-import type { FieldBox, ReviewPage } from '../../api/types.ts'
+import type { BoxRect, FieldBox, ReviewPage, TopPoints } from '../../api/types.ts'
 import { Empty } from '../ui.tsx'
 
 /** Colors per extracted field, matching box_drawing.FIELD_COLORS in the Streamlit app. */
@@ -15,45 +15,77 @@ export const fieldColor = (field: string | undefined) => (field && FIELD_COLORS[
 
 const pct = (v: number) => `${v / 10}%`
 
+/** Where the page's top points in the file, as File Index names it ('' = already upright). */
+export type Turn = TopPoints | ''
+
+const SCALE = 1000
+/** A box measured on the file, placed on the file turned upright from `turn` (see document_grouping.ROTATIONS). */
+function turned(r: BoxRect, turn: Turn): BoxRect {
+  switch (turn) {
+    case 'left': return { x1: SCALE - r.y2, y1: r.x1, x2: SCALE - r.y1, y2: r.x2 }    // 90° clockwise
+    case 'right': return { x1: r.y1, y1: SCALE - r.x2, x2: r.y2, y2: SCALE - r.x1 }   // 90° counter-clockwise
+    case 'down': return { x1: SCALE - r.x2, y1: SCALE - r.y2, x2: SCALE - r.x1, y2: SCALE - r.y1 }
+    default: return r
+  }
+}
+
 /**
  * The document's page scans with the OCR boxes its extracted fields cite drawn on top.
  *
  * Box coordinates are on the OCR's 0-1000 scale relative to the image, so they are placed with
  * percentages and never need the image's pixel size. Hovering a box reports its first field;
  * boxes citing `activeFields` are emphasized (the form highlights the matching input).
+ *
+ * The Workshop shows a treated copy: `turn` says how that copy is turned from the file the boxes were
+ * measured on, and `originalUrl` + `showOriginal` swap in the untreated file (both images stay loaded,
+ * so the swap is instant).
  */
-export function ScanOverlay({ pages, imageUrl, activeFields, onHoverField }: {
+export function ScanOverlay({
+  pages, imageUrl, activeFields, onHoverField, turn = '', originalUrl, showOriginal = false,
+  missing = 'is not in the input folder',
+}: {
   pages: ReviewPage[]
   imageUrl: (filename: string) => string
   activeFields: readonly string[]
   onHoverField: (field: string | null) => void
+  turn?: Turn
+  originalUrl?: ((filename: string) => string) | undefined
+  showOriginal?: boolean
+  /** What to say about a page whose scan isn't on disk. */
+  missing?: string
 }) {
   const isActive = (box: FieldBox) => box.fields.some((f) => activeFields.includes(f))
+  const original = showOriginal && originalUrl !== undefined
+  const boxTurn: Turn = original ? '' : turn
   return (
     <div className="scan-pages">
       {pages.map((page, i) => (
         <figure key={page.file_key} className="scan-page">
           {page.image_available && page.filename ? (
             <div className="scan-frame">
-              <img src={imageUrl(page.filename)} alt={`Page ${i + 1}`} />
-              {page.boxes.map((box) => box.rects.map((r, j) => (
-                <div
-                  key={`${box.index}-${j}`}
-                  className={`field-box${isActive(box) ? ' active' : ''}${r.y1 < 40 ? ' label-below' : ''}`}
-                  style={{
-                    left: pct(r.x1), top: pct(r.y1), width: pct(r.x2 - r.x1), height: pct(r.y2 - r.y1),
-                    ['--box-color' as string]: fieldColor(box.fields[0]),
-                  }}
-                  title={`${box.fields.join(', ')}${box.text ? ` — ${box.text}` : ''}`}
-                  onMouseEnter={() => onHoverField(box.fields[0] ?? null)}
-                  onMouseLeave={() => onHoverField(null)}
-                >
-                  {j === 0 && <span className="field-box__label">{box.fields.join(', ')}</span>}
-                </div>
-              )))}
+              <img src={imageUrl(page.filename)} alt={`Page ${i + 1}`} hidden={original} />
+              {originalUrl && <img src={originalUrl(page.filename)} alt={`Page ${i + 1}, as scanned`} hidden={!original} />}
+              {page.boxes.map((box) => box.rects.map((rect, j) => {
+                const r = turned(rect, boxTurn)
+                return (
+                  <div
+                    key={`${box.index}-${j}`}
+                    className={`field-box${isActive(box) ? ' active' : ''}${r.y1 < 40 ? ' label-below' : ''}`}
+                    style={{
+                      left: pct(r.x1), top: pct(r.y1), width: pct(r.x2 - r.x1), height: pct(r.y2 - r.y1),
+                      ['--box-color' as string]: fieldColor(box.fields[0]),
+                    }}
+                    title={`${box.fields.join(', ')}${box.text ? ` — ${box.text}` : ''}`}
+                    onMouseEnter={() => onHoverField(box.fields[0] ?? null)}
+                    onMouseLeave={() => onHoverField(null)}
+                  >
+                    {j === 0 && <span className="field-box__label">{box.fields.join(', ')}</span>}
+                  </div>
+                )
+              }))}
             </div>
           ) : (
-            <Empty>{page.filename ? `${page.filename} is not in the input folder.` : 'No image for this page.'}</Empty>
+            <Empty>{page.filename ? `${page.filename} ${missing}.` : 'No image for this page.'}</Empty>
           )}
           <figcaption>Page {i + 1}{page.filename ? ` · ${page.filename}` : ''}</figcaption>
         </figure>

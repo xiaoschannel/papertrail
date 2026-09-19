@@ -7,6 +7,8 @@ A batch's pages are shown in scan order; tossed pages keep their slot but never 
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from PIL import Image
 
 
@@ -107,3 +109,21 @@ ROTATIONS = {
 def rotate_upright(img: Image.Image, top_points: str) -> Image.Image:
     """Turn a scan upright given where its top currently points ("left", "right" or "down")."""
     return img.transpose(ROTATIONS[top_points]) if top_points in ROTATIONS else img
+
+
+def rotate_file_upright(path: Path, top_points: str) -> None:
+    """Turn the scan at ``path`` upright in place, in its own format.
+
+    The scan is the only copy: write a sibling file and swap it in, so a crash can't truncate it.
+    """
+    if top_points not in ROTATIONS:
+        return
+    with Image.open(path) as img:
+        image_format = img.format
+        upright = rotate_upright(img.convert("RGB"), top_points)
+    tmp = path.with_name(f"{path.stem}.rotating{path.suffix}")
+    try:
+        upright.save(tmp, format=image_format, **({"quality": 95} if image_format == "JPEG" else {}))
+        tmp.replace(path)
+    finally:
+        tmp.unlink(missing_ok=True)

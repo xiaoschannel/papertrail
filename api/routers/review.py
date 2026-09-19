@@ -53,6 +53,22 @@ def _draft(d: DraftIn) -> rl.Draft:
                     cost=d.cost, currency=d.currency)
 
 
+def _decision(body: DecisionIn) -> ReviewDecision:
+    """The decision a request records (also what Undo expects to find on file)."""
+    draft = body.draft
+    receipt = draft.document_type == "receipt"
+    return ReviewDecision(
+        verdict=body.verdict,
+        document_type=draft.document_type,
+        name=draft.name,
+        date=draft.date,
+        time=draft.time,
+        cost=(draft.cost or 0.0) if receipt else 0.0,
+        currency=draft.currency if receipt else "",
+        comment=body.comment,
+    )
+
+
 def _confirmed_names(output_path: Path, extractions: dict, decisions: dict) -> tuple[list, set[str]]:
     history = build_smart_match_history(extractions, decisions, store.smart_match_cache(output_path))
     return history, {row.confirmed for row in history}
@@ -143,22 +159,11 @@ def hints_endpoint(body: HintsRequest, output_path: Path = Depends(get_output_pa
 def decide_endpoint(body: DecisionIn, output_path: Path = Depends(get_output_path)):
     """Record accept/mark/toss for a document. Accept is validated; mark and toss never are."""
     _extraction_or_404(output_path, body.key)
-    draft = _draft(body.draft)
     if body.verdict == "accepted":
-        error = rl.accept_error(draft)
+        error = rl.accept_error(_draft(body.draft))
         if error:
             raise HTTPException(status_code=422, detail=error)
-    receipt = draft.document_type == "receipt"
-    decision = ReviewDecision(
-        verdict=body.verdict,
-        document_type=draft.document_type,
-        name=draft.name,
-        date=draft.date,
-        time=draft.time,
-        cost=(draft.cost or 0.0) if receipt else 0.0,
-        currency=draft.currency if receipt else "",
-        comment=body.comment,
-    )
+    decision = _decision(body)
     with _no_archive_running(), store.decisions_lock:
         decisions = load_decisions(output_path)
         decisions[body.key] = decision
@@ -166,14 +171,22 @@ def decide_endpoint(body: DecisionIn, output_path: Path = Depends(get_output_pat
     return _summary(store.extractions(output_path), decisions)
 
 
-@router.delete("/decision", response_model=ReviewSummary)
-def undo_endpoint(key: str = Query(...), output_path: Path = Depends(get_output_path)):
-    """Remove one document's decision, returning it to the queue (Undo)."""
+@router.post("/undo", response_model=ReviewSummary)
+def undo_endpoint(body: DecisionIn, output_path: Path = Depends(get_output_path)):
+    """Take back a decision, returning the document to the queue (Undo).
+
+    The body is the decision as it was made, and it is removed only if it is still the one on file.
+    A key names a position in its batch, so after a regroup it can name another document; and the same
+    document may have been decided again since. Either way the undo is refused rather than guessed at.
+    """
     with _no_archive_running(), store.decisions_lock:
         decisions = load_decisions(output_path)
-        if key not in decisions:
-            raise HTTPException(status_code=404, detail=f"no decision for document {key}")
-        del decisions[key]
+        if body.key not in decisions:
+            raise HTTPException(status_code=404, detail=f"Can't undo {body.key}: it no longer has a decision.")
+        if decisions[body.key] != _decision(body):
+            raise HTTPException(status_code=409,
+                                detail=f"Can't undo {body.key}: it was decided again or regrouped since.")
+        del decisions[body.key]
         save_decisions(output_path, decisions)
     return _summary(store.extractions(output_path), decisions)
 

@@ -1,8 +1,8 @@
 import createClient from 'openapi-fetch'
 import type { paths } from './schema'
 import type {
-  AppConfig, ConfirmIndexIn, DecisionIn, Draft, MerchantTotals, ReceiptEditIn, StartOcrIn, StartParseIn,
-  TopPoints,
+  AppConfig, BrandIn, ConfirmIndexIn, DecisionIn, Draft, MerchantTotals, ReceiptEditIn, StartOcrIn,
+  StartParseIn, TopPoints, Verdict, WorkshopDecisionIn, WorkshopReprocessIn,
 } from './types.ts'
 
 /** Typed HTTP client. Paths, query parameters and response bodies all come from
@@ -11,13 +11,21 @@ const client = createClient<paths>()
 
 type Result<T> = { data?: T; error?: unknown; response: Response }
 
+/** A refused request: the server's reason, and its status for callers that act on the kind of refusal. */
+export class ApiError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message)
+  }
+}
+
 /** Resolve a request to its body, or throw so React Query surfaces the error.
  *  FastAPI errors carry a `detail` string (or a validation-error list). */
 async function unwrap<T>(request: Promise<Result<T>>): Promise<T> {
   const { data, error, response } = await request
   if (data !== undefined) return data
   const detail = typeof error === 'object' && error !== null && 'detail' in error ? error.detail : undefined
-  throw new Error(typeof detail === 'string' && detail ? detail : `${response.status} ${response.statusText}`)
+  throw new ApiError(typeof detail === 'string' && detail ? detail : `${response.status} ${response.statusText}`,
+    response.status)
 }
 
 export type GroupBy = 'brand' | 'name'
@@ -62,7 +70,8 @@ export const api = {
     document: (key: string) => unwrap(client.GET('/api/review/document', { params: { query: { key } } })),
     hints: (key: string, draft: Draft) => unwrap(client.POST('/api/review/hints', { body: { key, draft } })),
     decide: (decision: DecisionIn) => unwrap(client.POST('/api/review/decisions', { body: decision })),
-    undo: (key: string) => unwrap(client.DELETE('/api/review/decision', { params: { query: { key } } })),
+    /** Take back `decision`, exactly as it was made; refused (409/404) if it's no longer the one on file. */
+    undo: (decision: DecisionIn) => unwrap(client.POST('/api/review/undo', { body: decision })),
     clearAll: () => unwrap(client.DELETE('/api/review/decisions')),
   },
 
@@ -91,16 +100,77 @@ export const api = {
     startArchive: () => unwrap(client.POST('/api/ingest/archive')),
   },
 
+  brands: {
+    list: () => unwrap(client.GET('/api/brands')),
+    create: (body: BrandIn) => unwrap(client.POST('/api/brands', { body })),
+    update: (brandId: string, body: BrandIn) =>
+      unwrap(client.PATCH('/api/brands/{brand_id}', { params: { path: { brand_id: brandId } }, body })),
+    addPrefix: (brandId: string, prefix: string) =>
+      unwrap(client.POST('/api/brands/{brand_id}/prefixes', { params: { path: { brand_id: brandId } }, body: { prefix } })),
+    remove: (brandId: string) =>
+      unwrap(client.DELETE('/api/brands/{brand_id}', { params: { path: { brand_id: brandId } } })),
+    suggestions: (settings: SuggestionSettings) =>
+      unwrap(client.GET('/api/brands/suggestions', { params: { query: {
+        boundary_only: settings.boundaryOnly, max_length: settings.maxLength,
+        min_length: settings.minLength, min_count: settings.minCount,
+      } } })),
+  },
+
+  curate: {
+    dedupe: () => unwrap(client.GET('/api/curate/dedupe')),
+    tossDuplicate: (path: string) => unwrap(client.POST('/api/curate/dedupe/toss', { body: { path } })),
+    keepBoth: (documents: string[]) => unwrap(client.POST('/api/curate/dedupe/keep', { body: { documents } })),
+    restoreTossed: (paths: string[], verdict: Verdict) =>
+      unwrap(client.POST('/api/curate/dedupe/restore', { body: { paths, verdict } })),
+    considerAgain: (first: string, second: string) =>
+      unwrap(client.DELETE('/api/curate/dedupe/keep', { params: { query: { first, second } } })),
+    normalize: (engine?: string, threshold?: number) =>
+      unwrap(client.GET('/api/curate/normalize', { params: { query: {
+        engine: engine ?? null, threshold: threshold ?? null,
+      } } })),
+    previewMerge: (target: string, variants: string[]) =>
+      unwrap(client.POST('/api/curate/normalize/preview', { body: { target, variants } })),
+    merge: (target: string, variants: string[]) =>
+      unwrap(client.POST('/api/curate/normalize/merge', { body: { target, variants } })),
+    confirmDistinct: (names: string[]) =>
+      unwrap(client.POST('/api/curate/normalize/distinct', { body: { names } })),
+    forgetDistinct: (first: string, second: string) =>
+      unwrap(client.DELETE('/api/curate/normalize/distinct', { params: { query: { first, second } } })),
+  },
+
+  workshop: {
+    queue: (key?: string) => unwrap(client.GET('/api/curate/workshop', { params: { query: { key: key ?? null } } })),
+    reprocess: (body: WorkshopReprocessIn) => unwrap(client.POST('/api/curate/workshop/reprocess', { body })),
+    decide: (body: WorkshopDecisionIn) => unwrap(client.POST('/api/curate/workshop/decide', { body })),
+    hints: (key: string, draft: Draft) => unwrap(client.POST('/api/curate/workshop/hints', { body: { key, draft } })),
+    /** The week around the form's date and time, and the document's batch. */
+    context: (key: string, when: { date: string; time: string; document_type: string }) =>
+      unwrap(client.GET('/api/curate/workshop/context', { params: { query: { key, ...when } } })),
+  },
+
   jobs: {
-    current: () => unwrap(client.GET('/api/jobs/current')),
+    list: () => unwrap(client.GET('/api/jobs')),
     cancel: (jobId: string) => unwrap(client.POST('/api/jobs/{job_id}/cancel', { params: { path: { job_id: jobId } } })),
   },
+}
+
+export type SuggestionSettings = {
+  boundaryOnly: boolean
+  maxLength: number
+  minLength: number
+  minCount: number
 }
 
 export type OcrQuery = { provider?: string | undefined; batchId?: number | undefined; reprocess: boolean; limit: number }
 
 /** Server-Sent Events URL streaming a job's progress (each `data:` event is a JobOut). */
 export const jobEventsUrl = (jobId: string): string => `/api/jobs/${encodeURIComponent(jobId)}/events`
+
+/** A marked scan as OCR would see it, with the workshop's treatment applied by the server. */
+export const workshopScanUrl = (filename: string, enhancement: Record<string, string | number>): string =>
+  `/api/curate/workshop/scan?${new URLSearchParams({ filename, ...Object.fromEntries(
+    Object.entries(enhancement).map(([key, value]) => [key, String(value)]),
+  ) }).toString()}`
 
 /** A scan in the input folder at full size. */
 export const inputUrl = (filename: string): string => `/api/media/input/${encodeURIComponent(filename)}`

@@ -159,6 +159,10 @@ def apply_reorganize(output_path: Path) -> list[tuple[str, str, str]]:
         stale, stable_stems, filename_to_batch_serial,
     )
 
+    # Moving goes through document_files: sidecar first, and never onto a name already in use —
+    # including a scan whose sidecar is missing, which this function can't otherwise see.
+    from document_files import free_name, move_page, taken_stems
+
     moves: list[tuple[str, str, str]] = []
     for fn, new_dest in destinations.items():
         old_path_str = accepted[fn][1]
@@ -166,16 +170,15 @@ def apply_reorganize(output_path: Path) -> list[tuple[str, str, str]]:
             continue
 
         old_full = output_path / old_path_str if old_path_str else None
+        if old_full is None or not old_full.exists():
+            continue
+
         new_full = output_path / new_dest
-
-        if old_full and old_full.exists():
-            new_full.parent.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(old_full), str(new_full))
-            old_sidecar = old_full.with_suffix(".json")
-            if old_sidecar.exists():
-                shutil.move(str(old_sidecar), str(new_full.with_suffix(".json")))
-
-        moves.append((fn, old_path_str, new_dest))
+        if new_full.exists() or new_full.with_suffix(".json").exists():
+            new_full = free_name(new_full.parent, new_full.stem, new_full.suffix,
+                                 taken_stems(new_full.parent, {old_full}))
+        move_page(old_full, new_full, accepted[fn][0])
+        moves.append((fn, old_path_str, new_full.relative_to(output_path).as_posix()))
 
     return moves
 
@@ -198,7 +201,10 @@ def resolve_single_accepted_destination(
     output_path: Path,
     fn: str,
     decision: ReviewDecision,
+    exclude_stem: str | None = None,
 ) -> str:
+    """Where this file belongs. ``exclude_stem`` is the document's own current name, which must not
+    count as a collision — otherwise re-saving a document appends " (2)" every time."""
     folder, base, _seconds = build_accepted_name(decision, fn)
     suffix = Path(fn).suffix
 
@@ -207,6 +213,7 @@ def resolve_single_accepted_destination(
     if target_dir.exists():
         for sidecar in target_dir.glob("*.json"):
             taken.add(sidecar.stem)
+    taken.discard(exclude_stem)
 
     if base not in taken:
         return f"{folder}/{base}{suffix}"
@@ -223,7 +230,8 @@ def move_to_accepted_destination(
     current_data_file: Path,
     decision: ReviewDecision,
 ) -> Path:
-    dest_rel = resolve_single_accepted_destination(output_path, original_filename, decision)
+    dest_rel = resolve_single_accepted_destination(output_path, original_filename, decision,
+                                                   exclude_stem=current_data_file.stem)
     dest_full = output_path / dest_rel
     try:
         current_rel = current_data_file.relative_to(output_path).as_posix()

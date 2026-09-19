@@ -131,11 +131,37 @@ def test_decisions_are_read_fresh_so_other_writers_are_kept(pending, configured_
 
 
 def test_undo_returns_document_to_queue(pending, configured_ingest):
-    pending.post("/api/review/decisions", json={"key": "1:3", "verdict": "accepted", "draft": _draft()})
-    undone = pending.delete("/api/review/decision", params={"key": "1:3"})
+    made = {"key": "1:3", "verdict": "accepted", "draft": _draft(), "comment": "checked"}
+    pending.post("/api/review/decisions", json=made)
+    undone = pending.post("/api/review/undo", json=made)
     assert undone.status_code == 200 and undone.json()["pending"] == 4
     assert "1:3" not in load_decisions(configured_ingest)
-    assert pending.delete("/api/review/decision", params={"key": "1:3"}).status_code == 404
+    again = pending.post("/api/review/undo", json=made)
+    assert again.status_code == 404 and "no longer has a decision" in again.json()["detail"]
+
+
+def test_undo_takes_back_only_the_decision_it_made(pending, configured_ingest):
+    """An older undo must not remove what came after it: the same document decided again, or (after a
+    regroup renumbers the batch) another document now under the same key."""
+    first = {"key": "1:3", "verdict": "accepted", "draft": _draft()}
+    second = {"key": "1:7", "verdict": "tossed", "draft": _draft()}
+    for made in (first, second):
+        pending.post("/api/review/decisions", json=made)
+
+    pending.post("/api/review/decisions", json={**first, "verdict": "marked"})     # decided again
+    refused = pending.post("/api/review/undo", json=first)
+    assert refused.status_code == 409 and "decided again or regrouped" in refused.json()["detail"]
+    assert load_decisions(configured_ingest)["1:3"].verdict == "marked"            # the newer one stays
+
+    decisions = load_decisions(configured_ingest)                                  # a regroup: 1:3 is now
+    decisions["1:3"] = ReviewDecision(verdict="accepted", document_type="receipt",  # another receipt
+                                      name="Another shop", date="2025-01-11", time="09:00", cost=80.0, currency="CNY")
+    save_decisions(configured_ingest, decisions)
+    assert pending.post("/api/review/undo", json={**first, "verdict": "marked"}).status_code == 409
+    assert load_decisions(configured_ingest)["1:3"].name == "Another shop"
+
+    assert pending.post("/api/review/undo", json=second).status_code == 200        # order doesn't matter
+    assert "1:7" not in load_decisions(configured_ingest)
 
 
 def test_clear_all(pending, configured_ingest):

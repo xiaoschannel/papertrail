@@ -77,6 +77,13 @@ def form_defaults(extraction: DocumentExtraction) -> FormDefaults:
     return FormDefaults("corrupted", "Corrupted", "", "", 0.0, "", "")
 
 
+def defaults_from_decision(decision) -> FormDefaults:
+    """Form values for a document that has no extraction — all we know is what review recorded."""
+    return FormDefaults(decision.document_type if decision.document_type in ("receipt", "other", "corrupted")
+                        else "receipt", decision.name, decision.date, decision.time, decision.cost,
+                        decision.currency, "")
+
+
 def initial_name(default_name: str, candidates: list[SmartMatchCandidate]) -> str:
     """An exact smart-match hit replaces the extracted name with the previously confirmed spelling."""
     if candidates and abs(candidates[0].name_score - 1.0) < 1e-9:
@@ -101,6 +108,16 @@ class Draft:
     time: str
     cost: float | None
     currency: str
+
+
+def form_defaults_extraction(draft: "Draft") -> DocumentExtraction:
+    """An empty extraction of the draft's type, for a document that has none to start from."""
+    if draft.document_type == "receipt":
+        return ReceiptResult(document_type="receipt", language="", date=draft.date, time=draft.time,
+                             name=draft.name, currency=draft.currency, address="", cost=draft.cost or 0.0)
+    if draft.document_type == "other":
+        return OtherResult(document_type="other", language="", date=draft.date, time=draft.time, title=draft.name)
+    return CorruptedResult(document_type="corrupted")
 
 
 def draft_extraction(original: DocumentExtraction, draft: Draft) -> DocumentExtraction:
@@ -141,7 +158,8 @@ def hints_for(extraction: DocumentExtraction, now: datetime | None = None) -> li
 def accept_error(draft: Draft) -> str | None:
     """Why the draft can't be accepted, or None. (Mark and Toss are never blocked.)"""
     if draft.document_type == "receipt":
-        missing = [field for field, present in (("cost", draft.cost is not None), ("currency", bool(draft.currency)))
+        missing = [field for field, present in (("cost", draft.cost is not None),
+                                               ("currency", bool(draft.currency.strip())))
                    if not present]
         if missing:
             return f"Receipt requires: {', '.join(missing)}"

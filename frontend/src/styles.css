@@ -1,19 +1,43 @@
 /* ---------------------------------------------------------------------------
    Papertrail web UI
 
-   LAYOUT DISCIPLINE (the rules that keep any one component from eating the page):
-     1. Charts live in FIXED-height boxes  -> a chart never grows with its data.
-     2. Tables get max-height + internal scroll + sticky header.
+   WIDTH — the page is as wide as the window. There is NO page-level max-width;
+   every block declares its own bound, in units of what it holds:
+     - prose                     var(--measure)    ch: one readable line
+     - forms, fields, controls   var(--form-max)   rem: ~4 field columns, past
+                                                   which a form stops reading as
+                                                   one group
+     - tables                    var(--table-max)  rem: past which values drift
+                                                   away from their labels
+     - scans                     rem wide, vh tall (a receipt is about 1:3, so
+                                                   height is what binds)
+     - grids of cards, charts, the calendar: UNBOUNDED. They turn width into more
+       content, which is the point of a wide window.
+   A block with no bound is the bug: it stretches to the monitor and drags the
+   page with it. Where the slack goes depends on what is beside it:
+     - a bounded PAGE is CENTRED. With nothing else to put on the row, a centred
+       column is what reads best; pinning it left just moves the empty half.
+     - a bounded BLOCK inside a full-width page stays at the LEFT, lined up with
+       the full-width blocks above and below it.
+   Breakpoints measure the VIEWPORT, not the container: a container query on
+   .main would make it the containing block for the fixed toast and modal. The
+   sidebar is a fixed 216px, so content width = viewport - 268px.
+
+   HEIGHT — same idea, so that no block can push the page:
+     1. Charts live in fixed-height boxes -> a chart never grows with its data.
+     2. Tables get max-height + internal scroll + sticky header. Unless the table
+        IS the page's content (.card--uncapped): then it has nothing to push, and
+        the page's own scrollbar is the one to use.
      3. Receipt images fill their width and are capped by a MAX-height that is a
         proportion of that width (cropped at the bottom, top always visible, with a
         cut-off cue). Never a fixed height. Lives in components/DocumentCard.css.
-        Exception: the scan on Receipt Detail is shown IN FULL (bounded by width,
-        never cropped or scrolled) — seeing the whole receipt is that page's job.
+        Exception: the scan on Receipt Detail and in Review/Workshop is shown IN
+        FULL (bounded by width, never cropped) — reading it is those pages' job.
      4. Long text (OCR dumps) is capped and scrolls inside its own box.
      5. Calendar day cells are capped and scroll internally.
-     6. Main content has a max-width so lines stay readable on wide monitors.
-        Exception: the Calendar (.main-inner.wide) is a grid of cards, not text.
-   If you add a component, give it a bound. Unbounded height is the bug.
+
+   Bounds are written in rem/ch/vh so they scale with the text; px is for
+   cosmetics only (borders, padding, radii, shadows, font sizes).
 --------------------------------------------------------------------------- */
 
 :root {
@@ -33,6 +57,11 @@
   --neg: #dc3545;
   --radius: 10px;
   --sidebar-w: 216px;
+
+  /* the three bounds a block can claim (see the WIDTH note at the top) */
+  --measure: 68ch;       /* prose */
+  --form-max: 72rem;     /* a form / a stack of controls, or a page that is one */
+  --table-max: 60rem;    /* a table */
 }
 
 @media (prefers-color-scheme: dark) {
@@ -94,15 +123,14 @@ body {
 .navlink:hover { background: var(--panel-2); }
 .navlink.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 
+/* No inner wrapper and no cap: the scroll container IS the page (see WIDTH). */
 .main { overflow-y: auto; padding: 22px 26px 60px; }
-.main-inner { max-width: 1400px; margin: 0 auto; }
-/* the cap keeps text lines readable; a calendar grid isn't text, so it takes
-   the full width (on a 2560px screen the cap would leave ~900px unused) */
-.main-inner.wide { max-width: none; }
 
-h1 { font-size: 26px; margin: 0 0 4px; font-weight: 650; }
+h1 { font-size: 26px; margin: 0 0 4px; font-weight: 650; max-width: var(--measure); }
 h2 { font-size: 16px; margin: 0; font-weight: 620; }
-.page-sub { color: var(--muted); margin: 0 0 18px; font-size: 13px; }
+/* A subtitle is one sentence, not a paragraph: the prose measure would break most of them onto a second
+   line, so it gets a longer line and wraps only when it really runs on. */
+.page-sub { color: var(--muted); margin: 0 0 18px; font-size: 13px; max-width: 110ch; }
 
 /* --- cards ---------------------------------------------------------------- */
 .card {
@@ -114,23 +142,35 @@ h2 { font-size: 16px; margin: 0; font-weight: 620; }
 }
 .card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 .card-head .hint { font-size: 12px; color: var(--muted); }
+/* A card holding a table shrinks to the table's bound, so no empty panel sits
+   beside the data; a card holding a grid opts out of its page's bound. */
+.card.card--table { max-width: calc(var(--table-max) + 2rem); }
+.card.card--full { max-width: none; }
+
+/* A card that IS its page's content is not capped at all. Rule 2 caps a table so
+   it can't push the page it shares; here the page IS the table, there is nothing
+   to push, and one scrollbar — the page's own — beats a box scrolling inside a
+   screen that is otherwise empty. With the box uncapped the sticky header sticks
+   to the window instead, which is what you want on a list this long. */
+.card--uncapped > .table-wrap { max-height: none; overflow: visible; }
+.card--uncapped > .brand-list { max-height: none; }
 
 .grid { display: grid; gap: 16px; }
 .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.grid-sidebar { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); }
+.grid-sidebar { grid-template-columns: minmax(0, 1fr) minmax(0, var(--table-max)); }
 @media (max-width: 1080px) {
   .grid-2, .grid-sidebar { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* --- RULE 1: charts get a fixed height, never data-driven ---------------- */
-.chart-box { height: 260px; width: 100%; }
+.chart-box { height: 16.25rem; width: 100%; }
 .echart { width: 100%; height: 100%; }
 /* tall = ranking charts: must fit one legible label per bar (20 bars ~ 21px each) */
-.chart-box.tall { height: 460px; }
+.chart-box.tall { height: 28.75rem; }
 
 /* --- RULE 2: tables scroll inside themselves ----------------------------- */
-.table-wrap { max-height: 340px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
-.table-wrap.short { max-height: 240px; }
+.table-wrap { max-height: 21.25rem; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
+.table-wrap.short { max-height: 15rem; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
 thead th {
   position: sticky; top: 0; z-index: 1;
@@ -142,7 +182,7 @@ tbody tr:last-child td { border-bottom: 0; }
 tbody tr:hover { background: var(--panel-2); }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 /* long merchant names truncate rather than stretching the table */
-td.ellipsis { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+td.ellipsis { max-width: 16rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 td.ellipsis > a { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Fixed layout = columns can never be pushed out of view by a long CJK name.
@@ -151,34 +191,44 @@ table.fixed { table-layout: fixed; }
 table.fixed td, table.fixed th { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* --- metric tiles --------------------------------------------------------- */
-.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+/* A tile holds a number, not a paragraph: tiles keep their size and the row
+   simply stops, instead of six tiles spreading across a 2560px monitor. */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(9.5rem, 14rem)); gap: 12px; justify-content: start; }
 .tile { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; min-width: 0; }
 .tile .label { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
 .tile .value { font-size: 20px; font-weight: 650; margin-top: 3px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 
 /* --- RULE 3: receipt cards / capped images -> components/DocumentCard.css ---- */
 
-/* --- Receipt Detail: scan | details | spacer ------------------------------
-   Three equal columns; the third is reserved (empty for now). The scan column's
-   width is what sets the zoom, and the scan is never cropped. max-width keeps it
-   from ballooning when the columns collapse on narrow screens.              */
+/* --- Receipt Detail: scan | details ---------------------------------------
+   Two bounded columns, left-aligned. The scan column's width is what sets the
+   zoom, and the scan is never cropped; the details column holds a table and some
+   text. Neither gains from a wider monitor, so the slack stays at the right — it
+   used to be an empty third column doing that same job less honestly.      */
+.detail-page {
+  --scan-col: 27.5rem; --detail-col: 40rem;
+  /* one edge for the whole page: the head, the tiles and the edit form all stop
+     where the two columns below them stop */
+  max-width: calc(var(--scan-col) + var(--detail-col) + 1rem);
+  margin-inline: auto;
+}
 .detail-layout {
-  display: grid; gap: 16px; align-items: start;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  display: grid; gap: 16px; align-items: start; justify-content: start;
+  grid-template-columns: minmax(0, var(--scan-col)) minmax(0, var(--detail-col));
 }
 @media (max-width: 1080px) {
+  /* stacked: the details take the window, the scan keeps its own bound below */
   .detail-layout { grid-template-columns: minmax(0, 1fr); }
-  .detail-layout > .spacer { display: none; }
 }
 .scan-full { display: grid; gap: 10px; justify-items: center; }
 .scan-full img {
-  width: 100%; max-width: 440px; height: auto; display: block;
+  width: 100%; max-width: var(--scan-col); height: auto; display: block;
   border-radius: 6px; background: #fff;
 }
 
 /* --- RULE 4: long text scrolls in place ---------------------------------- */
 .textdump {
-  max-height: 300px; overflow: auto; background: var(--panel-2);
+  max-height: 18.75rem; overflow: auto; background: var(--panel-2);
   border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px;
   font: 12px/1.55 ui-monospace, "Cascadia Code", Consolas, monospace;
   white-space: pre-wrap; word-break: break-word; margin: 0;
@@ -189,7 +239,7 @@ table.fixed td, table.fixed th { overflow: hidden; text-overflow: ellipsis; whit
 .cal-head { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; padding-bottom: 2px; }
 .cal-cell {
   background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
-  padding: 2px; min-height: 92px; max-height: 780px; overflow-y: auto; min-width: 0;
+  padding: 2px; min-height: 5.75rem; max-height: 48.75rem; overflow-y: auto; min-width: 0;
   container-type: inline-size;   /* lets .cal-items decide columns by cell width */
 }
 .cal-cell.empty { background: transparent; border-style: dashed; opacity: .45; }
@@ -216,7 +266,7 @@ table.fixed td, table.fixed th { overflow: hidden; text-overflow: ellipsis; whit
 .field label { font-size: 11.5px; color: var(--muted); }
 select, input[type="date"], input[type="text"] {
   background: var(--panel); color: var(--text); border: 1px solid var(--border);
-  border-radius: 7px; padding: 6px 9px; font: inherit; font-size: 13px; max-width: 320px;
+  border-radius: 7px; padding: 6px 9px; font: inherit; font-size: 13px; max-width: 20rem;
 }
 button {
   background: var(--panel); color: var(--text); border: 1px solid var(--border);
@@ -230,7 +280,7 @@ button:disabled { opacity: .45; cursor: default; }
 .segmented button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 
 /* --- misc ----------------------------------------------------------------- */
-.state { color: var(--muted); padding: 28px 0; font-size: 13.5px; }
+.state { color: var(--muted); padding: 28px 0; font-size: 13.5px; max-width: var(--measure); }
 .state.error { color: var(--neg); }
 .rowlink { color: var(--accent); text-decoration: none; }
 .rowlink:hover { text-decoration: underline; }
@@ -260,6 +310,14 @@ button.danger { background: var(--neg); border-color: var(--neg); color: #fff; f
 button.danger-outline { border-color: var(--neg); color: var(--neg); }
 
 /* --- toast + modal ----------------------------------------------------------------------- */
+/* A compact list of named rows, each with its own action (kept pairs, recent decisions). */
+.name-list { display: grid; gap: 4px; }
+.name-row {
+  display: flex; align-items: center; gap: 10px; padding: 6px 8px;
+  border: 1px solid var(--border); border-radius: 7px; background: var(--panel);
+}
+.name-row__name { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 13px; }
+
 .toast {
   position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 20;
   display: flex; align-items: center; gap: 10px; padding: 8px 10px 8px 14px;
@@ -272,7 +330,7 @@ button.danger-outline { border-color: var(--neg); color: var(--neg); }
   background: rgb(0 0 0 / .45);
 }
 .modal {
-  width: min(440px, calc(100vw - 32px)); padding: 18px 20px; border-radius: 12px;
+  width: min(27.5rem, calc(100vw - 2rem)); padding: 18px 20px; border-radius: 12px;
   background: var(--panel); border: 1px solid var(--border); box-shadow: 0 20px 50px rgb(0 0 0 / .35);
 }
 .modal h2 { margin-bottom: 8px; }
@@ -282,7 +340,7 @@ button.danger-outline { border-color: var(--neg); color: var(--neg); }
 /* --- Receipt Detail: title row and the edit form ---------------------------------------------- */
 .detail-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .detail-head .page-sub code { font-size: 11.5px; overflow-wrap: anywhere; }
-.edit-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px 16px; }
+.edit-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(12.5rem, 1fr)); gap: 12px 16px; }
 .edit-grid .field input[type="text"] { width: 100%; box-sizing: border-box; max-width: none; }
 .edit-grid .currency { display: flex; gap: 6px; }
 .edit-grid .currency button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }

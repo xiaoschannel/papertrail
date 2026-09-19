@@ -37,7 +37,7 @@ export default function Receipt() {
     : r.name ? `/merchant?name=${encodeURIComponent(r.name)}` : null
 
   return (
-    <>
+    <div className="detail-page">
       <div className="detail-head">
         <div>
           <h1 style={{ overflowWrap: 'anywhere' }}>{r.name || r.filename}</h1>
@@ -65,8 +65,8 @@ export default function Receipt() {
             </div>
           )}
 
-        {/* scan | details | spacer (reserved for later). The scan column's width
-            sets the zoom; the scan itself is never cropped or scrolled. */}
+        {/* scan | details. The scan column's width sets the zoom; the scan itself
+            is never cropped or scrolled. */}
         <div className="detail-layout">
           <Card title="Scan" hint={pages.length > 1 ? `${pages.length} pages` : undefined}>
             <div className="scan-full">
@@ -125,11 +125,9 @@ export default function Receipt() {
                 : <Empty>No OCR text stored.</Empty>}
             </Card>
           </div>
-
-          <div className="spacer" aria-hidden="true" />
         </div>
       </div>
-    </>
+    </div>
   )
 }
 

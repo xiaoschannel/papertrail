@@ -1,6 +1,7 @@
 import json
 import os
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -34,14 +35,14 @@ def read_sidecar(file_path: Path) -> Sidecar | None:
 
 
 def write_sidecar(file_path: Path, entry: Sidecar):
-    _atomic_write_text(sidecar_path_for(file_path), entry.model_dump_json(indent=2, exclude_none=True))
+    atomic_write_text(sidecar_path_for(file_path), entry.model_dump_json(indent=2, exclude_none=True))
 
 
 def delete_sidecar(file_path: Path):
     sidecar_path_for(file_path).unlink(missing_ok=True)
 
 
-def _atomic_write_text(target: Path, text: str) -> None:
+def atomic_write_text(target: Path, text: str) -> None:
     """Write via a uniquely named sibling temp file swapped into place.
 
     A crash mid-write can't leave a truncated file, and concurrent writers (Streamlit pages, the web
@@ -77,7 +78,7 @@ def load_ocr_results(output_path: Path) -> dict[str, OcrResult]:
 
 def save_ocr_results(output_path: Path, results: dict[str, OcrResult]):
     d = {k: v.model_dump() for k, v in results.items()}
-    _atomic_write_text(output_path / "ocr.json", json.dumps(d, indent=2, ensure_ascii=False))
+    atomic_write_text(output_path / "ocr.json", json.dumps(d, indent=2, ensure_ascii=False))
 
 
 def load_extractions(output_path: Path) -> dict[str, DocumentExtraction]:
@@ -90,7 +91,23 @@ def load_extractions(output_path: Path) -> dict[str, DocumentExtraction]:
 
 def save_extractions(output_path: Path, extractions: dict[str, DocumentExtraction]):
     d = {k: v.model_dump() for k, v in extractions.items()}
-    _atomic_write_text(output_path / "extractions.json", json.dumps(d, indent=2, ensure_ascii=False))
+    atomic_write_text(output_path / "extractions.json", json.dumps(d, indent=2, ensure_ascii=False))
+
+
+#: Held for every read-modify-write of extractions.json. Parse writes it while other steps (regrouping a
+#: batch) change it too, so each writer re-reads the file under this lock rather than saving a copy it
+#: loaded earlier.
+extractions_lock = threading.Lock()
+
+
+def merge_extractions(output_path: Path, produced: dict[str, DocumentExtraction]) -> None:
+    """Write ``produced`` into extractions.json as it is on disk now, leaving every other key alone."""
+    if not produced:
+        return
+    with extractions_lock:
+        current = load_extractions(output_path)
+        current.update(produced)
+        save_extractions(output_path, current)
 
 
 def load_decisions(output_path: Path) -> dict[str, ReviewDecision]:
@@ -103,7 +120,7 @@ def load_decisions(output_path: Path) -> dict[str, ReviewDecision]:
 
 def save_decisions(output_path: Path, decisions: dict[str, ReviewDecision]):
     d = {k: v.model_dump() for k, v in decisions.items()}
-    _atomic_write_text(output_path / "decisions.json", json.dumps(d, indent=2, ensure_ascii=False))
+    atomic_write_text(output_path / "decisions.json", json.dumps(d, indent=2, ensure_ascii=False))
 
 
 def load_name_cache(output_path: Path) -> dict[str, dict]:
@@ -127,7 +144,7 @@ def load_smart_match_cache(output_path: Path) -> dict[str, dict]:
 
 
 def save_smart_match_cache(output_path: Path, cache: dict[str, dict]):
-    _atomic_write_text(output_path / "smart_match_cache.json", json.dumps(cache, indent=2, ensure_ascii=False))
+    atomic_write_text(output_path / "smart_match_cache.json", json.dumps(cache, indent=2, ensure_ascii=False))
 
 
 def build_smart_match_history(
@@ -185,9 +202,22 @@ def load_name_normalizations(output_path: Path) -> dict[str, str]:
 
 
 def save_name_normalizations(output_path: Path, normalizations: dict[str, str]):
-    (output_path / "name_normalizations.json").write_text(
-        json.dumps(normalizations, indent=2, ensure_ascii=False), encoding="utf-8"
-    )
+    atomic_write_text(output_path / "name_normalizations.json",
+                       json.dumps(normalizations, indent=2, ensure_ascii=False))
+
+
+def load_kept_duplicates(output_path: Path) -> set[frozenset[str]]:
+    """Document pairs you have said are NOT duplicates, so Dedupe stops offering them."""
+    f = output_path / "not_duplicates.json"
+    if not f.exists():
+        return set()
+    return {frozenset(pair) for pair in json.loads(f.read_text(encoding="utf-8"))}
+
+
+def save_kept_duplicates(output_path: Path, pairs: set[frozenset[str]]):
+    serializable = sorted(sorted(pair) for pair in pairs)
+    atomic_write_text(output_path / "not_duplicates.json",
+                      json.dumps(serializable, indent=2, ensure_ascii=False))
 
 
 def load_distinct_pairs(output_path: Path) -> set[frozenset[str]]:
@@ -200,9 +230,8 @@ def load_distinct_pairs(output_path: Path) -> set[frozenset[str]]:
 def save_distinct_pairs(output_path: Path, pairs: set[frozenset[str]]):
     serializable = [sorted(pair) for pair in pairs]
     serializable.sort()
-    (output_path / "distinct_pairs.json").write_text(
-        json.dumps(serializable, indent=2, ensure_ascii=False), encoding="utf-8"
-    )
+    atomic_write_text(output_path / "distinct_pairs.json",
+                       json.dumps(serializable, indent=2, ensure_ascii=False))
 
 
 def load_document_groups(output_path: Path) -> DocumentGroups:
@@ -213,12 +242,12 @@ def load_document_groups(output_path: Path) -> DocumentGroups:
 
 
 def save_document_groups(output_path: Path, doc_groups: DocumentGroups):
-    _atomic_write_text(output_path / "documents.json", doc_groups.model_dump_json(indent=2))
+    atomic_write_text(output_path / "documents.json", doc_groups.model_dump_json(indent=2))
 
 
 def save_scan_index(output_path: Path, index: ScanIndex):
     output_path.mkdir(parents=True, exist_ok=True)
-    _atomic_write_text(output_path / "batches.json", index.model_dump_json(indent=2))
+    atomic_write_text(output_path / "batches.json", index.model_dump_json(indent=2))
 
 
 def build_document_index(
@@ -244,17 +273,18 @@ def replace_groups_for_batch(output_path: Path, batch_id: int, new_groups: list[
 
 
 def clear_extractions_decisions_for_batch(output_path: Path, batch_id: int):
-    extractions = load_extractions(output_path)
-    decisions = load_decisions(output_path)
-    to_remove = {k for k in extractions if _batch_id_from_key(k) == batch_id}
-    to_remove |= {k for k in decisions if _batch_id_from_key(k) == batch_id}
-    for k in to_remove:
-        extractions.pop(k, None)
-        if k in decisions and decisions[k].verdict != "tossed":  # tosses survive regrouping
-            decisions.pop(k)
-    if to_remove:
-        save_extractions(output_path, extractions)
-        save_decisions(output_path, decisions)
+    with extractions_lock:   # a Parse on another batch may be merging into this file right now
+        extractions = load_extractions(output_path)
+        decisions = load_decisions(output_path)
+        to_remove = {k for k in extractions if _batch_id_from_key(k) == batch_id}
+        to_remove |= {k for k in decisions if _batch_id_from_key(k) == batch_id}
+        for k in to_remove:
+            extractions.pop(k, None)
+            if k in decisions and decisions[k].verdict != "tossed":  # tosses survive regrouping
+                decisions.pop(k)
+        if to_remove:
+            save_extractions(output_path, extractions)
+            save_decisions(output_path, decisions)
 
 
 def _iter_year_month_dirs(output_path: Path):

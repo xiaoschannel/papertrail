@@ -19,7 +19,10 @@ def parse_verdict_datetime(date_str: str, time_str: str) -> datetime | None:
         return None
     year, month, day = int(parts[0]), int(parts[1]), int(parts[2])
     hour, minute = int(tparts[0]), int(tparts[1])
-    return datetime(year, month, day, hour, minute)
+    try:
+        return datetime(year, month, day, hour, minute)
+    except ValueError:      # shaped like a date but not one (2025-02-31, 25:00): no usable date
+        return None
 
 
 def _build_document_timeline(
@@ -34,6 +37,21 @@ def _build_document_timeline(
             documents.append((fn, dt))
     documents.sort(key=lambda x: x[1])
     return documents
+
+
+def drop_confirmed_different(members: list[str], pairs: set[frozenset[str]]) -> list[str]:
+    """Drop members already confirmed different from every other member of the cluster.
+
+    Shared by Dedupe (document pairs) and Normalize (name pairs): in both, a member that has been
+    ruled apart from everyone else left in the cluster has nothing to answer for.
+    """
+    kept = []
+    for member in members:
+        others = [other for other in members if other != member]
+        if others and all(frozenset({member, other}) in pairs for other in others):
+            continue
+        kept.append(member)
+    return kept
 
 
 def find_dedupe_clusters(
