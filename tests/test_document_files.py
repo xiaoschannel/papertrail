@@ -149,9 +149,12 @@ def test_a_scan_really_open_in_another_program_is_refused(archive_dir):
 
 
 def test_a_rename_that_only_changes_letter_case_moves_image_and_sidecar_together(archive_dir):
-    pages, row = _document(archive_dir)
+    # A single-page document whose name has letter case to change (not every script has one), whatever
+    # order the file system lists the archive in.
+    row = next(r for _, r in build_viz_records(archive_dir).iterrows()
+               if len(r["paths"]) == 1 and r["name"].upper() != r["name"].lower())
+    pages = [archive_dir / p for p in row["paths"]]
     renamed = row["name"].upper() if row["name"].upper() != row["name"] else row["name"].lower()
-    assert renamed != row["name"]
 
     decision = _decision(row, name=renamed)
     [placed] = df.place_document(archive_dir, df.load_pages(pages), decision,
