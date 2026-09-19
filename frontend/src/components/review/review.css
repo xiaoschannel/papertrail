@@ -1,0 +1,86 @@
+/* Review page: OCR text, the scan and the decision form, side by side.
+
+   The three columns are what set this page's width, so they are named here and
+   the page takes their sum — the head, the progress bar and the queue nav then
+   share one right edge with the layout instead of running to the monitor's. */
+.review-page {
+  --ocr-col: 36rem; --scan-col: 40rem; --decision-col: 34rem;
+  max-width: calc(var(--ocr-col) + var(--scan-col) + var(--decision-col) + 28px);
+  margin-inline: auto;
+}
+
+.review-page .review-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.review-page .shortcut-legend { white-space: nowrap; }
+
+.review-page .review-progress {
+  display: flex; height: 26px; border-radius: 6px; overflow: hidden; margin-bottom: 12px;
+  background: var(--panel-2);
+}
+.review-page .review-progress > div {
+  display: flex; align-items: center; justify-content: center; min-width: fit-content;
+  padding: 0 8px; color: #fff; font-size: 12px; font-weight: 600; white-space: nowrap;
+}
+
+.review-page .review-nav { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; color: var(--muted); font-size: 13px; }
+.review-page .review-nav strong { color: var(--text); }
+
+/* Three bounded columns: OCR text, the scan, the form. Each stops where reading
+   it stops getting easier (see the WIDTH note in styles.css), so on a narrow
+   window they share the space and on a wide one the slack stays at the right.
+   Grid distributes free space evenly and freezes each track at its own cap. */
+.review-page .review-layout {
+  display: grid; gap: 14px; align-items: start; justify-content: start;
+  grid-template-columns: minmax(0, var(--ocr-col)) minmax(0, var(--scan-col)) minmax(0, var(--decision-col));
+}
+@media (max-width: 1400px) {
+  .review-page .review-layout { grid-template-columns: minmax(0, var(--scan-col)) minmax(0, var(--decision-col)); }
+  .review-page .review-layout > .review-col:first-child { grid-column: 1 / -1; order: 3; }
+}
+@media (max-width: 900px) { .review-page .review-layout { grid-template-columns: minmax(0, 1fr); } }
+
+/* Like Receipt Detail: the OCR text and the scan are shown whole and the PAGE scrolls, instead of
+   each column scrolling inside itself. Only the decision column sticks, so the form and its
+   shortcuts stay put while you read down a long receipt. */
+.review-page .review-col { min-width: 0; }
+.review-page .review-col.decision {
+  position: sticky; top: 0; max-height: calc(100vh - 1.5rem); overflow-y: auto;
+}
+.review-page .textdump.review-ocr, .review-page .markdown.review-ocr { max-height: none; overflow: visible; }
+
+/* --- form ------------------------------------------------------------------- */
+.review-page .review-form { display: grid; gap: 10px; }
+.review-page .review-form .field input, .review-page .review-form .field select, .review-page .review-form textarea, .review-page .custom-instructions textarea {
+  width: 100%; max-width: none;
+}
+.review-page textarea {
+  background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 7px;
+  padding: 6px 9px; font: inherit; font-size: 13px; resize: vertical;
+}
+.review-page .review-form input[aria-invalid="true"] { border-color: var(--neg); }
+.review-page .form-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.review-page .field.linked input {
+  border-color: var(--link-color);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--link-color) 30%, transparent);
+}
+.review-page .currency { display: flex; gap: 6px; }
+.review-page .currency button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+
+.review-page .quick-apply { display: grid; gap: 6px; }
+.review-page .quick-apply button { text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.review-page .quick-apply kbd { margin: 0 6px 0 0; }
+
+.review-page .name-status { font-size: 12px; font-weight: 600; }
+.review-page .name-status.ok { color: #28a745; }
+.review-page .name-status.warn { color: #b8860b; }
+.review-page .name-status.bad { color: var(--neg); }
+
+.review-page .hints { list-style: none; margin: 0; padding: 8px 10px; border-radius: 8px; background: var(--panel-2); display: grid; gap: 3px; }
+.review-page .hints li { font-size: 12.5px; font-weight: 600; }
+.review-page .hints li.plain { color: var(--text); }
+
+.review-page .review-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 14px 0; }
+
+.review-page .custom-instructions { margin-top: 4px; }
+
+.recent-decisions { display: grid; gap: 6px; margin: 0 0 14px; }
+.verdict-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; }

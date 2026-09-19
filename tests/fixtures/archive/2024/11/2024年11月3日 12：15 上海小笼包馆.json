@@ -1,0 +1,41 @@
+{
+  "original_filename": "11032024121500_104.png",
+  "batch_id": 5,
+  "serial": 104,
+  "review": {
+    "verdict": "accepted",
+    "document_type": "receipt",
+    "name": "上海小笼包馆",
+    "date": "2024-11-03",
+    "time": "12:15:00",
+    "cost": 520.0,
+    "currency": "CNY",
+    "comment": ""
+  },
+  "ocr": {
+    "markdown": "上海小笼包馆\n合计 ¥520",
+    "succeeded": true
+  },
+  "extraction": {
+    "document_type": "receipt",
+    "language": "zh",
+    "date": "2024-11-03",
+    "time": "12:15:00",
+    "name": "上海小笼包馆",
+    "phone": "",
+    "currency": "CNY",
+    "address": "",
+    "items": [
+      {
+        "name": "小笼包",
+        "total_price": 500.0
+      },
+      {
+        "name": "服务费",
+        "total_price": 20.0
+      }
+    ],
+    "cost": 520.0,
+    "field_sources": {}
+  }
+}

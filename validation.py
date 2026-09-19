@@ -1,9 +1,6 @@
 from datetime import datetime
-from typing import Protocol
 
 from pydantic import BaseModel
-
-from models import DocumentExtraction
 
 
 # --- Hints (non-blocking cues for the user) ---
@@ -12,10 +9,6 @@ from models import DocumentExtraction
 class Hint(BaseModel):
     message: str
     color: str
-
-
-class HintRule(Protocol):
-    def __call__(self, extraction: DocumentExtraction) -> list[Hint]: ...
 
 
 # --- Submission blockers (must pass before save) ---

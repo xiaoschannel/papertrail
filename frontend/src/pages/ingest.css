@@ -1,0 +1,70 @@
+/* Ingest pages: File Index, OCR, Parse, Archive. */
+
+/* These pages are a stack of forms: models to pick, counts to read, a button to
+   press. The page takes the form bound and centres.
+   File Index is the exception: its grouping grid turns width into more scans, so
+   that page takes the window and its other cards keep the form bound at the left
+   (a bounded block among full-width ones — see the WIDTH note in styles.css). */
+.ingest-page { max-width: var(--form-max); margin-inline: auto; }
+.ingest-page--wide { max-width: none; }
+.ingest-page--wide .card { max-width: var(--form-max); }
+.ingest-page--wide .card.card--full { max-width: none; }
+.ingest-page .card + .card, .ingest-page .card + .job-panel { margin-top: 16px; }
+.ingest-page .tiles { margin: 4px 0 12px; }
+.ingest-note { color: var(--muted); font-size: 12.5px; margin: 8px 0; max-width: var(--measure); }
+.ingest-warning { color: #b8860b; font-weight: 600; }
+.ingest-blocker { color: var(--text); font-weight: 600; }
+.ingest-subhead { font-size: 14px; margin: 16px 0 8px; font-weight: 620; }
+.ingest-details { margin: 6px 0; font-size: 13px; }
+.ingest-details summary { cursor: pointer; }
+.file-list { margin: 6px 0 0; padding-left: 18px; max-height: 15rem; overflow: auto; font-size: 12.5px; }
+.file-list code { color: var(--muted); }
+.start-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 14px; }
+.start-bar .ingest-note { margin: 0; }
+.limit-input {
+  width: 7rem; background: var(--panel); color: var(--text); border: 1px solid var(--border);
+  border-radius: 7px; padding: 6px 9px; font: inherit; font-size: 13px;
+}
+.parse-instructions { margin-bottom: 12px; }
+.parse-instructions textarea {
+  width: 100%; box-sizing: border-box; resize: vertical; background: var(--panel); color: var(--text);
+  border: 1px solid var(--border); border-radius: 7px; padding: 7px 9px; font: inherit; font-size: 13px;
+}
+
+/* --- grouping grid: whole rows per page; each cell is a page and its link to the next page --- */
+.page-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)); gap: 14px 0; margin: 12px 0; }
+.page-cell { display: flex; min-width: 0; }
+.page-tile {
+  flex: 1; min-width: 0; margin: 0; padding: 6px; border: 2px solid var(--border); border-radius: 8px; background: var(--panel);
+}
+.page-tile.grouped { border-color: hsl(var(--group-hue) 70% 55%); background: hsl(var(--group-hue) 70% 55% / .07); }
+.page-tile.tossed { opacity: .5; border-style: dashed; }
+.page-tile__tools { display: flex; justify-content: space-between; gap: 4px; margin-bottom: 6px; }
+.page-tile__tools button { padding: 2px 8px; font-size: 12px; }
+.page-tile__rotate { display: inline-flex; gap: 3px; }
+.page-tile__scan { height: 16.25rem; display: grid; place-items: center; background: var(--panel-2); border-radius: 4px; overflow: hidden; }
+.page-tile__scan img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
+.page-tile figcaption { font-size: 11.5px; color: var(--muted); margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.page-tile figcaption strong { color: var(--text); }
+
+.page-link { width: 34px; flex: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; }
+.page-link button { padding: 3px 5px; font-size: 13px; line-height: 1; filter: grayscale(1); opacity: .6; }
+.page-link button:disabled { opacity: .2; }
+.page-link.on .page-link__toggle { filter: none; opacity: 1; background: var(--accent-soft); border-color: var(--accent); }
+.page-link__swap { filter: none !important; opacity: 1 !important; }
+
+/* clicking a tile's scan opens it full size */
+.page-tile__zoom { all: unset; cursor: zoom-in; display: block; width: 100%; height: 100%; }
+.page-tile__zoom img { max-width: 100%; max-height: 100%; object-fit: contain; margin: 0 auto; }
+.scan-viewer figure { margin: 0; max-width: min(69rem, 92vw); display: grid; gap: 8px; }
+.scan-viewer img { max-width: 100%; max-height: 82vh; object-fit: contain; border-radius: 6px; background: #fff; }
+.scan-viewer figcaption {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  color: var(--text); background: var(--panel); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 12px; font-size: 12.5px; overflow-wrap: anywhere;
+}
+.pager .page-jump {
+  width: 56px; margin: 0 6px; background: var(--panel); color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 2px 6px; font: inherit; font-size: 12.5px; text-align: center;
+}
+.ingest-note.ok { color: #28a745; font-weight: 600; }

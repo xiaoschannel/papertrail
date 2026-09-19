@@ -1,0 +1,27 @@
+{
+  "original_filename": "01012025142000_108.png",
+  "batch_id": 5,
+  "serial": 108,
+  "review": {
+    "verdict": "accepted",
+    "document_type": "other",
+    "name": "ATM利用明細",
+    "date": "",
+    "time": "",
+    "cost": 0.0,
+    "currency": "",
+    "comment": ""
+  },
+  "ocr": {
+    "markdown": "ATM利用明細\nお取扱い内容 お預入れ",
+    "succeeded": true
+  },
+  "extraction": {
+    "document_type": "other",
+    "language": "ja",
+    "date": "",
+    "time": "",
+    "title": "ATM利用明細",
+    "field_sources": {}
+  }
+}

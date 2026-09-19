@@ -6,7 +6,7 @@ from models import CorruptedResult, DocumentExtraction
 from validation import Hint
 
 
-def date_check(extraction: DocumentExtraction) -> list[Hint]:
+def date_check(extraction: DocumentExtraction, now: datetime | None = None) -> list[Hint]:
     if isinstance(extraction, CorruptedResult):
         return []
     if not extraction.date:
@@ -19,7 +19,7 @@ def date_check(extraction: DocumentExtraction) -> list[Hint]:
         date_str = f"{extraction.date} {extraction.time}" if extraction.time else extraction.date
         return [Hint(message=f"Failed to parse: {date_str}", color="#dc3545")]
 
-    now = datetime.now()
+    now = now or datetime.now()
     humanized = humanize.naturaltime(doc_dt)
     delta_years = (now - doc_dt).total_seconds() / (365.25 * 24 * 3600)
     if doc_dt > now or delta_years >= 10:

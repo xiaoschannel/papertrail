@@ -1,4 +1,3 @@
-streamlit
 ollama
 pydantic
 Pillow
@@ -7,7 +6,11 @@ numpy
 pandas
 humanize
 openai
+python-dotenv
 rapidfuzz
 scikit-learn
-plotly
 pytest
+fastapi
+python-multipart
+uvicorn
+httpx

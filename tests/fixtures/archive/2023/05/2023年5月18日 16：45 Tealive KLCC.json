@@ -1,0 +1,37 @@
+{
+  "original_filename": "05182023164500_105.png",
+  "batch_id": 5,
+  "serial": 105,
+  "review": {
+    "verdict": "accepted",
+    "document_type": "receipt",
+    "name": "Tealive KLCC",
+    "date": "2023-05-18",
+    "time": "16:45:00",
+    "cost": 15.9,
+    "currency": "MYR",
+    "comment": ""
+  },
+  "ocr": {
+    "markdown": "Tealive KLCC\nBrown Sugar Boba RM15.90",
+    "succeeded": true
+  },
+  "extraction": {
+    "document_type": "receipt",
+    "language": "en",
+    "date": "2023-05-18",
+    "time": "16:45:00",
+    "name": "Tealive KLCC",
+    "phone": "",
+    "currency": "MYR",
+    "address": "",
+    "items": [
+      {
+        "name": "Brown Sugar Boba",
+        "total_price": 15.9
+      }
+    ],
+    "cost": 15.9,
+    "field_sources": {}
+  }
+}

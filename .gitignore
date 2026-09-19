@@ -2,3 +2,17 @@ __pycache__/
 .env
 config.json
 ROADMAP.md
+.claude/
+node_modules/
+frontend/dist/
+# generated from the backend before every dev/build/typecheck (frontend/scripts/export-openapi.mjs)
+frontend/openapi.json
+frontend/src/api/schema.d.ts
+
+# throwaway sandbox archive (tools/sandbox_server.py)
+.sandbox/
+
+# local tooling, whatever created it
+.venv/
+.pytest_cache/
+.env.*

@@ -1,35 +1,23 @@
-import ast
-import re
+import gc
 import tempfile
+import threading
 from pathlib import Path
 
-import streamlit as st
 
-from models import DetectedBox
-
-_GROUNDING_RE = re.compile(
-    r"<\|ref\|>(.*?)<\|/ref\|><\|det\|>(.*?)<\|/det\|>", re.DOTALL
-)
+# One model per process, loaded on first use and shared by every OCR job until it is unloaded.
+_model_lock = threading.Lock()
+_model = None
 
 
-def parse_grounding_output(raw: str) -> list[DetectedBox]:
-    boxes: list[DetectedBox] = []
-    for match in _GROUNDING_RE.finditer(raw):
-        ref_text = match.group(1).strip()
-        det_raw = match.group(2).strip()
-
-        try:
-            parsed = ast.literal_eval(det_raw)
-            coords = [[int(x) for x in coord] for coord in parsed]
-            boxes.append(DetectedBox(ref_type=str(len(boxes)), coords=coords, text=ref_text or None))
-        except (SyntaxError, ValueError):
-            print(f"Failed to parse the coordinates output: {det_raw}")
-            continue
-    return boxes
-
-
-@st.cache_resource
 def _load_model():
+    global _model
+    with _model_lock:
+        if _model is None:
+            _model = _build_model()
+        return _model
+
+
+def _build_model():
     import torch
     from transformers import AutoModel, AutoTokenizer
 
@@ -50,6 +38,9 @@ PROMPT_PLAIN = "<image>\nFree OCR. "
 
 
 class DeepseekOcrProvider:
+    #: Its structured prompt returns grounding boxes worth a second pass per image.
+    grounding = True
+
     def run(self, path: Path, structured: bool = True) -> str:
         model, tokenizer = _load_model()
         return model.infer(
@@ -65,6 +56,9 @@ class DeepseekOcrProvider:
         )
 
     def teardown(self) -> None:
+        global _model
         import torch
-        _load_model.clear()
+        with _model_lock:
+            _model = None
+        gc.collect()
         torch.cuda.empty_cache()

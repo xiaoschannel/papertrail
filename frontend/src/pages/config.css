@@ -1,0 +1,23 @@
+/* Config page: a column of cards, each a grid of labelled fields, with a sticky save bar. */
+
+/* Nothing here is data; it is all fields, so the PAGE takes the form bound and
+   centres, and the cards simply fill it. */
+.config-page { max-width: var(--form-max); margin-inline: auto; }
+.config-page .card + .card { margin-top: 16px; }
+.config-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(16.25rem, 1fr)); gap: 14px 20px; }
+.config-page .field select,
+.config-page .field input[type="text"] { max-width: none; width: 100%; box-sizing: border-box; }
+.config-page .field input:disabled { opacity: .6; }
+.config-page .card > .field { margin-top: 14px; }
+.config-page textarea {
+  width: 100%; box-sizing: border-box; resize: vertical; background: var(--panel); color: var(--text);
+  border: 1px solid var(--border); border-radius: 7px; padding: 7px 9px; font: inherit; font-size: 13px;
+}
+.config-hint { font-size: 11.5px; color: var(--muted); }
+.config-check { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 13px; }
+.config-path input { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 12.5px; }
+
+.config-save {
+  position: sticky; bottom: 0; display: flex; align-items: center; gap: 10px; margin-top: 16px;
+  padding: 12px 0; background: linear-gradient(to top, var(--bg) 72%, transparent);
+}

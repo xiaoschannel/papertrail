@@ -18,6 +18,15 @@ class OcrResult(BaseModel):
     succeeded: bool = True
 
 
+def ocr_page_section(page_num: int, result: OcrResult) -> str:
+    """One page as the extractor reads it: the OCR text, then its grounding boxes tagged ``[P<page>-BOX-<i>]``."""
+    section = f"--- Page {page_num} ---\n{result.markdown}"
+    if result.boxes:
+        box_lines = [f"[P{page_num}-BOX-{idx}] {box.text}" for idx, box in enumerate(result.boxes)]
+        section += f"\n--- Page {page_num} Grounding Boxes ---\n" + "\n".join(box_lines)
+    return section
+
+
 class ReceiptItem(BaseModel):
     name: str
     quantity: float | None = None
@@ -359,13 +368,8 @@ class DocumentIndex:
             r = ocr_results.get(k)
             if not r or not r.succeeded:
                 continue
-            page_num = i + 1
-            section = f"--- Page {page_num} ---\n{r.markdown}"
-            if r.boxes:
-                has_boxes = True
-                box_lines = [f"[P{page_num}-BOX-{idx}] {box.text}" for idx, box in enumerate(r.boxes)]
-                section += f"\n--- Page {page_num} Grounding Boxes ---\n" + "\n".join(box_lines)
-            parts.append(section)
+            has_boxes = has_boxes or bool(r.boxes)
+            parts.append(ocr_page_section(i + 1, r))
         return "\n\n".join(parts), has_boxes
 
     def expand_decisions(self, decisions: dict[DocumentKey, T]) -> dict[str, T]:

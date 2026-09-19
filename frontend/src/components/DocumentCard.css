@@ -1,0 +1,85 @@
+/* Document card, capped image and gallery — co-located with DocumentCard.tsx.
+   This is layout rule 3 from the styles.css header. */
+
+/* --- CappedImage ------------------------------------------------------------
+   Full width at natural aspect ratio, capped at capRatio x width. The cap is an
+   explicit aspect-ratio set from JS (see CappedImage); object-fit: cover + top
+   anchoring then crops the overflow from the bottom. No CSS size container: that
+   would give the wrapper a 0 intrinsic width and collapse the image in any
+   content-sized layout.
+
+   The cut-off cue is a short fade at the bottom edge — deliberately not a dashed
+   line or torn edge, because receipts already contain both.                   */
+.capped-image img {
+  display: block;
+  width: 100%;
+  height: auto;
+  object-fit: cover;
+  object-position: top;
+  border-radius: 5px;
+  background: var(--border);   /* placeholder while loading */
+}
+.capped-image.is-cropped img {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent);
+          mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent);
+}
+
+/* --- DocumentCard ------------------------------------------------------------ */
+.doc-card {
+  display: block;
+  min-width: 0;
+  color: var(--text);
+  text-decoration: none;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+  transition: background-color .12s ease, border-color .12s ease;
+}
+/* Highlight only cards you can act on. :where() adds no specificity, so these
+   stay at (0,2,0) and the compact overrides below still win by source order.
+   (A <button> root would also need the global `button` rules reset.) */
+.doc-card:where(a, button):hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+.doc-card:where(a, button):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.doc-card__name {
+  margin-top: 4px;
+  font-size: 12.5px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.doc-card__caption {
+  margin-top: 6px;
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+/* compact: frameless, for tight spots (calendar cells). The border stays but is
+   transparent, so the hover outline appears without shifting layout. The focus
+   ring is drawn inside because tight scroll containers clip outside it. */
+.doc-card--compact {
+  background: transparent;
+  border-color: transparent;
+  padding: 4px;
+  border-radius: 6px;
+}
+.doc-card--compact:focus-visible { outline-offset: -2px; }
+.doc-card--compact .capped-image img { border-radius: 4px; }
+.doc-card--compact .doc-card__name { margin-top: 3px; font-size: 11.5px; }
+.doc-card--compact .doc-card__caption { margin-top: 1px; font-size: 11px; }
+
+/* --- ReceiptGallery ---------------------------------------------------------- */
+.receipt-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(8.25rem, 1fr));
+  gap: 12px;
+  align-items: start;   /* don't stretch short cards to the tallest one in the row */
+}

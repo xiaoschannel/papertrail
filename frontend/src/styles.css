@@ -1,0 +1,362 @@
+/* ---------------------------------------------------------------------------
+   Papertrail web UI
+
+   WIDTH — the page is as wide as the window. There is NO page-level max-width;
+   every block declares its own bound, in units of what it holds:
+     - prose                     var(--measure)    ch: one readable line
+     - forms, fields, controls   var(--form-max)   rem: ~4 field columns, past
+                                                   which a form stops reading as
+                                                   one group
+     - tables                    var(--table-max)  rem: past which values drift
+                                                   away from their labels
+     - scans                     rem wide, vh tall (a receipt is about 1:3, so
+                                                   height is what binds)
+     - grids of cards, charts, the calendar: UNBOUNDED. They turn width into more
+       content, which is the point of a wide window.
+   A block with no bound is the bug: it stretches to the monitor and drags the
+   page with it. Where the slack goes depends on what is beside it:
+     - a bounded PAGE is CENTRED. With nothing else to put on the row, a centred
+       column is what reads best; pinning it left just moves the empty half.
+     - a bounded BLOCK inside a full-width page stays at the LEFT, lined up with
+       the full-width blocks above and below it.
+   Breakpoints measure the VIEWPORT, not the container: a container query on
+   .main would make it the containing block for the fixed toast and modal. The
+   sidebar is a fixed 216px, so content width = viewport - 268px.
+
+   HEIGHT — same idea, so that no block can push the page:
+     1. Charts live in fixed-height boxes -> a chart never grows with its data.
+     2. Tables get max-height + internal scroll + sticky header. Unless the table
+        IS the page's content (.card--uncapped): then it has nothing to push, and
+        the page's own scrollbar is the one to use.
+     3. Receipt images fill their width and are capped by a MAX-height that is a
+        proportion of that width (cropped at the bottom, top always visible, with a
+        cut-off cue). Never a fixed height. Lives in components/DocumentCard.css.
+        Exception: the scan on Receipt Detail and in Review/Workshop is shown IN
+        FULL (bounded by width, never cropped) — reading it is those pages' job.
+     4. Long text (OCR dumps) is capped and scrolls inside its own box.
+     5. Calendar day cells are capped and scroll internally.
+
+   Bounds are written in rem/ch/vh so they scale with the text; px is for
+   cosmetics only (borders, padding, radii, shadows, font sizes).
+--------------------------------------------------------------------------- */
+
+:root {
+  /* Tells the browser the page supports both themes, so native UI (scrollbars,
+     date pickers, select dropdowns) renders dark in dark mode instead of light. */
+  color-scheme: light dark;
+  --scroll-thumb: #c9ced6;
+  --scroll-thumb-hover: #aab1bc;
+  --bg: #f7f7f8;
+  --panel: #ffffff;
+  --panel-2: #f1f2f4;
+  --border: #e2e4e8;
+  --text: #1c1e21;
+  --muted: #6b7280;
+  --accent: #3b7ddd;
+  --accent-soft: #e8f0fd;
+  --neg: #dc3545;
+  --radius: 10px;
+  --sidebar-w: 216px;
+
+  /* the three bounds a block can claim (see the WIDTH note at the top) */
+  --measure: 68ch;       /* prose */
+  --form-max: 72rem;     /* a form / a stack of controls, or a page that is one */
+  --table-max: 60rem;    /* a table */
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --scroll-thumb: #333b4a;
+    --scroll-thumb-hover: #4a5468;
+    --bg: #0e1117;
+    --panel: #161a22;
+    --panel-2: #1d222c;
+    --border: #2a3040;
+    --text: #e6e8ec;
+    --muted: #98a2b3;
+    --accent: #5b9bff;
+    --accent-soft: #1b2740;
+  }
+}
+
+* { box-sizing: border-box; }
+
+/* --- scrollbars: thin, themed, brighten when their area is hovered -------- */
+html { scrollbar-color: var(--scroll-thumb) transparent; }   /* inherited */
+* { scrollbar-width: thin; }
+.sidebar:hover, .cal-cell:hover, .table-wrap:hover, .textdump:hover {
+  scrollbar-color: var(--scroll-thumb-hover) transparent;
+}
+@supports not (scrollbar-color: auto) {          /* older Safari */
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--scroll-thumb); border-radius: 8px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--scroll-thumb-hover); }
+}
+
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", "Noto Sans JP", "Yu Gothic UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* --- app shell: fixed sidebar, independently scrolling main --------------- */
+.app { display: grid; grid-template-columns: var(--sidebar-w) 1fr; height: 100%; }
+
+.sidebar {
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  padding: 18px 12px;
+  overflow-y: auto;
+}
+.brand { font-size: 17px; font-weight: 650; padding: 0 8px 4px; letter-spacing: .2px; }
+.brand small { display: block; font-weight: 400; font-size: 11px; color: var(--muted); font-style: italic; }
+.navgroup { margin-top: 18px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); padding: 0 8px 6px; }
+.navlink {
+  display: block; padding: 7px 10px; border-radius: 7px; color: var(--text);
+  text-decoration: none; font-size: 13.5px;
+}
+.navlink:hover { background: var(--panel-2); }
+.navlink.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+
+/* No inner wrapper and no cap: the scroll container IS the page (see WIDTH). */
+.main { overflow-y: auto; padding: 22px 26px 60px; }
+
+h1 { font-size: 26px; margin: 0 0 4px; font-weight: 650; max-width: var(--measure); }
+h2 { font-size: 16px; margin: 0; font-weight: 620; }
+/* A subtitle is one sentence, not a paragraph: the prose measure would break most of them onto a second
+   line, so it gets a longer line and wraps only when it really runs on. */
+.page-sub { color: var(--muted); margin: 0 0 18px; font-size: 13px; max-width: 110ch; }
+
+/* --- cards ---------------------------------------------------------------- */
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px 12px;
+  min-width: 0;            /* lets grid children shrink instead of overflowing */
+}
+.card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.card-head .hint { font-size: 12px; color: var(--muted); }
+/* A card holding a table shrinks to the table's bound, so no empty panel sits
+   beside the data; a card holding a grid opts out of its page's bound. */
+.card.card--table { max-width: calc(var(--table-max) + 2rem); }
+.card.card--full { max-width: none; }
+
+/* A card that IS its page's content is not capped at all. Rule 2 caps a table so
+   it can't push the page it shares; here the page IS the table, there is nothing
+   to push, and one scrollbar — the page's own — beats a box scrolling inside a
+   screen that is otherwise empty. With the box uncapped the sticky header sticks
+   to the window instead, which is what you want on a list this long. */
+.card--uncapped > .table-wrap { max-height: none; overflow: visible; }
+.card--uncapped > .brand-list { max-height: none; }
+
+.grid { display: grid; gap: 16px; }
+.grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.grid-sidebar { grid-template-columns: minmax(0, 1fr) minmax(0, var(--table-max)); }
+@media (max-width: 1080px) {
+  .grid-2, .grid-sidebar { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* --- RULE 1: charts get a fixed height, never data-driven ---------------- */
+.chart-box { height: 16.25rem; width: 100%; }
+.echart { width: 100%; height: 100%; }
+/* tall = ranking charts: must fit one legible label per bar (20 bars ~ 21px each) */
+.chart-box.tall { height: 28.75rem; }
+
+/* --- RULE 2: tables scroll inside themselves ----------------------------- */
+.table-wrap { max-height: 21.25rem; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
+.table-wrap.short { max-height: 15rem; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+thead th {
+  position: sticky; top: 0; z-index: 1;
+  background: var(--panel-2); text-align: left; font-weight: 600;
+  padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+tbody td { padding: 7px 10px; border-bottom: 1px solid var(--border); }
+tbody tr:last-child td { border-bottom: 0; }
+tbody tr:hover { background: var(--panel-2); }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+/* long merchant names truncate rather than stretching the table */
+td.ellipsis { max-width: 16rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+td.ellipsis > a { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Fixed layout = columns can never be pushed out of view by a long CJK name.
+   Pair with <colgroup>; the name column absorbs the slack and ellipsises. */
+table.fixed { table-layout: fixed; }
+table.fixed td, table.fixed th { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* --- metric tiles --------------------------------------------------------- */
+/* A tile holds a number, not a paragraph: tiles keep their size and the row
+   simply stops, instead of six tiles spreading across a 2560px monitor. */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(9.5rem, 14rem)); gap: 12px; justify-content: start; }
+.tile { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; min-width: 0; }
+.tile .label { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.tile .value { font-size: 20px; font-weight: 650; margin-top: 3px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+
+/* --- RULE 3: receipt cards / capped images -> components/DocumentCard.css ---- */
+
+/* --- Receipt Detail: scan | details ---------------------------------------
+   Two bounded columns, left-aligned. The scan column's width is what sets the
+   zoom, and the scan is never cropped; the details column holds a table and some
+   text. Neither gains from a wider monitor, so the slack stays at the right. */
+.detail-page {
+  --scan-col: 27.5rem; --detail-col: 40rem;
+  /* one edge for the whole page: the head, the tiles and the edit form all stop
+     where the two columns below them stop */
+  max-width: calc(var(--scan-col) + var(--detail-col) + 1rem);
+  margin-inline: auto;
+}
+.detail-layout {
+  display: grid; gap: 16px; align-items: start; justify-content: start;
+  grid-template-columns: minmax(0, var(--scan-col)) minmax(0, var(--detail-col));
+}
+@media (max-width: 1080px) {
+  /* stacked: the details take the window, the scan keeps its own bound below */
+  .detail-layout { grid-template-columns: minmax(0, 1fr); }
+}
+.scan-full { display: grid; gap: 10px; justify-items: center; }
+.document-picker { margin-bottom: 14px; }
+.document-picker input { width: 100%; max-width: 32rem; }
+.scan-full img {
+  width: 100%; max-width: var(--scan-col); height: auto; display: block;
+  border-radius: 6px; background: #fff;
+}
+
+/* --- RULE 4: long text scrolls in place ---------------------------------- */
+.textdump {
+  max-height: 18.75rem; overflow: auto; background: var(--panel-2);
+  border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px;
+  font: 12px/1.55 ui-monospace, "Cascadia Code", Consolas, monospace;
+  white-space: pre-wrap; word-break: break-word; margin: 0;
+}
+
+/* --- RULE 5: calendar cells cap + scroll --------------------------------- */
+.cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
+.cal-head { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; padding-bottom: 2px; }
+.cal-cell {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+  padding: 2px; min-height: 5.75rem; max-height: 48.75rem; overflow-y: auto; min-width: 0;
+  container-type: inline-size;   /* lets .cal-items decide columns by cell width */
+}
+.cal-cell.empty { background: transparent; border-style: dashed; opacity: .45; }
+.cal-daynum { font-size: 15px; font-weight: 650; color: var(--text); padding: 3px 5px 4px; }
+
+/* Receipts in a day. Gaps are tight on purpose: each card's hover outline, not
+   whitespace, is what separates them (card<->card and card<->cell edge).
+
+   Two columns only in month view, only on days with 2+ receipts (the JSX adds
+   .split), so a lone receipt stays full width, and only once the CELL is wide
+   enough for each column to stay >= ~120px (2 x 120 + gap = 248px).
+   On a 2560px window that's two ~150px columns; at 1920px and below days stay
+   single so receipts don't shrink. CSS columns balance by actual rendered height. */
+.cal-items > .doc-card { margin-bottom: 3px; break-inside: avoid; }
+@container (min-width: 248px) {
+  .cal-items.split { columns: 2; column-gap: 3px; }
+}
+
+/* --- controls ------------------------------------------------------------- */
+.controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 16px; }
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field label { font-size: 11.5px; color: var(--muted); }
+select, input[type="date"], input[type="text"] {
+  background: var(--panel); color: var(--text); border: 1px solid var(--border);
+  border-radius: 7px; padding: 6px 9px; font: inherit; font-size: 13px; max-width: 20rem;
+}
+button {
+  background: var(--panel); color: var(--text); border: 1px solid var(--border);
+  border-radius: 7px; padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer;
+}
+button:hover:not(:disabled) { background: var(--panel-2); }
+button:disabled { opacity: .45; cursor: default; }
+.segmented { display: inline-flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
+.segmented button { border: 0; border-radius: 0; border-right: 1px solid var(--border); }
+.segmented button:last-child { border-right: 0; }
+.segmented button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+
+/* --- misc ----------------------------------------------------------------- */
+.state { color: var(--muted); padding: 28px 0; font-size: 13.5px; max-width: var(--measure); }
+.state.error { color: var(--neg); }
+.rowlink { color: var(--accent); text-decoration: none; }
+.rowlink:hover { text-decoration: underline; }
+.pager { display: flex; gap: 10px; align-items: center; justify-content: center; margin-top: 12px; color: var(--muted); font-size: 12.5px; }
+.stack { display: flex; flex-direction: column; gap: 16px; }
+.neg { color: var(--neg); }
+
+/* --- shared controls: keys, action buttons, error banner, toast, modal ------------------------ */
+kbd {
+  display: inline-block; min-width: 1.4em; padding: 0 4px; margin: 0 2px;
+  border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px;
+  background: var(--panel-2); color: var(--muted);
+  font: 600 10.5px/1.5 ui-monospace, "Cascadia Code", Consolas, monospace; text-align: center;
+}
+button kbd { margin-left: 6px; }
+
+.error-banner {
+  color: var(--neg); font-size: 13px; margin: 0 0 12px; padding: 8px 12px;
+  border: 1px solid var(--neg); border-radius: 8px; background: color-mix(in srgb, var(--neg) 8%, transparent);
+}
+
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+button.primary:hover:not(:disabled) { background: var(--accent); filter: brightness(1.08); }
+button.primary kbd, button.danger kbd { background: rgb(255 255 255 / .18); border-color: rgb(255 255 255 / .35); color: #fff; }
+button.warn { border-color: #b8860b; color: #b8860b; font-weight: 600; }
+button.danger { background: var(--neg); border-color: var(--neg); color: #fff; font-weight: 600; }
+button.danger-outline { border-color: var(--neg); color: var(--neg); }
+
+/* --- toast + modal ----------------------------------------------------------------------- */
+/* A compact list of named rows, each with its own action (kept pairs, recent decisions). */
+.name-list { display: grid; gap: 4px; }
+.name-row {
+  display: flex; align-items: center; gap: 10px; padding: 6px 8px;
+  border: 1px solid var(--border); border-radius: 7px; background: var(--panel);
+}
+.name-row__name { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 13px; }
+
+.toast {
+  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 20;
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px 8px 14px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 10px 30px rgb(0 0 0 / .25); font-size: 13px;
+}
+
+.modal-backdrop {
+  position: fixed; inset: 0; z-index: 30; display: grid; place-items: center;
+  background: rgb(0 0 0 / .45);
+}
+.modal {
+  width: min(27.5rem, calc(100vw - 2rem)); padding: 18px 20px; border-radius: 12px;
+  background: var(--panel); border: 1px solid var(--border); box-shadow: 0 20px 50px rgb(0 0 0 / .35);
+}
+.modal h2 { margin-bottom: 8px; }
+.modal__body { font-size: 13.5px; color: var(--text); overflow-wrap: anywhere; }
+.modal__actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+
+/* --- Receipt Detail: title row and the edit form ---------------------------------------------- */
+.detail-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.detail-head .page-sub code { font-size: 11.5px; overflow-wrap: anywhere; }
+.edit-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(12.5rem, 1fr)); gap: 12px 16px; }
+.edit-grid .field input[type="text"] { width: 100%; box-sizing: border-box; max-width: none; }
+.edit-grid .currency { display: flex; gap: 6px; }
+.edit-grid .currency button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.field textarea {
+  width: 100%; box-sizing: border-box; resize: vertical; background: var(--panel); color: var(--text);
+  border: 1px solid var(--border); border-radius: 7px; padding: 7px 9px; font: inherit; font-size: 13px;
+}
+
+/* --- rendered markdown (OCR text) --------------------------------------------------------- */
+.markdown { font-size: 12.5px; line-height: 1.5; overflow-wrap: anywhere; }
+.markdown > :first-child { margin-top: 0; }
+.markdown > :last-child { margin-bottom: 0; }
+.markdown h1, .markdown h2, .markdown h3 { font-size: 13.5px; font-weight: 650; margin: 10px 0 4px; }
+.markdown p, .markdown ul, .markdown ol { margin: 0 0 8px; }
+.markdown ul, .markdown ol { padding-left: 18px; }
+.markdown table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+.markdown th, .markdown td { border: 1px solid var(--border); padding: 3px 6px; text-align: left; }
+.markdown th { background: var(--panel-2); }
+.markdown code { background: var(--panel-2); border-radius: 4px; padding: 0 3px; }
+.markdown img { max-width: 100%; }

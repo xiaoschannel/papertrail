@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from .ollama import OllamaOcrProvider
 
 
@@ -21,15 +19,3 @@ def _build_providers() -> dict:
 
 
 OCR_PROVIDERS = _build_providers()
-
-
-def run_ocr(path: Path, provider: str | None = None, structured: bool = True) -> str:
-    if provider is None:
-        provider = next(iter(OCR_PROVIDERS))
-    return OCR_PROVIDERS[provider].run(path, structured=structured)
-
-
-def teardown_ocr(provider: str | None = None) -> None:
-    if provider is None:
-        provider = next(iter(OCR_PROVIDERS))
-    OCR_PROVIDERS[provider].teardown()

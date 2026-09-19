@@ -1,0 +1,108 @@
+/* Curate pages: Brand registry, Dedupe, Normalize, Marked Workshop. */
+
+/* Brands and Normalize are lists of names and the buttons that act on them: a
+   form, so the page takes the form bound and centres. Dedupe is a grid of scans,
+   so it takes the window — its one card is a bounded block and stays at the left.
+   The Workshop's two cards are sized by their layout, below. */
+.brands-page, .normalize-page { max-width: var(--form-max); margin-inline: auto; }
+.dedupe-page .card { max-width: var(--form-max); }
+.curate-page .card + .card { margin-top: 16px; }
+.curate-page .tiles { margin-bottom: 14px; }
+.curate-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 12px 16px; }
+.curate-page .field input[type="text"], .curate-page .field textarea { width: 100%; box-sizing: border-box; max-width: none; }
+.row-actions { display: flex; gap: 6px; justify-content: flex-end; white-space: nowrap; }
+
+.brand-list { display: grid; gap: 6px; margin-top: 12px; }
+.brand-row { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--panel); }
+.brand-row summary { cursor: pointer; display: flex; gap: 10px; align-items: baseline; justify-content: space-between; }
+.brand-row[open] { padding-bottom: 12px; }
+.brand-row .curate-grid { margin-top: 10px; }
+
+/* A suggested prefix and the names it would absorb. The actions sit in the
+   summary next to the counts they act on; opening the row answers "is this one
+   brand?" without leaving the list. */
+.suggestion-row summary { align-items: center; gap: 12px; }
+.suggestion-prefix { font-size: 13px; background: var(--panel-2); border-radius: 4px; padding: 1px 6px; }
+.suggestion-row summary .config-hint { flex: 1; white-space: nowrap; }
+.suggestion-row .row-actions { flex: none; }
+/* Uncapped for the same reason as the list around it: opening a row should show
+   the names, not a second scrollbar inside the first. */
+.suggestion-names { margin-top: 8px; list-style: none; padding-left: 0; max-height: none; overflow: visible; }
+.suggestion-names li { padding: 2px 0; overflow-wrap: anywhere; }
+.suggestion-names .config-hint { margin-left: 6px; }
+
+/* brand -> prefix -> branch. The indent is the tree: each level steps in from the
+   one above, so the prefixes read as belonging to the brand and the branches to
+   the prefix, without a rule or a bullet to draw it. */
+.brand-tree { margin-top: 12px; display: grid; gap: 2px; }
+.brand-tree__head {
+  display: flex; align-items: baseline; gap: 10px;
+  padding: 3px 6px; margin-top: 6px;
+}
+.brand-tree__branches {
+  list-style: none; margin: 2px 0 6px; padding: 0 0 0 26px; display: grid; gap: 1px;
+}
+.brand-tree__branches li {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  padding: 2px 6px; font-size: 12.5px; overflow-wrap: anywhere;
+}
+.brand-tree__branches li:nth-child(odd) { background: var(--panel-2); border-radius: 4px; }
+.brand-tree__branches .config-hint { white-space: nowrap; }
+
+/* --- Dedupe -------------------------------------------------------------------------------
+   Sized from HEIGHT, not from a column count: a receipt is about 1:3, so a scan that is fully
+   visible at height H is only H/3 wide. Fix the row height and the number of clusters per row
+   falls out of it — on a 2560px screen that is three 2-scan clusters, each receipt whole. */
+.dedupe-page { --scan-height: 72vh; --scan-min: 9rem; }
+.dupe-clusters {
+  display: grid; gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, calc(var(--scan-height) / 3 * 2 + 3rem)), 1fr));
+}
+.dupe-cluster {
+  border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel);
+  padding: 10px 12px 12px; min-width: 0;
+}
+.dupe-cluster header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+.dupe-cluster header .config-hint { flex: 1; }
+.dupe-scans { display: grid; grid-template-columns: repeat(var(--members, 2), minmax(0, 1fr)); gap: 10px; }
+.dupe-scans figure { margin: 0; display: grid; gap: 6px; align-content: start; justify-items: center; }
+/* The image's own aspect sets its height, capped by --scan-height: a tall receipt fills the cap
+   (and narrows to fit), a short slip stays short instead of sitting in an empty box. */
+.dupe-scans img {
+  width: 100%; height: auto; max-height: var(--scan-height); min-width: var(--scan-min);
+  object-fit: contain; background: #fff; border: 1px solid var(--border); border-radius: 6px; display: block;
+}
+.dupe-scans a:hover img { border-color: var(--accent); }
+.dupe-scans figcaption { display: grid; gap: 2px; justify-items: center; text-align: center; min-width: 0; width: 100%; }
+.dupe-name { font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.dupe-scans figure button { width: 100%; }
+
+/* Normalize: one row per name in a cluster, with the "keep this one" choice on the right. */
+.name-row button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; border-color: var(--accent); }
+.curate-page .modal p { margin: 0 0 8px; }
+.curate-page .modal .file-list { margin-top: 0; }
+
+/* Marked Workshop: Review's own three columns (OCR text | scan | decision) and Review's page bound,
+   from the review-page class it carries, so the two decision pages read the same. The cards inside the
+   layout sit in its grid gap; the context strips under it are spaced like any curate cards. */
+.workshop-page .review-layout > .card + .card { margin-top: 0; }
+.workshop-page .review-layout + .card { margin-top: 16px; }
+/* A reread's progress sits in the scan column under its button, not as a card of its own: a corrupted
+   scan's OCR errors can run long, and there they take the column's height, not a full-width row. */
+.workshop-page .review-col .job-panel {
+  margin-top: 12px; padding: 12px 0 0; border: 0; border-top: 1px solid var(--border); border-radius: 0; background: none;
+}
+.workshop-page .review-actions { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
+.workshop-compare { margin: 10px 0 4px; }
+/* the document being worked on, among its neighbours */
+.context-strip .context-card--current { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* A reread waiting for the decision: said once, above the layout, with the way back. */
+.reread-note {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 0 0 12px; padding: 8px 12px;
+  border: 1px solid var(--accent); border-radius: 8px; background: var(--accent-soft); font-size: 13px;
+}
+.reread-note > span:first-child { flex: 1; min-width: 20rem; }
+
+/* Normalize: check or uncheck every name of a cluster at once. */
+.toggle-all { display: inline-flex; align-items: center; gap: 6px; margin: 0 0 6px; font-size: 12.5px; color: var(--muted); }
