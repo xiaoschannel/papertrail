@@ -441,8 +441,26 @@ def build_archive(root: Path) -> None:
     rng = np.random.default_rng(0)
     matrix = rng.standard_normal((len(emb_names), 8)).astype(np.float32)
     root.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(root / "name_embeddings.npz",
-                        names=np.array(emb_names), matrix=matrix)
+    _write_npz(root / "name_embeddings.npz", names=np.array(emb_names), matrix=matrix)
+
+
+def _write_npz(path: Path, **arrays) -> None:
+    """``np.savez``, but the same bytes on every platform (CI checks the committed fixtures byte for byte).
+
+    zipfile records the system that wrote each entry and zlib builds compress differently, so entries are
+    stored uncompressed with a fixed date and system; np.load reads the result as any .npz.
+    """
+    import io
+    import zipfile
+
+    with zipfile.ZipFile(path, "w") as archive:
+        for name, array in arrays.items():
+            buffer = io.BytesIO()
+            np.save(buffer, array, allow_pickle=False)
+            entry = zipfile.ZipInfo(f"{name}.npy", date_time=(1980, 1, 1, 0, 0, 0))
+            entry.create_system = 0
+            entry.compress_type = zipfile.ZIP_STORED
+            archive.writestr(entry, buffer.getvalue())
 
 
 def main() -> int:
