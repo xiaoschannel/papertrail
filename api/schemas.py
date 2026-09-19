@@ -1,9 +1,8 @@
-"""Request/response models for the visualize, analytics and review endpoints (config uses
-``settings.AppConfig``).
+"""Request/response models for every endpoint (config uses ``settings.AppConfig``).
 
 Endpoints declare these as ``response_model``, so responses are validated at runtime. FastAPI turns
-them into the OpenAPI schema; ``tools/export_openapi.py`` snapshots it to ``frontend/openapi.json``
-and ``openapi-typescript`` generates the frontend's types (``frontend/src/api/schema.d.ts``) from that.
+them into the OpenAPI schema, and the frontend's TypeScript types are generated from that before every
+dev, build and typecheck (``npm --prefix frontend run gen:api``), so the two can't drift apart.
 
 Shapes mirror what the pure core already produces (``viz_records``, ``analytics``), serialized by
 ``api.serialization``: timestamps are ISO strings, missing values are ``null``. Every field is

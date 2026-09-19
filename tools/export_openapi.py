@@ -1,12 +1,8 @@
-"""Snapshot the API's OpenAPI schema to ``frontend/openapi.json``.
+"""Write the API's OpenAPI schema to ``frontend/openapi.json``.
 
-The frontend's TypeScript types are generated from this file (``npm --prefix frontend run gen:api``),
-so run this after changing an endpoint or a model in ``api/schemas.py``, then regenerate the types.
-``tests/test_api_openapi.py`` fails while the snapshot is stale.
-
-Run from the repo root::
-
-    python tools/export_openapi.py
+The frontend's TypeScript types are generated from it (``src/api/schema.d.ts``). Both are generated,
+not committed: ``npm --prefix frontend run gen:api`` runs this and then the type generator, and runs by
+itself before ``dev``, ``build`` and ``typecheck``, so the types always match the API as it is.
 """
 
 from __future__ import annotations

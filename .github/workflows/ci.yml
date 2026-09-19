@@ -37,6 +37,16 @@ jobs:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v7
+      # The API types are generated from the backend itself before the build (prebuild ->
+      # gen:api), so the frontend is always checked against the API as it is: it needs Python too.
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install the backend's dependencies
+        working-directory: .
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
       - uses: actions/setup-node@v7
         with:
           node-version: "22"
@@ -44,17 +54,5 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Install dependencies
         run: npm ci
-      # The Python job checks frontend/openapi.json against the API; this checks the
-      # TypeScript types generated from it are committed and current. `git status`
-      # (not `git diff`) so a never-committed schema.d.ts fails too.
-      - name: Generated API types are committed and current
-        run: |
-          npm run gen:api
-          if [ -n "$(git status --porcelain --untracked-files=all -- openapi.json src/api/schema.d.ts)" ]; then
-            git status --short -- openapi.json src/api/schema.d.ts
-            git diff -- src/api/schema.d.ts
-            echo "::error::frontend/src/api/schema.d.ts is missing or stale: run 'npm run gen:api' and commit it"
-            exit 1
-          fi
-      - name: Type-check and build
+      - name: Generate the API types, type-check and build
         run: npm run build

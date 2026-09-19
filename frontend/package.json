@@ -4,12 +4,16 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "gen:api": "node scripts/export-openapi.mjs && openapi-typescript openapi.json -o src/api/schema.d.ts",
+    "predev": "npm run gen:api",
     "dev": "vite",
-    "gen:api": "openapi-typescript openapi.json -o src/api/schema.d.ts",
+    "predev:sandbox": "npm run gen:api",
+    "dev:sandbox": "vite --mode sandbox",
+    "pretypecheck": "npm run gen:api",
     "typecheck": "tsc -b",
+    "prebuild": "npm run gen:api",
     "build": "tsc -b && vite build",
-    "preview": "vite preview",
-    "dev:sandbox": "vite --mode sandbox"
+    "preview": "vite preview"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.102.8",
