@@ -1,0 +1,37 @@
+{
+  "original_filename": "11032023083000_109.png",
+  "batch_id": 5,
+  "serial": 109,
+  "review": {
+    "verdict": "accepted",
+    "document_type": "receipt",
+    "name": "スターバックス 渋谷店",
+    "date": "2023-11-03",
+    "time": "08:30:00",
+    "cost": 540.0,
+    "currency": "JPY",
+    "comment": ""
+  },
+  "ocr": {
+    "markdown": "スターバックス 渋谷店\n合計 ¥540",
+    "succeeded": true
+  },
+  "extraction": {
+    "document_type": "receipt",
+    "language": "ja",
+    "date": "2023-11-03",
+    "time": "08:30:00",
+    "name": "スターバックス 渋谷店",
+    "phone": "",
+    "currency": "JPY",
+    "address": "",
+    "items": [
+      {
+        "name": "ラテ",
+        "total_price": 540.0
+      }
+    ],
+    "cost": 540.0,
+    "field_sources": {}
+  }
+}

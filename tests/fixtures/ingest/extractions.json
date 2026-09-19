@@ -1,0 +1,102 @@
+{
+  "1:1": {
+    "document_type": "receipt",
+    "language": "ja",
+    "date": "2025-01-10",
+    "time": "13:26:42",
+    "name": "セブン-イレブン 品川駅前店",
+    "phone": "",
+    "currency": "JPY",
+    "address": "",
+    "items": [
+      {
+        "name": "おにぎり",
+        "total_price": 580.0
+      },
+      {
+        "name": "コーヒー",
+        "total_price": 680.0
+      }
+    ],
+    "cost": 1260.0,
+    "field_sources": {}
+  },
+  "1:2": {
+    "document_type": "receipt",
+    "language": "ja",
+    "date": "2025-01-10",
+    "time": "13:30:00",
+    "name": "セブン-イレブン 品川駅前店",
+    "phone": "",
+    "currency": "JPY",
+    "address": "",
+    "items": [
+      {
+        "name": "お茶",
+        "total_price": 1260.0
+      }
+    ],
+    "cost": 1260.0,
+    "field_sources": {}
+  },
+  "1:3": {
+    "document_type": "receipt",
+    "language": "zh",
+    "date": "2025-01-10",
+    "time": "14:00:00",
+    "name": "上海小笼包馆",
+    "phone": "",
+    "currency": "CNY",
+    "address": "",
+    "items": [
+      {
+        "name": "小笼包",
+        "total_price": 500.0
+      }
+    ],
+    "cost": 520.0,
+    "field_sources": {}
+  },
+  "1:4-5": {
+    "document_type": "receipt",
+    "language": "en",
+    "date": "2025-01-10",
+    "time": "14:16:00",
+    "name": "Tealive KLCC",
+    "phone": "",
+    "currency": "MYR",
+    "address": "",
+    "items": [
+      {
+        "name": "Brown Sugar Boba",
+        "total_price": 15.9
+      }
+    ],
+    "cost": 15.9,
+    "field_sources": {}
+  },
+  "1:6": {
+    "document_type": "corrupted"
+  },
+  "1:7": {
+    "document_type": "other",
+    "language": "en",
+    "date": "",
+    "time": "",
+    "title": "Business Card - John Doe",
+    "field_sources": {}
+  },
+  "1:8": {
+    "document_type": "receipt",
+    "language": "ja",
+    "date": "2025-01-10",
+    "time": "14:30:00",
+    "name": "(unreadable)",
+    "phone": "",
+    "currency": "JPY",
+    "address": "",
+    "items": [],
+    "cost": 0.0,
+    "field_sources": {}
+  }
+}

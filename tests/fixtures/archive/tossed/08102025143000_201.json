@@ -1,0 +1,19 @@
+{
+  "original_filename": "08102025143000_201.png",
+  "batch_id": 9,
+  "serial": 201,
+  "review": {
+    "verdict": "tossed",
+    "document_type": "receipt",
+    "name": "(blank receipt)",
+    "date": "2025-08-10",
+    "time": "14:30:00",
+    "cost": 0.0,
+    "currency": "JPY",
+    "comment": ""
+  },
+  "ocr": {
+    "markdown": "(blank)",
+    "succeeded": true
+  }
+}

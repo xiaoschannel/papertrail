@@ -1,0 +1,37 @@
+{
+  "original_filename": "02202025183000_103.png",
+  "batch_id": 5,
+  "serial": 103,
+  "review": {
+    "verdict": "accepted",
+    "document_type": "receipt",
+    "name": "セブンイレブン 目黒店",
+    "date": "2025-02-20",
+    "time": "18:30:00",
+    "cost": 980.0,
+    "currency": "JPY",
+    "comment": ""
+  },
+  "ocr": {
+    "markdown": "セブンイレブン 目黒店\n合計 ¥980",
+    "succeeded": true
+  },
+  "extraction": {
+    "document_type": "receipt",
+    "language": "ja",
+    "date": "2025-02-20",
+    "time": "18:30:00",
+    "name": "セブンイレブン 目黒店",
+    "phone": "",
+    "currency": "JPY",
+    "address": "",
+    "items": [
+      {
+        "name": "弁当",
+        "total_price": 980.0
+      }
+    ],
+    "cost": 980.0,
+    "field_sources": {}
+  }
+}
