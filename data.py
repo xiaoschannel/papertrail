@@ -125,19 +125,6 @@ def save_decisions(output_path: Path, decisions: dict[str, ReviewDecision]):
     atomic_write_text(output_path / "decisions.json", json.dumps(d, indent=2, ensure_ascii=False))
 
 
-def load_name_cache(output_path: Path) -> dict[str, dict]:
-    cache_file = output_path / "name_cache.json"
-    if not cache_file.exists():
-        return {}
-    return json.loads(cache_file.read_text(encoding="utf-8"))
-
-
-def save_name_cache(output_path: Path, cache: dict[str, dict]):
-    (output_path / "name_cache.json").write_text(
-        json.dumps(cache, indent=2, ensure_ascii=False), encoding="utf-8"
-    )
-
-
 def load_smart_match_cache(output_path: Path) -> dict[str, dict]:
     cache_file = output_path / "smart_match_cache.json"
     if not cache_file.exists():

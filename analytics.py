@@ -7,8 +7,7 @@ monthly charts. Every function takes/returns plain pandas/Python values.
 
 from __future__ import annotations
 
-from datetime import date, timedelta
-from typing import Callable
+from datetime import date
 
 import pandas as pd
 
@@ -140,20 +139,6 @@ def timecapsule_matches(dated: pd.DataFrame, selected: date) -> pd.DataFrame:
 
 
 # --- calendar (date math + layout) ----------------------------------------
-def monday_of_week(d: date) -> date:
-    return d - timedelta(days=d.weekday())
-
-
-def first_of_month(d: date) -> date:
-    return date(d.year, d.month, 1)
-
-
-def first_of_next_month(d: date) -> date:
-    if d.month == 12:
-        return date(d.year + 1, 1, 1)
-    return date(d.year, d.month + 1, 1)
-
-
 def records_in_range(dated: pd.DataFrame, range_start: date, range_end: date) -> dict[date, list]:
     """Group records whose date falls in ``[range_start, range_end)`` by day."""
     mask = (dated["parsed_date"].dt.date >= range_start) & (
@@ -165,20 +150,3 @@ def records_in_range(dated: pd.DataFrame, range_start: date, range_end: date) ->
         d_py = val if isinstance(val, date) else date(val.year, val.month, val.day)
         out[d_py] = subset[subset["parsed_date"].dt.date == val].to_dict("records")
     return out
-
-
-def balance_into_columns(
-    records: list[dict], height_of: Callable[[dict], float]
-) -> tuple[list[dict], list[dict]]:
-    """Greedily split ``records`` into two balanced columns using ``height_of``."""
-    col1, col2 = [], []
-    h1, h2 = 0.0, 0.0
-    for row in records:
-        card_h = height_of(row)
-        if h1 <= h2:
-            col1.append(row)
-            h1 += card_h
-        else:
-            col2.append(row)
-            h2 += card_h
-    return col1, col2

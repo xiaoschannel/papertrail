@@ -82,7 +82,7 @@ def configured_archive(archive_dir: Path, tmp_path: Path, monkeypatch: pytest.Mo
     """``archive_dir`` plus a temp ``config.json`` wired through ``get_config()``.
 
     ``settings.get_config`` resolves ``settings.CONFIG_PATH`` at call time, so
-    patching that global redirects every caller (brand registry, viz_data, ...)
+    patching that global redirects every caller (brand registry, viz records, the API, ...)
     at the archive copy regardless of how they imported ``get_config``.
     """
     cfg = AppConfig(

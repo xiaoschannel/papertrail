@@ -3,7 +3,6 @@ import tempfile
 import threading
 from pathlib import Path
 
-from grounding import parse_grounding_output  # noqa: F401  (re-exported for existing imports)
 
 # One model per process, loaded on first use and shared by every OCR job until it is unloaded.
 _model_lock = threading.Lock()

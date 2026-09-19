@@ -13,7 +13,7 @@ every one of them. So exactly one file is read, the first of:
    a clone that lives outside the main checkout.
 
 A variable already exported to the process always wins over the file, for a one-off override.
-Call :func:`load_env` once at startup (``api/main.py``, ``app.py``).
+Call :func:`load_env` once at startup (``api/main.py``).
 """
 
 from __future__ import annotations

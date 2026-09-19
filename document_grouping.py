@@ -12,37 +12,12 @@ from pathlib import Path
 from PIL import Image
 
 
-def compute_groups(keys: list[str], links: list[bool]) -> list[list[str]]:
-    """Consecutive runs of linked keys, in order (single pages are one-element groups)."""
-    if not keys:
-        return []
-    groups: list[list[str]] = []
-    current = [keys[0]]
-    for i in range(1, len(keys)):
-        if i - 1 < len(links) and links[i - 1]:
-            current.append(keys[i])
-        else:
-            groups.append(current)
-            current = [keys[i]]
-    groups.append(current)
-    return groups
-
-
 def links_from_groups(keys: list[str], groups: list[list[str]]) -> list[bool]:
     key_to_group: dict[str, int] = {}
     for gi, group in enumerate(groups):
         for key in group:
             key_to_group[key] = gi
     return [key_to_group.get(keys[i], -1) == key_to_group.get(keys[i + 1], -2) for i in range(len(keys) - 1)]
-
-
-def group_containing(idx: int, keys: list[str], links: list[bool]) -> tuple[int, list[int]]:
-    """(group index, key indices) of the group holding ``keys[idx]``, or (-1, [])."""
-    for gi, group in enumerate(compute_groups(keys, links)):
-        for key in group:
-            if keys.index(key) == idx:
-                return gi, [keys.index(k) for k in group]
-    return -1, []
 
 
 def build_display_keys(filtered_groups: list[list[str]], batch_keys: list[str], tossed: set[str]) -> list[str]:

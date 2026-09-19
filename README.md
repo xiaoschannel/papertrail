@@ -27,10 +27,21 @@ If you don't want to use Deepseek OCR 2:
 pip install -r requirements.txt
 ```
 ---
-Run
+The web app also needs [Node.js](https://nodejs.org/) 22 or newer:
 ```
-streamlit run app.py
+npm --prefix frontend install
 ```
+
+Run the API and the web app, each in its own terminal:
+```
+.venv\Scripts\python -m uvicorn api.main:app --host 127.0.0.1 --port 8000
+npm --prefix frontend run dev
+```
+Then open http://127.0.0.1:5173. Both listen on this machine only.
+
+To try things without touching your archive, `tools/sandbox_server.py` runs the API on a throwaway archive of
+invented scans with fake models (port 8001); `npm --prefix frontend run dev:sandbox` serves the web app for it
+on port 5174.
 
 # Workflow
 Scan your documents into a folder, and follow this process:

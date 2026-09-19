@@ -32,7 +32,7 @@ NameStatus = Literal["placeholder", "approved", "unseen"]
 #: Names the form falls back to when extraction found none; never treated as a real merchant name.
 PLACEHOLDER_NAMES = frozenset({"Receipt", "Document", "Corrupted"})
 
-#: Extracted fields that are never drawn on the scan (see box_drawing.EXCLUDED_SOURCE_FIELDS).
+#: Extracted fields that are never drawn on the scan: they have no single place on the page.
 EXCLUDED_SOURCE_FIELDS = frozenset({"document_type", "language", "currency", "items", "address", "phone"})
 
 

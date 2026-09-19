@@ -4,8 +4,9 @@ Run locally with::
 
     uvicorn api.main:app --host 127.0.0.1 --port 8000
 
-Single process, bound to localhost; no auth (local single-user tool). The built
-React frontend will later be mounted as static files at ``/``.
+Bound to localhost, no auth (a local single-user tool); the web app in ``frontend/`` talks to
+it (``npm --prefix frontend run dev``), and only pages on this machine are served (see
+``only_this_machine``).
 """
 
 from __future__ import annotations

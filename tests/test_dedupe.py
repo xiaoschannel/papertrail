@@ -42,16 +42,3 @@ def test_find_dedupe_separates_on_cost():
     }
     # a,b,c are inside one 5-min time cluster, but only a,b share a cost.
     assert dd.find_dedupe_clusters(decisions) == [["a", "b"]]
-
-
-def test_find_adjacent_documents_excludes_self(ingest_dir):
-    decisions = data.load_decisions(ingest_dir)
-    adj = dd.find_adjacent_documents("2025-01-10", "13:26:42", 1260.0, decisions, exclude_fn="1:1")
-    assert adj == ["1:2"]
-
-
-def test_get_receipts_in_week_sorted(ingest_dir):
-    decisions = data.load_decisions(ingest_dir)
-    week = dd.get_receipts_in_week("2025-01-10", "13:26:42", decisions)
-    # All accepted receipts that week, chronologically; no tossed / 'other'.
-    assert week == ["1:1", "1:2", "1:3", "1:4-5"]

@@ -5,10 +5,7 @@ from datetime import date
 import pandas as pd
 
 from analytics import (
-    balance_into_columns,
-    first_of_next_month,
     merchant_metrics,
-    monday_of_week,
     monthly_spend,
     records_in_range,
     timecapsule_matches,
@@ -59,7 +56,7 @@ def test_timecapsule_matches_same_month_day_across_years(configured_archive):
     assert names == {"上海小笼包馆", "スターバックス 渋谷店"}  # 2024 + 2023, Nov 3
 
 
-def test_records_in_range_and_column_balance():
+def test_records_in_range_groups_by_day():
     df = pd.DataFrame({
         "parsed_date": pd.to_datetime(["2025-01-01", "2025-01-01", "2025-01-05", "2025-02-01"]),
         "name": ["a", "b", "c", "d"],
@@ -67,9 +64,6 @@ def test_records_in_range_and_column_balance():
     grouped = records_in_range(df, date(2025, 1, 1), date(2025, 2, 1))
     assert set(grouped) == {date(2025, 1, 1), date(2025, 1, 5)}
     assert len(grouped[date(2025, 1, 1)]) == 2
-
-    col1, col2 = balance_into_columns([{"x": 1}, {"x": 1}, {"x": 1}], height_of=lambda r: 1.0)
-    assert len(col1) == 2 and len(col2) == 1  # greedy: shorter column gets the tie
 
 
 def test_complete_monthly_series_fills_gaps_with_zero():
@@ -108,8 +102,3 @@ def test_complete_monthly_series_empty_passthrough():
 
     empty = pd.DataFrame(columns=["period", "spend", "month_ts"])
     assert complete_monthly_series(empty, "spend").empty
-
-
-def test_calendar_date_helpers():
-    assert monday_of_week(date(2025, 1, 8)) == date(2025, 1, 6)   # Wed -> Mon
-    assert first_of_next_month(date(2025, 12, 15)) == date(2026, 1, 1)
