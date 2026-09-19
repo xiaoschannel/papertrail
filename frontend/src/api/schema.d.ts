@@ -19,6 +19,51 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /**
+         * Patch Config
+         * @description Change only the given fields, so pages editing one setting never revert another page's edits.
+         */
+        patch: operations["patch_config_api_config_patch"];
+        trace?: never;
+    };
+    "/api/config/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Config Options
+         * @description The choices behind the Config page's dropdowns. Listing OCR models imports torch, so this is
+         *     only called by that page.
+         */
+        get: operations["config_options_api_config_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/config/path-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Path Check
+         * @description Does this folder exist? The browser can't see the filesystem, so the Config page asks the server.
+         */
+        get: operations["path_check_api_config_path_check_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
         patch?: never;
         trace?: never;
     };
@@ -236,7 +281,11 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Edit Receipt Endpoint
+         * @description Change an archived document: re-file its pages under the new name and rewrite their sidecars.
+         */
+        patch: operations["edit_receipt_endpoint_api_receipt_patch"];
         trace?: never;
     };
     "/api/media/archived/{rel_path}": {
@@ -271,6 +320,380 @@ export interface paths {
          * @description Serve an original scan (pre-archive) by filename.
          */
         get: operations["input_media_api_media_input__filename__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/media/input-thumb/{filename}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Input Thumbnail
+         * @description A scan from the input folder scaled to ``width`` px (cached until the file changes, e.g. rotated).
+         */
+        get: operations["input_thumbnail_api_media_input_thumb__filename__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/review/queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Queue Endpoint
+         * @description Documents awaiting review, in review order, plus progress counts.
+         */
+        get: operations["queue_endpoint_api_review_queue_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/review/document": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Document Endpoint
+         * @description Everything the review form needs for one document.
+         */
+        get: operations["document_endpoint_api_review_document_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/review/hints": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Hints Endpoint
+         * @description Hint rules, name status and accept blocker for the form's unsaved values.
+         */
+        post: operations["hints_endpoint_api_review_hints_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/review/decisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decide Endpoint
+         * @description Record accept/mark/toss for a document. Accept is validated; mark and toss never are.
+         */
+        post: operations["decide_endpoint_api_review_decisions_post"];
+        /**
+         * Clear Endpoint
+         * @description Clear every review decision (the UI confirms first).
+         */
+        delete: operations["clear_endpoint_api_review_decisions_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/review/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Undo Endpoint
+         * @description Remove one document's decision, returning it to the queue (Undo).
+         */
+        delete: operations["undo_endpoint_api_review_decision_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ingest/index": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Index Status
+         * @description Image counts and the batches the chosen indexing scheme would add.
+         */
+        get: operations["index_status_api_ingest_index_get"];
+        put?: never;
+        /**
+         * Confirm Index
+         * @description Add the proposed batches to batches.json (only if the proposal is unchanged).
+         */
+        post: operations["confirm_index_api_ingest_index_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ingest/grouping": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Grouping
+         * @description A batch's pages in display order with their links, for grouping pages into documents.
+         *
+         *     Without ``batch_id``, or when that batch has been archived meanwhile, the first unarchived batch.
+         */
+        get: operations["grouping_api_ingest_grouping_get"];
+        /**
+         * Save Grouping
+         * @description Save multi-page groups. A change clears the batch's parse results and review decisions.
+         */
+        put: operations["save_grouping_api_ingest_grouping_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ingest/pages/toss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Toss Page
+         * @description Toss the document this page belongs to.
+         */
+        post: operations["toss_page_api_ingest_pages_toss_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ingest/pages/recover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Recover Page
+         * @description Undo a toss.
+         */
+        post: operations["recover_page_api_ingest_pages_recover_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ingest/pages/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rotate Page
+         * @description Rotate a page's scan in place so it is upright.
+         */
+        post: operations["rotate_page_api_ingest_pages_rotate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ingest/ocr": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ocr Status
+         * @description Page counts for the chosen scope; ``provider`` defaults to the saved OCR model.
+         */
+        get: operations["ocr_status_api_ingest_ocr_get"];
+        put?: never;
+        /**
+         * Start Ocr
+         * @description Start OCR on the planned pages as a background job.
+         */
+        post: operations["start_ocr_api_ingest_ocr_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ingest/parse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Parse Status */
+        get: operations["parse_status_api_ingest_parse_get"];
+        put?: never;
+        /**
+         * Start Parse
+         * @description Start extraction on the planned documents as a background job.
+         */
+        post: operations["start_parse_api_ingest_parse_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ingest/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Archive Status */
+        get: operations["archive_status_api_ingest_archive_get"];
+        put?: never;
+        /**
+         * Start Archive
+         * @description Archive every reviewed file as a background job.
+         */
+        post: operations["start_archive_api_ingest_archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Current Job
+         * @description The running job, or the last one to run (None before any job).
+         */
+        get: operations["current_job_api_jobs_current_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Job */
+        get: operations["get_job_api_jobs__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Job
+         * @description Ask the job to stop after the item it is working on.
+         */
+        post: operations["cancel_job_api_jobs__job_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Job Events */
+        get: operations["job_events_api_jobs__job_id__events_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -398,6 +821,111 @@ export interface components {
              */
             calendar_date: string;
         };
+        /** AppConfigPatch */
+        AppConfigPatch: {
+            /** Input Image Path */
+            input_image_path?: string | null;
+            /** Batch Output Path */
+            batch_output_path?: string | null;
+            /** Extract Structured */
+            extract_structured?: boolean | null;
+            /** Ocr Model */
+            ocr_model?: string | null;
+            /** Workshop Ocr Model */
+            workshop_ocr_model?: string | null;
+            /** Extractor Model */
+            extractor_model?: string | null;
+            /** Workshop Extractor Model */
+            workshop_extractor_model?: string | null;
+            /** Parse Custom Instruction */
+            parse_custom_instruction?: string | null;
+            /** Normalize Engine */
+            normalize_engine?: string | null;
+            /** Normalize Embedding Threshold */
+            normalize_embedding_threshold?: number | null;
+            /** Normalize String Similarity */
+            normalize_string_similarity?: number | null;
+            /** Indexing Scheme */
+            indexing_scheme?: string | null;
+            /** Dashboard Rank By */
+            dashboard_rank_by?: string | null;
+            /** Prefix Suggestion Boundary Only */
+            prefix_suggestion_boundary_only?: boolean | null;
+            /** Prefix Suggestion Max Length */
+            prefix_suggestion_max_length?: number | null;
+            /** Prefix Suggestion Min Length */
+            prefix_suggestion_min_length?: number | null;
+            /** Prefix Suggestion Min Count */
+            prefix_suggestion_min_count?: number | null;
+            /** Calendar Period */
+            calendar_period?: string | null;
+            /** Calendar Date */
+            calendar_date?: string | null;
+        };
+        /** ArchiveMoveOut */
+        ArchiveMoveOut: {
+            /** Key */
+            key: string;
+            /** Filename */
+            filename: string;
+            /** Destination */
+            destination: string;
+        };
+        /** ArchiveStatus */
+        ArchiveStatus: {
+            /** Blocker */
+            blocker: string | null;
+            /** Unarchived Batches */
+            unarchived_batches: number;
+            /** Complete Batches */
+            complete_batches: number;
+            /** Documents */
+            documents: number;
+            /** Multipage */
+            multipage: number;
+            /** Files */
+            files: number;
+            /** Accepted */
+            accepted: number;
+            /** Marked */
+            marked: number;
+            /** Tossed */
+            tossed: number;
+            /** Moves */
+            moves: components["schemas"]["ArchiveMoveOut"][];
+        };
+        /** BatchFile */
+        BatchFile: {
+            /** Serial */
+            serial: number;
+            /** Filename */
+            filename: string;
+        };
+        /** BatchOut */
+        BatchOut: {
+            /** Batch Id */
+            batch_id: number;
+            /** Start Datetime */
+            start_datetime: string;
+            /** End Datetime */
+            end_datetime: string;
+            /** File Count */
+            file_count: number;
+        };
+        /**
+         * BoxRect
+         * @description Corner-normalized rectangle on the OCR's 0-1000 scale, relative to the page image.
+         */
+        BoxRect: {
+            /** X1 */
+            x1: number;
+            /** Y1 */
+            y1: number;
+            /** X2 */
+            x2: number;
+            /** Y2 */
+            y2: number;
+        };
         /** BrandTotals */
         BrandTotals: {
             /** Merchant Group */
@@ -418,12 +946,124 @@ export interface components {
             /** Days Since Last */
             days_since_last: number;
         };
+        /**
+         * ConfigOptions
+         * @description What the Config page's dropdowns can offer (models come from the same registry the jobs use).
+         */
+        ConfigOptions: {
+            /** Ocr Models */
+            ocr_models: string[];
+            /** Extractors */
+            extractors: string[];
+            /** Normalize Engines */
+            normalize_engines: components["schemas"]["NormalizeEngineOut"][];
+            /** Indexing Schemes */
+            indexing_schemes: string[];
+            /** Dashboard Rank By */
+            dashboard_rank_by: string[];
+            /** Embedding Threshold Step */
+            embedding_threshold_step: number;
+        };
+        /** ConfirmIndexIn */
+        ConfirmIndexIn: {
+            /** Scheme */
+            scheme: string;
+            /** Token */
+            token: string;
+        };
         /** DateRange */
         DateRange: {
             /** Min */
             min: string | null;
             /** Max */
             max: string | null;
+        };
+        /** DecisionIn */
+        DecisionIn: {
+            /** Key */
+            key: string;
+            /**
+             * Verdict
+             * @enum {string}
+             */
+            verdict: "accepted" | "marked" | "tossed";
+            draft: components["schemas"]["DraftIn"];
+            /**
+             * Comment
+             * @default
+             */
+            comment: string;
+        };
+        /** DecisionOut */
+        DecisionOut: {
+            /**
+             * Verdict
+             * @enum {string}
+             */
+            verdict: "accepted" | "marked" | "tossed";
+            /** Document Type */
+            document_type: string;
+            /** Name */
+            name: string;
+            /** Date */
+            date: string;
+            /** Time */
+            time: string;
+            /** Cost */
+            cost: number;
+            /** Currency */
+            currency: string;
+            /** Comment */
+            comment: string;
+        };
+        /** DraftIn */
+        DraftIn: {
+            /**
+             * Document Type
+             * @enum {string}
+             */
+            document_type: "receipt" | "other" | "corrupted";
+            /** Name */
+            name: string;
+            /** Date */
+            date: string;
+            /** Time */
+            time: string;
+            /** Cost */
+            cost: number | null;
+            /** Currency */
+            currency: string;
+        };
+        /** FieldBoxOut */
+        FieldBoxOut: {
+            /** Index */
+            index: number;
+            /** Fields */
+            fields: string[];
+            /** Rects */
+            rects: components["schemas"]["BoxRect"][];
+            /** Text */
+            text: string | null;
+        };
+        /** FormDefaultsOut */
+        FormDefaultsOut: {
+            /**
+             * Document Type
+             * @enum {string}
+             */
+            document_type: "receipt" | "other" | "corrupted";
+            /** Name */
+            name: string;
+            /** Date */
+            date: string;
+            /** Time */
+            time: string;
+            /** Cost */
+            cost: number;
+            /** Currency */
+            currency: string;
+            /** Phone */
+            phone: string;
         };
         /**
          * GalleryReceipt
@@ -449,6 +1089,38 @@ export interface components {
             /** Document Type */
             document_type: string;
         };
+        /** GroupingOut */
+        GroupingOut: {
+            /** Blocker */
+            blocker: string | null;
+            /** Batches */
+            batches: components["schemas"]["BatchOut"][];
+            /** Batch Id */
+            batch_id: number | null;
+            /** Pages */
+            pages: components["schemas"]["GroupingPageOut"][];
+            /** Display Keys */
+            display_keys: string[];
+            /** Active Links */
+            active_links: boolean[];
+            /** Saved Groups */
+            saved_groups: string[][];
+        };
+        /** GroupingPageOut */
+        GroupingPageOut: {
+            /** Key */
+            key: string;
+            /** Serial */
+            serial: number;
+            /** Filename */
+            filename: string;
+            /** Tossed */
+            tossed: boolean;
+            /** Image Available */
+            image_available: boolean;
+            /** Image Version */
+            image_version: number;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -458,6 +1130,66 @@ export interface components {
         Health: {
             /** Status */
             status: string;
+        };
+        /** HintOut */
+        HintOut: {
+            /** Message */
+            message: string;
+            /** Color */
+            color: string;
+        };
+        /** HintsRequest */
+        HintsRequest: {
+            /** Key */
+            key: string;
+            draft: components["schemas"]["DraftIn"];
+        };
+        /**
+         * HintsResponse
+         * @description ``accept_error`` is why Accept would be refused for these values (None if it wouldn't be).
+         */
+        HintsResponse: {
+            /** Hints */
+            hints: components["schemas"]["HintOut"][];
+            /**
+             * Name Status
+             * @enum {string}
+             */
+            name_status: "placeholder" | "approved" | "unseen";
+            /** Accept Error */
+            accept_error: string | null;
+        };
+        /**
+         * IndexStatus
+         * @description ``blocker`` explains why indexing can't be shown (paths not configured, input folder missing).
+         */
+        IndexStatus: {
+            /** Blocker */
+            blocker: string | null;
+            /** Schemes */
+            schemes: string[];
+            /** Scheme */
+            scheme: string;
+            /** Image Count */
+            image_count: number;
+            /** Indexed Count */
+            indexed_count: number;
+            /** Unindexed Count */
+            unindexed_count: number;
+            /** Existing Batches */
+            existing_batches: number;
+            /** Proposal */
+            proposal: components["schemas"]["ProposedBatch"][];
+            /** Skipped */
+            skipped: string[];
+            /** Warnings */
+            warnings: string[];
+            /** Error */
+            error: string | null;
+            /** Offending */
+            offending: string[];
+            /** Token */
+            token: string;
         };
         /** ItemBreakdownRow */
         ItemBreakdownRow: {
@@ -470,6 +1202,47 @@ export interface components {
             /** Avg Unit Price */
             avg_unit_price: number | null;
         };
+        /** JobError */
+        JobError: {
+            /** Item */
+            item: string;
+            /** Error */
+            error: string;
+        };
+        /** JobOut */
+        JobOut: {
+            /** Id */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Title */
+            title: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "running" | "succeeded" | "failed" | "cancelled";
+            /** Total */
+            total: number;
+            /** Done */
+            done: number;
+            /** Failed */
+            failed: number;
+            /** Message */
+            message: string;
+            /** Errors */
+            errors: components["schemas"]["JobError"][];
+            /** Elapsed Seconds */
+            elapsed_seconds: number;
+            /** Seconds Per Item */
+            seconds_per_item: number | null;
+            /** Eta Seconds */
+            eta_seconds: number | null;
+            /** Cancel Requested */
+            cancel_requested: boolean;
+            /** Version */
+            version: number;
+        };
         /** LineItem */
         LineItem: {
             /** Name */
@@ -480,6 +1253,16 @@ export interface components {
             unit_price: number | null;
             /** Total Price */
             total_price: number | null;
+        };
+        /**
+         * LocationCount
+         * @description One branch of a brand: the part of the name after the brand prefix, and how many receipts.
+         */
+        LocationCount: {
+            /** Location */
+            location: string;
+            /** Count */
+            count: number;
         };
         /** MerchantMetrics */
         MerchantMetrics: {
@@ -507,6 +1290,8 @@ export interface components {
             cadence: components["schemas"]["CadencePoint"][];
             /** Items */
             items: components["schemas"]["ItemBreakdownRow"][];
+            /** Locations */
+            locations: components["schemas"]["LocationCount"][];
             /** Receipts */
             receipts: components["schemas"]["GalleryReceipt"][];
         };
@@ -541,6 +1326,253 @@ export interface components {
             /** Avg Per Visit */
             avg_per_visit: number;
         };
+        /** NormalizeEngineOut */
+        NormalizeEngineOut: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+        };
+        /** OcrStatus */
+        OcrStatus: {
+            /** Blocker */
+            blocker: string | null;
+            /** Providers */
+            providers: string[];
+            /** Provider */
+            provider: string;
+            /** Grounding */
+            grounding: boolean;
+            /** Batches */
+            batches: components["schemas"]["BatchOut"][];
+            /** Total */
+            total: number;
+            /** Processed */
+            processed: number;
+            /** Failed */
+            failed: number;
+            /** Missing Images */
+            missing_images: number;
+            /** To Process */
+            to_process: number;
+        };
+        /** PageIn */
+        PageIn: {
+            /** Key */
+            key: string;
+        };
+        /** ParseStatus */
+        ParseStatus: {
+            /** Blocker */
+            blocker: string | null;
+            /** Extractors */
+            extractors: string[];
+            /** Extractor */
+            extractor: string;
+            /** Custom Instruction */
+            custom_instruction: string;
+            /** Total */
+            total: number;
+            /** Processed */
+            processed: number;
+            /** Tossed */
+            tossed: number;
+            /** To Process */
+            to_process: number;
+        };
+        /**
+         * PathCheck
+         * @description Whether a folder typed into the Config page exists (checked on the server, not the browser).
+         */
+        PathCheck: {
+            /** Path */
+            path: string;
+            /** Exists */
+            exists: boolean;
+            /** Is Dir */
+            is_dir: boolean;
+        };
+        /** ProposedBatch */
+        ProposedBatch: {
+            /** Batch Id */
+            batch_id: number;
+            /** Start Datetime */
+            start_datetime: string;
+            /** End Datetime */
+            end_datetime: string;
+            /** File Count */
+            file_count: number;
+            /** Files */
+            files: components["schemas"]["BatchFile"][];
+        };
+        /** QueueItem */
+        QueueItem: {
+            /** Key */
+            key: string;
+            /**
+             * Document Type
+             * @enum {string}
+             */
+            document_type: "receipt" | "other" | "corrupted";
+            /** Label */
+            label: string;
+        };
+        /**
+         * ReceiptEditIn
+         * @description New values for an archived document (``file`` is its VizRecord filename/identity).
+         */
+        ReceiptEditIn: {
+            /** File */
+            file: string;
+            /**
+             * Document Type
+             * @enum {string}
+             */
+            document_type: "receipt" | "other" | "corrupted";
+            /** Name */
+            name: string;
+            /** Date */
+            date: string;
+            /** Time */
+            time: string;
+            /** Cost */
+            cost: number | null;
+            /** Currency */
+            currency: string;
+            /**
+             * Address
+             * @default
+             */
+            address: string;
+            /**
+             * Language
+             * @default
+             */
+            language: string;
+            /**
+             * Comment
+             * @default
+             */
+            comment: string;
+        };
+        /** ReviewDocument */
+        ReviewDocument: {
+            /** Key */
+            key: string;
+            defaults: components["schemas"]["FormDefaultsOut"];
+            /** Initial Name */
+            initial_name: string;
+            /** Ocr Text */
+            ocr_text: string;
+            /** Pages */
+            pages: components["schemas"]["ReviewPage"][];
+            /** Smart Matches */
+            smart_matches: components["schemas"]["SmartMatch"][];
+            decision: components["schemas"]["DecisionOut"] | null;
+        };
+        /** ReviewPage */
+        ReviewPage: {
+            /** File Key */
+            file_key: string;
+            /** Filename */
+            filename: string | null;
+            /** Image Available */
+            image_available: boolean;
+            /** Boxes */
+            boxes: components["schemas"]["FieldBoxOut"][];
+        };
+        /**
+         * ReviewQueue
+         * @description ``blocker`` explains why there is nothing to review yet (no index, no extractions).
+         */
+        ReviewQueue: {
+            /** Blocker */
+            blocker: string | null;
+            summary: components["schemas"]["ReviewSummary"];
+            /** Items */
+            items: components["schemas"]["QueueItem"][];
+        };
+        /** ReviewSummary */
+        ReviewSummary: {
+            /** Total */
+            total: number;
+            /** Pending */
+            pending: number;
+            /** Verdicts */
+            verdicts: components["schemas"]["VerdictCount"][];
+        };
+        /** RotateIn */
+        RotateIn: {
+            /** Key */
+            key: string;
+            /**
+             * Top Points
+             * @enum {string}
+             */
+            top_points: "left" | "right" | "down";
+        };
+        /** SaveGroupingIn */
+        SaveGroupingIn: {
+            /** Batch Id */
+            batch_id: number;
+            /** Groups */
+            groups: string[][];
+        };
+        /** SaveGroupingOut */
+        SaveGroupingOut: {
+            /** Changed */
+            changed: boolean;
+        };
+        /** SmartMatch */
+        SmartMatch: {
+            /** Name */
+            name: string;
+            /** Name Score */
+            name_score: number;
+            /** Phone Score */
+            phone_score: number;
+            /** Quick Apply */
+            quick_apply: boolean;
+            /** Label */
+            label: string;
+        };
+        /** StartOcrIn */
+        StartOcrIn: {
+            /** Provider */
+            provider: string;
+            /** Batch Id */
+            batch_id?: number | null;
+            /**
+             * Reprocess
+             * @default false
+             */
+            reprocess: boolean;
+            /**
+             * Limit
+             * @default 0
+             */
+            limit: number;
+        };
+        /** StartParseIn */
+        StartParseIn: {
+            /** Extractor */
+            extractor: string;
+            /**
+             * Reprocess
+             * @default false
+             */
+            reprocess: boolean;
+            /**
+             * Limit
+             * @default 0
+             */
+            limit: number;
+            /**
+             * Custom Instruction
+             * @default
+             */
+            custom_instruction: string;
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -553,6 +1585,20 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /** VerdictCount */
+        VerdictCount: {
+            /**
+             * Verdict
+             * @enum {string}
+             */
+            verdict: "accepted" | "marked" | "tossed";
+            /** Label */
+            label: string;
+            /** Color */
+            color: string;
+            /** Count */
+            count: number;
         };
         /**
          * VizItem
@@ -677,6 +1723,90 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AppConfig"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_config_api_config_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AppConfigPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppConfig"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    config_options_api_config_options_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigOptions"];
+                };
+            };
+        };
+    };
+    path_check_api_config_path_check_get: {
+        parameters: {
+            query?: {
+                path?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PathCheck"];
                 };
             };
             /** @description Validation Error */
@@ -1026,6 +2156,39 @@ export interface operations {
             };
         };
     };
+    edit_receipt_endpoint_api_receipt_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReceiptEditIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VizRecord"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     archived_media_api_media_archived__rel_path__get: {
         parameters: {
             query?: never;
@@ -1072,6 +2235,719 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    input_thumbnail_api_media_input_thumb__filename__get: {
+        parameters: {
+            query?: {
+                width?: number;
+            };
+            header?: never;
+            path: {
+                filename: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description JPEG thumbnail */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    queue_endpoint_api_review_queue_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewQueue"];
+                };
+            };
+        };
+    };
+    document_endpoint_api_review_document_get: {
+        parameters: {
+            query: {
+                key: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewDocument"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    hints_endpoint_api_review_hints_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HintsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HintsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decide_endpoint_api_review_decisions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecisionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clear_endpoint_api_review_decisions_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewSummary"];
+                };
+            };
+        };
+    };
+    undo_endpoint_api_review_decision_delete: {
+        parameters: {
+            query: {
+                key: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    index_status_api_ingest_index_get: {
+        parameters: {
+            query?: {
+                scheme?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IndexStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_index_api_ingest_index_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfirmIndexIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IndexStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    grouping_api_ingest_grouping_get: {
+        parameters: {
+            query?: {
+                batch_id?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupingOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_grouping_api_ingest_grouping_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveGroupingIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SaveGroupingOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    toss_page_api_ingest_pages_toss_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PageIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SaveGroupingOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recover_page_api_ingest_pages_recover_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PageIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SaveGroupingOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rotate_page_api_ingest_pages_rotate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RotateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SaveGroupingOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ocr_status_api_ingest_ocr_get: {
+        parameters: {
+            query?: {
+                provider?: string | null;
+                batch_id?: number | null;
+                reprocess?: boolean;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OcrStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_ocr_api_ingest_ocr_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartOcrIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    parse_status_api_ingest_parse_get: {
+        parameters: {
+            query?: {
+                reprocess?: boolean;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ParseStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_parse_api_ingest_parse_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartParseIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_status_api_ingest_archive_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveStatus"];
+                };
+            };
+        };
+    };
+    start_archive_api_ingest_archive_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobOut"];
+                };
+            };
+        };
+    };
+    current_job_api_jobs_current_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobOut"] | null;
+                };
+            };
+        };
+    };
+    get_job_api_jobs__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_job_api_jobs__job_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    job_events_api_jobs__job_id__events_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A `data:` event with the job (JobOut JSON) whenever it changes; the stream ends after the job finishes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": unknown;
+                };
             };
             /** @description Validation Error */
             422: {

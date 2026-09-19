@@ -9,10 +9,13 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 import analytics
+import receipt_edit
 from api import cache
 from api.deps import get_output_path
+from api.guards import no_job_running
 from api.schemas import (
-    BrandTotals, DateRange, MerchantProfile, MonthlySpend, MonthlyVolume, NameTotals, VizItem, VizRecord,
+    BrandTotals, DateRange, MerchantProfile, MonthlySpend, MonthlyVolume, NameTotals, ReceiptEditIn, VizItem,
+    VizRecord,
 )
 from api.serialization import df_records, to_jsonable
 
@@ -165,8 +168,13 @@ def merchant_endpoint(
     ]
     gallery = subset.sort_values("parsed_date", ascending=False)[slim_cols]
 
+    # Which branches of the brand these receipts came from (blank = the brand name with no remainder).
+    locations = [{"location": value or "(no remainder)", "count": int(count)}
+                 for value, count in subset["brand_location"].fillna("").value_counts().items()]
+
     return {
         "metrics": to_jsonable(analytics.merchant_metrics(subset)),
+        "locations": locations,
         "trend": df_records(analytics.complete_monthly_series(analytics.monthly_spend(dated), "spend")),
         "cadence": df_records(analytics.visit_cadence(dated)) if len(dated) >= 2 else [],
         "items": df_records(analytics.item_breakdown(merchant_items)) if not merchant_items.empty else [],
@@ -216,3 +224,32 @@ def receipt_endpoint(
         if not match.empty:
             return to_jsonable(match.iloc[0].to_dict())
     raise HTTPException(status_code=404, detail="document not found")
+
+
+@router.patch("/receipt", response_model=VizRecord)
+def edit_receipt_endpoint(body: ReceiptEditIn, output_path: Path = Depends(get_output_path)):
+    """Change an archived document: re-file its pages under the new name and rewrite their sidecars."""
+    df = cache.viz_records(output_path)
+    match = df[df["filename"] == body.file] if not df.empty else df
+    if match.empty:
+        raise HTTPException(status_code=404, detail="document not found")
+    paths = list(match.iloc[0]["paths"])
+
+    edit = receipt_edit.ReceiptEdit(
+        document_type=body.document_type, name=body.name, date=body.date, time=body.time,
+        cost=body.cost, currency=body.currency, address=body.address, language=body.language,
+        comment=body.comment,
+    )
+    try:
+        # Archive moves files under the same folders; an edit must not run alongside it.
+        with no_job_running("edit a document", kind="archive"):
+            receipt_edit.apply_receipt_edit(output_path, paths, edit)
+    except receipt_edit.NotEditable as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except FileExistsError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    cache.clear()  # the archive changed under every visualize page
+    return receipt_endpoint(file=body.file, output_path=output_path)

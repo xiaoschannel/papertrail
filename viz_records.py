@@ -16,6 +16,13 @@ from data import load_reorganized_state
 from models import Sidecar
 
 
+def page_order(sidecar: Sidecar, rel_path: str) -> tuple:
+    """Sort key putting a document's pages in the order they were scanned."""
+    if sidecar.batch_id is not None and sidecar.serial is not None:
+        return (0, sidecar.batch_id, sidecar.serial, rel_path)
+    return (1, 0, 0, rel_path)   # older sidecars without batch/serial keep filename order
+
+
 def build_viz_records(output_path: Path) -> pd.DataFrame:
     """One row per archived document (multi-page docs collapsed to their first page)."""
     _tossed, accepted_metadata = load_reorganized_state(output_path)
@@ -27,7 +34,9 @@ def build_viz_records(output_path: Path) -> pd.DataFrame:
 
     records = []
     for doc_id, pages in doc_groups.items():
-        pages.sort(key=lambda x: x[0])
+        # Scan order, not filename order: page 2's archived name is "… (2).png", which sorts BEFORE
+        # page 1's "….png" (space-paren < dot), so sorting by path would show the pages back to front.
+        pages.sort(key=lambda page: page_order(page[1], page[0]))
         first_path, first_sc = pages[0]
         paths = [p for p, _ in pages]
         review = first_sc.review

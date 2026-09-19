@@ -1,6 +1,6 @@
-from dotenv import load_dotenv
+from env import load_env
 
-load_dotenv()
+load_env()  # API keys: process env, then <repo>/.env, then the shared user-level file (see env.py)
 import streamlit as st
 
 st.set_page_config(page_title="Papertrail", layout="wide")

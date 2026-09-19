@@ -5,3 +5,6 @@ ROADMAP.md
 .claude/
 node_modules/
 frontend/dist/
+
+# throwaway sandbox archive (tools/sandbox_server.py)
+.sandbox/

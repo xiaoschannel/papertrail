@@ -4,8 +4,25 @@ import Merchant from './pages/Merchant.tsx'
 import CalendarPage from './pages/CalendarPage.tsx'
 import TimeCapsule from './pages/TimeCapsule.tsx'
 import Receipt from './pages/Receipt.tsx'
+import Review from './pages/Review.tsx'
+import FileIndex from './pages/FileIndex.tsx'
+import Ocr from './pages/Ocr.tsx'
+import Parse from './pages/Parse.tsx'
+import Archive from './pages/Archive.tsx'
+import Config from './pages/Config.tsx'
+import { JobIndicator, JobWatcher } from './components/jobs.tsx'
 
 const NAV = [
+  {
+    group: 'Ingest',
+    items: [
+      { to: '/file-index', label: 'File Index' },
+      { to: '/ocr', label: 'OCR' },
+      { to: '/parse', label: 'Parse' },
+      { to: '/review', label: 'Review' },
+      { to: '/archive', label: 'Archive' },
+    ],
+  },
   {
     group: 'Visualize',
     items: [
@@ -17,10 +34,14 @@ const NAV = [
       { to: '/calendar', label: 'Calendar' },
     ],
   },
+  {
+    group: 'Settings',
+    items: [{ to: '/config', label: 'Config' }],
+  },
 ]
 
-// Pages that are grids rather than text take the full width (see .main-inner.wide).
-const WIDE_ROUTES = ['/calendar']
+// Grid and multi-column workspace pages take the full width (see .main-inner.wide).
+const WIDE_ROUTES = ['/calendar', '/review', '/file-index']
 
 export default function App() {
   const { pathname } = useLocation()
@@ -46,7 +67,9 @@ export default function App() {
             ))}
           </div>
         ))}
+        <JobIndicator />
       </nav>
+      <JobWatcher />
 
       <main className="main">
         <div className={`main-inner${wide ? ' wide' : ''}`}>
@@ -57,6 +80,12 @@ export default function App() {
             <Route path="/calendar" element={<CalendarPage />} />
             <Route path="/timecapsule" element={<TimeCapsule />} />
             <Route path="/receipt" element={<Receipt />} />
+            <Route path="/file-index" element={<FileIndex />} />
+            <Route path="/ocr" element={<Ocr />} />
+            <Route path="/parse" element={<Parse />} />
+            <Route path="/review" element={<Review />} />
+            <Route path="/archive" element={<Archive />} />
+            <Route path="/config" element={<Config />} />
           </Routes>
         </div>
       </main>

@@ -8,11 +8,14 @@
     "gen:api": "openapi-typescript openapi.json -o src/api/schema.d.ts",
     "typecheck": "tsc -b",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "dev:sandbox": "vite --mode sandbox"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.102.8",
+    "dompurify": "^3.4.15",
     "echarts": "^6.1.0",
+    "marked": "^18.0.13",
     "openapi-fetch": "^0.17.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",

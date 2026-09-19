@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../api/client.ts'
+import { useConfig, useSaveConfig } from '../api/config.ts'
 import { isoDateParts } from '../format.ts'
 import { ReceiptCard } from '../components/DocumentCard.tsx'
 import { Empty, ErrorState, Loading } from '../components/ui.tsx'
@@ -22,35 +23,79 @@ const firstOfMonth = (d: Date) => new Date(d.getFullYear(), d.getMonth(), 1)
 const firstOfNextMonth = (d: Date) => new Date(d.getFullYear(), d.getMonth() + 1, 1)
 
 export default function CalendarPage() {
-  const [period, setPeriod] = useState<Period>('month')
-  const [anchor, setAnchor] = useState<string | null>(null)
+  const [period, setPeriodState] = useState<Period | null>(null)
+  const [anchor, setAnchorState] = useState<string | null>(null)
 
-  // Open on the newest month that actually has documents, not an empty current
-  // month (the archive may end months ago). With no dated documents at all, fall
-  // back to the current month rather than waiting forever.
+  // Where the calendar was left last time (as in Streamlit; the Config page shows both values).
+  const config = useConfig()
+  const saveConfig = useSaveConfig()
   const range = useQuery({ queryKey: ['date-range'], queryFn: api.dateRange })
-  useEffect(() => {
-    if (anchor || !range.isSuccess) return
-    const newest = range.data?.max ? parseIso(range.data.max.slice(0, 10)) : new Date()
-    setAnchor(iso(firstOfMonth(newest)))
-  }, [range.isSuccess, range.data, anchor])
 
-  if (!anchor) {
+  // Fall back to the newest month that actually has documents, not an empty current month (the
+  // archive may end months ago). With no dated documents at all, use the current month.
+  useEffect(() => {
+    if (anchor || !range.isSuccess || !config.isSuccess) return
+    const newest = range.data?.max ? parseIso(range.data.max.slice(0, 10)) : new Date()
+    const remembered = config.data.calendar_date ? parseIso(config.data.calendar_date) : null
+    const view: Period = config.data.calendar_period === 'week' ? 'week' : 'month'
+    const start = remembered && !Number.isNaN(remembered.getTime()) ? remembered : newest
+    setPeriodState(view)
+    setAnchorState(place(view, iso(start)))
+  }, [range.isSuccess, range.data, config.isSuccess, config.data, anchor])
+
+  const remember = (view: Period, day: string) => saveConfig.mutate({ calendar_period: view, calendar_date: day })
+  // The anchor is always a period START (Monday, or the 1st) inside the archive's range: switching
+  // view or picking a mid-period day snaps to it, as in Streamlit, so the date picker's value always
+  // satisfies its own bounds and the view always lands on a period that can hold documents.
+  const startOf = (view: Period, day: string) =>
+    iso(view === 'week' ? mondayOfWeek(parseIso(day)) : firstOfMonth(parseIso(day)))
+  const place = (view: Period, day: string) => {
+    const first = range.data?.min ? startOf(view, range.data.min.slice(0, 10)) : undefined
+    const last = range.data?.max ? startOf(view, range.data.max.slice(0, 10)) : undefined
+    const start = startOf(view, day)
+    if (first !== undefined && start < first) return first
+    if (last !== undefined && start > last) return last
+    return start
+  }
+  const setPeriod = (next: Period) => {
+    setPeriodState(next)
+    if (anchor) {
+      const day = place(next, anchor)
+      setAnchorState(day)
+      remember(next, day)
+    }
+  }
+  const setAnchor = (next: string) => {
+    if (!period) return
+    const day = place(period, next)
+    setAnchorState(day)
+    remember(period, day)
+  }
+
+  if (!anchor || !period) {
     return (
       <>
         <h1>Calendar</h1>
-        {range.isError ? <ErrorState error={range.error} /> : <Loading what="calendar" />}
+        {range.isError ? <ErrorState error={range.error} />
+          : config.isError ? <ErrorState error={config.error} />
+            : <Loading what="calendar" />}
       </>
     )
   }
-  return <CalendarBody period={period} setPeriod={setPeriod} anchor={anchor} setAnchor={setAnchor} />
+  return (
+    <CalendarBody period={period} setPeriod={setPeriod} anchor={anchor} setAnchor={setAnchor}
+      min={range.data?.min ? range.data.min.slice(0, 10) : undefined}
+      max={range.data?.max ? range.data.max.slice(0, 10) : undefined} />
+  )
 }
 
-function CalendarBody({ period, setPeriod, anchor, setAnchor }: {
+function CalendarBody({ period, setPeriod, anchor, setAnchor, min, max }: {
   period: Period
   setPeriod: (p: Period) => void
   anchor: string
   setAnchor: (iso: string) => void
+  min?: string | undefined
+  max?: string | undefined
 }) {
   const anchorDate = parseIso(anchor)
   const start = period === 'week' ? mondayOfWeek(anchorDate) : firstOfMonth(anchorDate)
@@ -71,10 +116,21 @@ function CalendarBody({ period, setPeriod, anchor, setAnchor }: {
     return out
   }, [anchor, period])
 
+  // The picker holds a period START, so its bounds have to be period starts too, or the browser
+  // marks the value out of range and the first days of the earliest month can't be picked.
+  const align = (day: string) => iso(period === 'week' ? mondayOfWeek(parseIso(day)) : firstOfMonth(parseIso(day)))
+  const minAnchor = min !== undefined ? align(min) : undefined
+  const maxAnchor = max !== undefined ? align(max) : undefined
+
+  // Paging stops at the archive's first and last document, so you can't walk into empty years.
+  const next = (dir: 1 | -1) => iso(period === 'week'
+    ? addDays(start, 7 * dir)
+    : new Date(start.getFullYear(), start.getMonth() + dir, 1))
+  const beyond = (day: string, dir: 1 | -1) =>
+    (dir < 0 && minAnchor !== undefined && day < minAnchor) || (dir > 0 && maxAnchor !== undefined && day > maxAnchor)
+  const canShift = (dir: 1 | -1) => !beyond(next(dir), dir)
   const shift = (dir: 1 | -1) => {
-    setAnchor(iso(period === 'week'
-      ? addDays(start, 7 * dir)
-      : new Date(start.getFullYear(), start.getMonth() + dir, 1)))
+    if (canShift(dir)) setAnchor(next(dir))
   }
 
   const title = period === 'week'
@@ -98,14 +154,15 @@ function CalendarBody({ period, setPeriod, anchor, setAnchor }: {
         </div>
         <div className="field">
           <label>Go to date</label>
-          <input type="date" value={anchor} onChange={(e) => e.target.value && setAnchor(e.target.value)} />
+          <input type="date" value={anchor} min={minAnchor} max={maxAnchor}
+            onChange={(e) => e.target.value && setAnchor(e.target.value)} />
         </div>
         <div className="field">
           <label>&nbsp;</label>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <button onClick={() => shift(-1)}>← Prev</button>
+            <button disabled={!canShift(-1)} onClick={() => shift(-1)}>← Prev</button>
             <strong style={{ minWidth: 160, textAlign: 'center' }}>{title}</strong>
-            <button onClick={() => shift(1)}>Next →</button>
+            <button disabled={!canShift(1)} onClick={() => shift(1)}>Next →</button>
           </div>
         </div>
       </div>

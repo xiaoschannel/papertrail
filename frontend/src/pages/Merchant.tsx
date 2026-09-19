@@ -103,6 +103,24 @@ export default function Merchant() {
               </ChartCard>
             </div>
 
+            {mode === 'brand' && detail.data.locations.length > 1 && (
+              <Card title="Locations" hint={`${detail.data.locations.length} branch(es)`}>
+                <div className="table-wrap short">
+                  <table>
+                    <thead><tr><th>Location</th><th className="num">Receipts</th></tr></thead>
+                    <tbody>
+                      {detail.data.locations.map((row) => (
+                        <tr key={row.location}>
+                          <td className="ellipsis" title={row.location}>{row.location}</td>
+                          <td className="num">{num(row.count)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            )}
+
             {detail.data.items.length > 0 && (
               <Card title="Item Breakdown" hint={`${detail.data.items.length} distinct item(s)`}>
                 <div className="table-wrap">

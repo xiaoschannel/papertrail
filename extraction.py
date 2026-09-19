@@ -1,6 +1,6 @@
 import typing
 
-from ollama import chat
+from ollama import chat, generate
 from openai import OpenAI
 
 from models import DocumentExtraction, DocumentExtractionAdapter, ExtractionFlat
@@ -123,6 +123,11 @@ def extract_openai(ocr_text: str, has_boxes: bool = False, custom_instruction: s
         temperature=0.2,
     )
     return response.choices[0].message.parsed.to_extraction()
+
+
+def unload_ollama() -> None:
+    """Free the Ollama extraction model's memory now instead of after Ollama's idle timeout."""
+    generate(model=OLLAMA_MODEL, prompt="", keep_alive=0)
 
 
 EXTRACTORS: dict[str, typing.Callable[..., DocumentExtraction]] = {

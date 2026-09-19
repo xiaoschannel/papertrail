@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api, type GroupBy, type RankBy } from '../api/client.ts'
+import { useConfig, useSaveConfig } from '../api/config.ts'
 import { totalsLabel, type MerchantTotals } from '../api/types.ts'
 import { num } from '../format.ts'
 import { Card, ChartCard, Empty, ErrorState, Loading } from '../components/ui.tsx'
@@ -11,10 +12,22 @@ import { monthlyBars, rankedBars } from '../components/chartOptions.ts'
 /** The two monthly charts share one timeline, so zooming either keeps them aligned. */
 const TIMELINE_GROUP = 'dashboard-timeline'
 
+/** `dashboard_rank_by` is stored the way the Config page shows it. */
+const RANK_LABEL: Record<RankBy, string> = { total_spend: 'Total Spend', visit_count: 'Visit Count' }
+
 export default function Dashboard() {
   const [year, setYear] = useState<number | undefined>(undefined)   // undefined = all years
-  const [rankBy, setRankBy] = useState<RankBy>('total_spend')
   const [groupBy, setGroupBy] = useState<GroupBy>('brand')
+
+  // The ranking is remembered in config.json (as in Streamlit), so the dashboard opens the way it was left.
+  const config = useConfig()
+  const saveConfig = useSaveConfig()
+  const [chosenRank, setChosenRank] = useState<RankBy | null>(null)
+  const rankBy: RankBy = chosenRank ?? (config.data?.dashboard_rank_by === 'Visit Count' ? 'visit_count' : 'total_spend')
+  const pickRank = (next: RankBy) => {
+    setChosenRank(next)
+    saveConfig.mutate({ dashboard_rank_by: RANK_LABEL[next] })
+  }
 
   const years = useQuery({ queryKey: ['years'], queryFn: api.years })
   const spend = useQuery({ queryKey: ['monthly-spend', year], queryFn: () => api.monthlySpend(year) })
@@ -80,8 +93,8 @@ export default function Dashboard() {
           <div className="field">
             <label>Rank by</label>
             <div className="segmented">
-              <button className={rankBy === 'total_spend' ? 'on' : ''} onClick={() => setRankBy('total_spend')}>Total Spend</button>
-              <button className={rankBy === 'visit_count' ? 'on' : ''} onClick={() => setRankBy('visit_count')}>Visits</button>
+              <button className={rankBy === 'total_spend' ? 'on' : ''} onClick={() => pickRank('total_spend')}>Total Spend</button>
+              <button className={rankBy === 'visit_count' ? 'on' : ''} onClick={() => pickRank('visit_count')}>Visits</button>
             </div>
           </div>
           <div className="field">

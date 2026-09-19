@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import type { ReactNode } from 'react'
 
 export function Card({ title, hint, children, className = '' }:
@@ -39,6 +40,10 @@ export function Loading({ what = 'data' }: { what?: string }) {
 
 export function ErrorState({ error }: { error: unknown }) {
   const message = error instanceof Error ? error.message : String(error)
+  // "Set the … path in Config first." is a setup step, not a failure: send the user there.
+  if (message.includes('in Config first')) {
+    return <div className="state">{message} <Link className="rowlink" to="/config">Open Config →</Link></div>
+  }
   return <div className="state error">Failed to load: {message}</div>
 }
 

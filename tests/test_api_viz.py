@@ -160,3 +160,51 @@ def test_receipt_lookup_and_404(api_client):
     assert ok.status_code == 200
     assert len(ok.json()["paths"]) == 2
     assert api_client.get("/api/receipt", params={"file": "nope"}).status_code == 404
+
+
+# --- editing an archived document -----------------------------------------------------------
+def _first_record(api_client):
+    return api_client.get("/api/viz/records").json()[0]
+
+
+def test_edit_receipt_refiles_and_returns_the_updated_record(api_client, configured_archive):
+    record = _first_record(api_client)
+    body = {"file": record["filename"], "document_type": record["document_type"], "name": "Edited Shop",
+            "date": record["date"], "time": record["time"], "cost": 42.0, "currency": record["currency"],
+            "address": record["address"], "language": record["language"], "comment": "fixed the total"}
+
+    updated = api_client.patch("/api/receipt", json=body).json()
+
+    assert updated["name"] == "Edited Shop" and updated["cost"] == 42.0
+    assert updated["comment"] == "fixed the total"
+    assert "Edited Shop" in updated["path"] and (configured_archive / updated["path"]).exists()
+    assert not (configured_archive / record["path"]).exists()
+    # the visualize pages see the change immediately (server cache cleared)
+    fresh = next(r for r in api_client.get("/api/viz/records").json() if r["filename"] == record["filename"])
+    assert (fresh["name"], fresh["cost"], fresh["path"]) == ("Edited Shop", 42.0, updated["path"])
+
+
+def test_edit_receipt_rejects_bad_values_and_unknown_documents(api_client):
+    record = _first_record(api_client)
+    body = {"file": record["filename"], "document_type": "receipt", "name": "x", "date": "nope",
+            "time": record["time"], "cost": 1.0, "currency": "JPY"}
+    refused = api_client.patch("/api/receipt", json=body)
+    assert refused.status_code == 422 and "Date" in refused.json()["detail"]
+
+    assert api_client.patch("/api/receipt", json={**body, "file": "no-such-doc", "date": record["date"]}).status_code == 404
+
+    no_cost = api_client.patch("/api/receipt", json={**body, "date": record["date"], "cost": None})
+    assert no_cost.status_code == 422 and no_cost.json()["detail"] == "Receipt requires: cost"
+
+
+def test_merchant_profile_lists_brand_locations(api_client):
+    merchants = api_client.get("/api/merchants", params={"group_by": "brand"}).json()
+    brand = next(m for m in merchants if m["brand_id"])
+    profile = api_client.get("/api/analytics/merchant", params={"brand_id": brand["brand_id"]}).json()
+
+    receipts = api_client.get("/api/analytics/merchant", params={"brand_id": brand["brand_id"]}).json()["receipts"]
+    expected: dict[str, int] = {}
+    for receipt in receipts:
+        expected[receipt["brand_location"] or "(no remainder)"] = expected.get(receipt["brand_location"] or "(no remainder)", 0) + 1
+    assert {row["location"]: row["count"] for row in profile["locations"]} == expected
+    assert sum(row["count"] for row in profile["locations"]) == profile["metrics"]["visit_count"]

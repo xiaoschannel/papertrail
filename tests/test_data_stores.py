@@ -54,10 +54,10 @@ def test_build_smart_match_history(ingest_dir):
     assert any(r.extracted == "Business Card - John Doe" for r in rows)
 
 
-def test_clear_extractions_decisions_keeps_only_tossed_without_extraction(tmp_path):
-    # Characterizes the actual rule: the batch's extractions are all dropped, and
-    # decisions are dropped for every key that is either non-tossed OR still has an
-    # extraction. A tossed decision survives only when it has no extraction entry.
+def test_clear_extractions_decisions_keeps_tossed_decisions(tmp_path):
+    # Regrouping a batch drops all of its extractions and every non-tossed decision. Tosses survive
+    # (tossed pages can't be regrouped, so their document keys stay valid). Streamlit also dropped a
+    # tossed decision that had an extraction, which silently un-tossed it.
     from models import ReceiptResult, ReviewDecision
 
     def receipt(name, cost):
@@ -71,14 +71,14 @@ def test_clear_extractions_decisions_keeps_only_tossed_without_extraction(tmp_pa
     data.save_extractions(tmp_path, {"1:1": receipt("A", 1.0), "1:2": receipt("B", 2.0)})
     data.save_decisions(tmp_path, {
         "1:1": decision("accepted", "A"),
-        "1:2": decision("tossed", "B"),    # tossed BUT has an extraction -> removed
+        "1:2": decision("tossed", "B"),    # tossed with an extraction -> kept
         "1:9": decision("tossed", "C"),    # tossed, no extraction -> preserved
     })
 
     data.clear_extractions_decisions_for_batch(tmp_path, 1)
 
     assert data.load_extractions(tmp_path) == {}
-    assert set(data.load_decisions(tmp_path)) == {"1:9"}
+    assert set(data.load_decisions(tmp_path)) == {"1:2", "1:9"}
 
 
 def test_replace_groups_for_batch(ingest_dir):
@@ -118,3 +118,45 @@ def test_scan_organized_filenames(archive_dir):
     assert len(organized) == 11
     assert "08102025143000_201.png" in organized  # tossed
     assert "08102025142000_202.png" in organized  # marked
+
+
+def test_save_decisions_retries_while_the_file_is_briefly_locked(ingest_dir, monkeypatch):
+    # Windows refuses to replace a file another process has open; the save waits it out.
+    from pathlib import Path
+
+    import data
+
+    decisions = data.load_decisions(ingest_dir)
+    real_replace = Path.replace
+    calls = {"n": 0}
+
+    def flaky_replace(self, target):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise PermissionError("locked")
+        return real_replace(self, target)
+
+    monkeypatch.setattr(Path, "replace", flaky_replace)
+    monkeypatch.setattr(data.time, "sleep", lambda _s: None)
+    decisions["1:6"] = decisions["1:6"].model_copy(update={"comment": "saved"})
+    data.save_decisions(ingest_dir, decisions)
+
+    assert calls["n"] == 3
+    assert data.load_decisions(ingest_dir)["1:6"].comment == "saved"
+    assert not list(ingest_dir.glob("decisions.*.tmp"))
+
+
+def test_save_decisions_gives_up_and_cleans_up_when_locked_for_good(ingest_dir, monkeypatch):
+    from pathlib import Path
+
+    import pytest
+
+    import data
+
+    before = (ingest_dir / "decisions.json").read_text(encoding="utf-8")
+    monkeypatch.setattr(Path, "replace", lambda self, target: (_ for _ in ()).throw(PermissionError("locked")))
+    monkeypatch.setattr(data.time, "sleep", lambda _s: None)
+    with pytest.raises(PermissionError):
+        data.save_decisions(ingest_dir, {})
+    assert (ingest_dir / "decisions.json").read_text(encoding="utf-8") == before
+    assert not list(ingest_dir.glob("decisions.*.tmp"))
