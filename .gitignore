@@ -8,3 +8,8 @@ frontend/dist/
 
 # throwaway sandbox archive (tools/sandbox_server.py)
 .sandbox/
+
+# local tooling, whatever created it
+.venv/
+.pytest_cache/
+.env.*

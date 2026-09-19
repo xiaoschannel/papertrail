@@ -41,3 +41,33 @@ def test_extraction_flat_to_other_and_corrupted():
 
     corrupted = ExtractionFlat(document_type="corrupted").to_extraction()
     assert isinstance(corrupted, CorruptedResult)
+
+
+def test_each_hosted_model_is_its_own_extractor_and_one_refusing_a_temperature_is_asked_without(monkeypatch):
+    import httpx
+    from openai import BadRequestError
+
+    import extraction
+    from models import ExtractionFlat
+
+    assert [name for name in extraction.EXTRACTORS if name.startswith("OpenAI")] == [
+        "OpenAI - gpt-5.4", "OpenAI - gpt-5.6-terra", "OpenAI - gpt-5.6-luna"]
+    calls = []
+
+    class Completions:
+        def parse(self, **request):
+            calls.append(request)
+            if "temperature" in request:
+                raise BadRequestError("Unsupported value: 'temperature' does not support 0.2", body=None,
+                                      response=httpx.Response(400, request=httpx.Request("POST", "https://x")))
+            message = type("Message", (), {"parsed": ExtractionFlat(document_type="corrupted")})
+            return type("Response", (), {"choices": [type("Choice", (), {"message": message})]})
+
+    class Client:
+        chat = type("Chat", (), {"completions": Completions()})
+
+    monkeypatch.setattr(extraction, "OpenAI", Client)
+    result = extraction.EXTRACTORS["OpenAI - gpt-5.6-luna"]("text")
+
+    assert result.document_type == "corrupted"
+    assert [(c["model"], "temperature" in c) for c in calls] == [("gpt-5.6-luna", True), ("gpt-5.6-luna", False)]

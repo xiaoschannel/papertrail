@@ -20,6 +20,15 @@ jobs:
           pip install pytest
       - name: Run tests
         run: python -m pytest -q
+      # The committed fixtures are generated: they must be exactly what the generator makes.
+      - name: Test fixtures match their generator
+        run: |
+          python tools/build_fixture.py
+          if [ -n "$(git status --porcelain --untracked-files=all -- tests/fixtures)" ]; then
+            git status --short -- tests/fixtures
+            echo "::error::tests/fixtures differ from tools/build_fixture.py: regenerate and commit them"
+            exit 1
+          fi
 
   frontend:
     runs-on: ubuntu-latest

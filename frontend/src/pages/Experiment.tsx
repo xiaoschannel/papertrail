@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type DragEvent, type ReactNode } from 'rea
 import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, experimentScanUrl, experimentSeenUrl } from '../api/client.ts'
-import { useSaveConfig } from '../api/config.ts'
+import { useConfig, useSaveConfig } from '../api/config.ts'
 import type { ExperimentOptions, ExperimentRun, ExperimentTreatment, FieldBox } from '../api/types.ts'
 import { JobPanel, useJobGate, useTrackJob } from '../components/jobs.tsx'
 import { Markdown } from '../components/Markdown.tsx'
@@ -110,9 +110,11 @@ function Bench({ run, options }: { run: ExperimentRun; options: ExperimentOption
   const [ocrModel, setOcrModel] = useState(options.ocr_model)
   const [withBoxes, setWithBoxes] = useState(options.with_boxes)
   const [extractor, setExtractor] = useState(options.extractor)
-  const [instruction, setInstruction] = useState(options.custom_instruction)
-  const saveInstruction = useSaveConfig()
-  const lastSaved = useRef(options.custom_instruction)
+  // Parse's own instructions, as saved now (Review and the Parse page edit them too).
+  const savedInstruction = useConfig().data?.parse_custom_instruction ?? options.custom_instruction
+  const [typed, setInstruction] = useState<string | null>(null)
+  const instruction = typed ?? savedInstruction
+  const saveConfig = useSaveConfig()
 
   const grounding = options.grounding_models.includes(ocrModel)
   const ocrGate = useJobGate('experiment-ocr', { gpu: true })
@@ -158,9 +160,8 @@ function Bench({ run, options }: { run: ExperimentRun; options: ExperimentOption
     onSuccess: started,
   })
   const saveOnBlur = () => {
-    if (instruction !== lastSaved.current) {
-      lastSaved.current = instruction
-      saveInstruction.mutate({ parse_custom_instruction: instruction })
+    if (typed !== null && typed !== savedInstruction) {
+      saveConfig.mutate({ parse_custom_instruction: typed }, { onSuccess: () => setInstruction(null) })
     }
   }
 
@@ -191,7 +192,10 @@ function Bench({ run, options }: { run: ExperimentRun; options: ExperimentOption
         run.ocr.structured_seconds != null ? ` + boxes ${seconds(run.ocr.structured_seconds)}` : ''}` : undefined}>
         <div className="field">
           <label htmlFor="exp-ocr">Model</label>
-          <select id="exp-ocr" value={ocrModel} onChange={(e) => setOcrModel(e.target.value)}>
+          <select id="exp-ocr" value={ocrModel} onChange={(e) => {
+            setOcrModel(e.target.value)
+            saveConfig.mutate({ ocr_model: e.target.value })
+          }}>
             {options.ocr_models.map((name) => <option key={name} value={name}>{name}</option>)}
           </select>
         </div>
@@ -215,13 +219,16 @@ function Bench({ run, options }: { run: ExperimentRun; options: ExperimentOption
       <Card title="Parse" hint={run.parse ? `${run.parse.extractor} · ${seconds(run.parse.seconds)}` : undefined}>
         <div className="field">
           <label htmlFor="exp-extractor">Extractor</label>
-          <select id="exp-extractor" value={extractor} onChange={(e) => setExtractor(e.target.value)}>
+          <select id="exp-extractor" value={extractor} onChange={(e) => {
+            setExtractor(e.target.value)
+            saveConfig.mutate({ extractor_model: e.target.value })
+          }}>
             {options.extractors.map((name) => <option key={name} value={name}>{name}</option>)}
           </select>
         </div>
         <div className="field parse-instructions">
           <label htmlFor="exp-instruction">
-            Custom instructions (Parse's own, added to the prompt){saveInstruction.isPending ? ' — saving…' : ''}
+            Custom instructions (Parse's own, added to the prompt){saveConfig.isPending ? ' — saving…' : ''}
           </label>
           <textarea id="exp-instruction" rows={3} value={instruction}
             placeholder="e.g. Prefer the Japanese store name over the romanized one"

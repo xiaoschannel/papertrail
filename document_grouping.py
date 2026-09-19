@@ -1,6 +1,6 @@
 """Pure helpers for linking scanned pages into multi-page documents (File Index step).
 
-Extracted from ``pages/ingest/file_index.py`` so the Streamlit page and the web API share them.
+Shared by the ingest pipeline, the Marked Workshop and scan treatment, and free of any UI code.
 A batch's pages are shown in scan order; tossed pages keep their slot but never join a group, and
 ``links[i]`` says whether active page ``i`` continues into active page ``i + 1``.
 """
@@ -98,7 +98,7 @@ def build_display_state(
 
 
 #: Keyed by where the TOP of the page currently points (the File Index arrows): the transform that
-#: turns it upright. Same transforms as the Streamlit page's ←, → and ↓ buttons.
+#: turns it upright.
 ROTATIONS = {
     "left": Image.Transpose.ROTATE_270,   # top points left  -> rotate 90° clockwise
     "right": Image.Transpose.ROTATE_90,   # top points right -> rotate 90° counter-clockwise

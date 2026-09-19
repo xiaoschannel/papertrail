@@ -1,7 +1,7 @@
-"""Pure archive/index integrity checks, extracted from the Dev pages.
+"""Pure archive/index integrity checks behind the Dev pages.
 
-Used by ``pages/dev/sanity_check.py`` and ``pages/dev/index_audit.py`` and
-directly unit-testable. No ``streamlit`` import.
+Used by Sanity Check and Index Audit (``api/routers/dev.py``) and directly
+unit-testable.
 """
 
 from __future__ import annotations

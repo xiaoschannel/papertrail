@@ -11,12 +11,17 @@ export function useConfig() {
 
 /**
  * Save a few settings. Only the given fields are sent (PATCH), so a page remembering its own view
- * can't revert a model another page just chose, and the fresh config replaces the cached one.
+ * can't revert a model another page just chose, and the fresh config replaces the cached one. Pages whose
+ * answers carry a setting (OCR's and Parse's status, the Experiment bench) are re-read too.
  */
 export function useSaveConfig() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (patch: Partial<AppConfig>) => api.patchConfig(patch),
-    onSuccess: (fresh) => queryClient.setQueryData(CONFIG_KEY, fresh),
+    onSuccess: (fresh) => {
+      queryClient.setQueryData(CONFIG_KEY, fresh)
+      void queryClient.invalidateQueries({ queryKey: ['ingest'] })
+      void queryClient.invalidateQueries({ queryKey: ['dev', 'experiment'], exact: true })
+    },
   })
 }

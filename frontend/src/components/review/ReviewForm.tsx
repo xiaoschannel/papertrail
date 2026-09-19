@@ -111,11 +111,12 @@ export function ReviewForm({ doc, form, onChange, hints, activeFields, onActivat
           Smart match ({doc.smart_matches.length})
           {doc.smart_matches.length ? ` — best ${pct(bestNameScore)}` : ''}
         </label>
-        <select id="rv-smart" value="" onChange={(e) => e.target.value && onChange({ name: e.target.value })}
+        <select id="rv-smart" value={doc.smart_matches.some((m) => m.name === form.name) ? form.name : ''}
+          onChange={(e) => e.target.value && onChange({ name: e.target.value })}
           disabled={doc.smart_matches.length === 0}>
           <option value="">{doc.smart_matches.length ? 'Pick a confirmed name…' : 'No similar names'}</option>
-          {/* Streamlit showed a score only on the quick-apply buttons; the weaker candidates live here,
-              where the score is exactly what tells you whether to trust the suggestion. */}
+          {/* Every candidate is listed here with its score, the weaker ones included: the score is
+              exactly what tells you whether to trust the suggestion. */}
           {doc.smart_matches.map((m) => (
             <option key={m.name} value={m.name}>{`${m.name} — ${scoreText(m)}`}</option>
           ))}
@@ -128,7 +129,8 @@ export function ReviewForm({ doc, form, onChange, hints, activeFields, onActivat
           {TYPES.map((t) => (
             <button key={t.value} className={form.document_type === t.value ? 'on' : ''}
               aria-pressed={form.document_type === t.value}
-              onClick={() => onChange({ document_type: t.value })}>{t.label}</button>
+              onClick={() => onChange(t.value === 'receipt' && form.cost.trim() === ''
+                ? { document_type: t.value, cost: '0' } : { document_type: t.value })}>{t.label}</button>
           ))}
         </div>
       </div>
@@ -172,7 +174,7 @@ export function ReviewForm({ doc, form, onChange, hints, activeFields, onActivat
               <button className={form.currency === 'JPY' ? 'on' : ''} aria-pressed={form.currency === 'JPY'}
                 title={form.currency === 'JPY' ? 'Back to the previous currency' : 'Set currency to JPY'}
                 onClick={() => {
-                  // Like Streamlit's checkbox: pressing it again gives back what was in the box.
+                  // A toggle: pressing it again gives back what was in the box.
                   if (form.currency === 'JPY') {
                     onChange({ currency: beforeJpy.current || doc.defaults.currency || '' })
                   } else {

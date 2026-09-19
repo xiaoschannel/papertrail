@@ -1,6 +1,6 @@
-"""FastAPI backend for Papertrail, part of the Streamlit -> web migration.
+"""FastAPI backend for Papertrail.
 
-Thin HTTP layer over the existing pure Python core. Importing this package puts
+Thin HTTP layer over the pure Python core. Importing this package puts
 the repo root on sys.path so the top-level modules (settings, data, viz_records,
 analytics, ...) resolve whether launched via uvicorn or pytest.
 """

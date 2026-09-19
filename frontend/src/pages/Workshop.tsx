@@ -10,10 +10,11 @@ import { Markdown } from '../components/Markdown.tsx'
 import {
   INPUT_SOURCES, ReviewForm, initialForm, parseCost, type FormState,
 } from '../components/review/ReviewForm.tsx'
-import { ScanOverlay } from '../components/review/ScanOverlay.tsx'
+import { ScanOverlay, type Turn } from '../components/review/ScanOverlay.tsx'
 import { CompareButton, DEFAULT_ENHANCEMENT, TreatmentControls, isTreated } from '../components/ScanTreatment.tsx'
 import { useGridColumnCount } from '../components/useGridColumnCount.ts'
 import { afterArchiveEdit } from '../api/invalidate.ts'
+import { useSaveConfig } from '../api/config.ts'
 import { money } from '../format.ts'
 import { Card, Empty, ErrorState, Loading } from '../components/ui.tsx'
 import '../components/review/review.css'
@@ -45,16 +46,18 @@ export default function Workshop() {
     queryFn: () => api.workshop.queue(key ?? undefined),
   })
   const document = workshop.data?.document ?? null
+  const reread = workshop.data?.reread ?? null
 
-  // Each document starts from its own stored values and an untreated scan, as Streamlit kept them per file.
+  // Each document starts from its own stored values and an untreated scan, never the last one's edits;
+  // one with a reread waiting shows its pages turned the way that reread read them.
   const documentKey = document?.key
-  useEffect(() => setEnhancement(DEFAULT_ENHANCEMENT), [documentKey])
+  const rereadTurn = reread?.top_points
+  useEffect(() => setEnhancement({ ...DEFAULT_ENHANCEMENT, top_points: rereadTurn ?? '' }), [documentKey, rereadTurn])
   useEffect(() => setForm(document ? startForm(document) : null), [document])
-  // A finished reread has turned the files upright, so the preview must stop turning them.
-  const finished = gate.job?.status === 'succeeded' ? gate.job.id : null
-  useEffect(() => {
-    if (finished) setEnhancement((current) => ({ ...current, top_points: '' }))
-  }, [finished])
+  const discard = useMutation({
+    mutationFn: (documentKey: string) => api.workshop.discardReread(documentKey),
+    onSuccess: (body) => queryClient.setQueryData(['curate', 'workshop', key], body),
+  })
 
   if (workshop.isPending) return <Loading what="marked documents" />
   if (workshop.error) return <ErrorState error={workshop.error} />
@@ -80,6 +83,18 @@ export default function Workshop() {
             {documents[position]?.comment && <span className="config-hint">“{documents[position].comment}”</span>}
           </div>
 
+          {reread && (
+            <div className="reread-note" role="status">
+              <span>
+                Showing a reread with <strong>{reread.ocr_model}</strong> and <strong>{reread.extractor}</strong>.
+                Nothing is saved yet: Accept keeps it{reread.top_points ? ' and turns the pages as it read them' : ''};
+                Toss or Discard drops it.
+              </span>
+              <button disabled={discard.isPending} onClick={() => discard.mutate(document.key)}>Discard the reread</button>
+              {discard.error && <span className="neg">{discard.error.message}</span>}
+            </div>
+          )}
+
           <div className="review-layout">
             <Card title="OCR text" className="review-col">
               {document.ocr_text
@@ -90,7 +105,7 @@ export default function Workshop() {
             <Scan document={document} enhancement={enhancement} onChange={setEnhancement}
               ocrModels={ocrModels} extractors={extractors}
               ocrModel={workshop.data.ocr_model} extractor={workshop.data.extractor}
-              blockedBy={gate.blockedBy} job={gate.job} revision={finished ?? ''}
+              blockedBy={gate.blockedBy} job={gate.job} rereadTurn={rereadTurn ?? null}
               activeFields={activeFields} onHoverField={(field) => setActiveFields(field ? [field] : [])}
               onStarted={(job) => {
                 track(job)
@@ -101,7 +116,7 @@ export default function Workshop() {
               activeFields={activeFields}
               onActivate={(input) => setActiveFields(input ? INPUT_SOURCES[input] ?? [] : [])}
               onDecided={() => {
-                // Keep your place, as Streamlit did: the next document moves into this slot (the previous
+                // Keep your place: the next document moves into this slot (the previous
                 // one when this was the last). The server's own answer would start over from the first.
                 const after = documents[position + 1] ?? documents[position - 1]
                 setKey(after?.key ?? null)
@@ -117,7 +132,7 @@ export default function Workshop() {
 }
 
 function Scan({
-  document, enhancement, onChange, ocrModels, extractors, ocrModel, extractor, blockedBy, job, revision,
+  document, enhancement, onChange, ocrModels, extractors, ocrModel, extractor, blockedBy, job, rereadTurn,
   activeFields, onHoverField, onStarted,
 }: {
   document: ReviewDocument
@@ -131,19 +146,24 @@ function Scan({
   /** The last reread (running or finished), shown under its button: its errors can be long, so it gets
    *  the column's height rather than a full-width row under the layout. */
   job: Job | null
-  /** Changes when a reread has rewritten the files, so the scans are fetched again. */
-  revision: string
+  /** How a pending reread turned the pages (its boxes are measured on them turned that way), or null. */
+  rereadTurn: Turn | null
   activeFields: readonly string[]
   onHoverField: (field: string | null) => void
   onStarted: (job: Parameters<ReturnType<typeof useTrackJob>>[0]) => void
 }) {
   const [models, setModels] = useState({ ocr: ocrModel, extractor })
+  const saveConfig = useSaveConfig()     // the Workshop's own choices, remembered as soon as they're picked
   const [comparing, setComparing] = useState(false)
   const running = job?.status === 'running'
   // Dragging a slider shouldn't ask the server for a full-size render per step.
   const settled = useDebounced(enhancement, 250)
   const hasScans = document.pages.some((page) => page.image_available)
   const treated = isTreated(enhancement)
+  // Stored boxes were measured on the file, so they turn with the preview. A reread's were measured on the
+  // pages turned as it read them: they line up only while the preview is turned the same way.
+  const boxesFit = rereadTurn === null || (settled.top_points === rereadTurn && !(comparing && treated))
+  const pages = boxesFit ? document.pages : document.pages.map((page) => ({ ...page, boxes: [] }))
 
   const reprocess = useMutation({
     mutationFn: () => api.workshop.reprocess({
@@ -158,10 +178,11 @@ function Scan({
       {/* Every page, treated the same way — a reprocess re-reads all of them, so you should be able to
           see all of them before deciding. */}
       {document.pages.length === 0 ? <Empty>No scan on disk.</Empty> : (
-        <ScanOverlay pages={document.pages} activeFields={activeFields} onHoverField={onHoverField}
-          imageUrl={(filename) => workshopScanUrl(filename, { ...settled, v: revision })}
-          originalUrl={(filename) => workshopScanUrl(filename, { ...DEFAULT_ENHANCEMENT, v: revision })}
-          showOriginal={comparing && treated} turn={settled.top_points} missing="is not in marked/" />
+        <ScanOverlay pages={pages} activeFields={activeFields} onHoverField={onHoverField}
+          imageUrl={(filename) => workshopScanUrl(filename, settled)}
+          originalUrl={(filename) => workshopScanUrl(filename, DEFAULT_ENHANCEMENT)}
+          showOriginal={comparing && treated} turn={rereadTurn === null ? settled.top_points : ''}
+          missing="is not in marked/" />
       )}
 
       <CompareButton treated={treated} onHold={setComparing} />
@@ -170,14 +191,20 @@ function Scan({
       <div className="curate-grid">
         <div className="field">
           <label htmlFor="ws-ocr">OCR model</label>
-          <select id="ws-ocr" value={models.ocr} onChange={(e) => setModels({ ...models, ocr: e.target.value })}>
+          <select id="ws-ocr" value={models.ocr} onChange={(e) => {
+            setModels({ ...models, ocr: e.target.value })
+            saveConfig.mutate({ workshop_ocr_model: e.target.value })
+          }}>
             {ocrModels.map((name) => <option key={name} value={name}>{name}</option>)}
           </select>
         </div>
         <div className="field">
           <label htmlFor="ws-extractor">Extractor</label>
           <select id="ws-extractor" value={models.extractor}
-            onChange={(e) => setModels({ ...models, extractor: e.target.value })}>
+            onChange={(e) => {
+              setModels({ ...models, extractor: e.target.value })
+              saveConfig.mutate({ workshop_extractor_model: e.target.value })
+            }}>
             {extractors.map((name) => <option key={name} value={name}>{name}</option>)}
           </select>
         </div>
@@ -192,8 +219,9 @@ function Scan({
         {blockedBy && <span className="ingest-note">Waiting for {blockedBy} to finish.</span>}
       </div>
       <p className="ingest-note">
-        Reading again replaces this document's OCR text and extraction, then the form starts from it. A turn
-        is kept (the file is turned upright, so the new boxes line up with it); the treatment only helps OCR read.
+        Reading again shows what the models make of the treated pages, and the form starts from it. Nothing is
+        saved until you accept: then its text and extraction are kept and the pages are turned as it read them,
+        so its boxes line up. The treatment only helps OCR read and isn't kept.
       </p>
       {job && <JobPanel job={job} />}
     </Card>
@@ -226,7 +254,6 @@ function Decision({ document, form, onChange, activeFields, onActivate, onDecide
       draft,
       comment: form.comment,
     }),
-    onSuccess: () => onDecided(),
   })
 
   return (
@@ -236,10 +263,10 @@ function Decision({ document, form, onChange, activeFields, onActivate, onDecide
         hints={hints.data} activeFields={activeFields} onActivate={onActivate} />
       {decide.error && <div className="error-banner" role="alert">{decide.error.message}</div>}
       <div className="review-actions">
-        <button className="primary" disabled={decide.isPending} onClick={() => decide.mutate('accepted')}>
+        <button className="primary" disabled={decide.isPending} onClick={() => decide.mutate('accepted', { onSuccess: onDecided })}>
           Accept into the archive
         </button>
-        <button className="danger-outline" disabled={decide.isPending} onClick={() => decide.mutate('tossed')}>
+        <button className="danger-outline" disabled={decide.isPending} onClick={() => decide.mutate('tossed', { onSuccess: onDecided })}>
           Toss
         </button>
       </div>
@@ -282,7 +309,7 @@ function Context({ document, form }: { document: ReviewDocument; form: FormState
 
 /**
  * One row of scans, as many as fit, starting with the current one near the middle; ◀ ▶ move it along one
- * scan at a time, as Streamlit's did.
+ * scan at a time.
  */
 function Strip({ scans }: { scans: ContextScan[] }) {
   const gridRef = useRef<HTMLDivElement>(null)

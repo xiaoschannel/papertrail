@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api } from '../api/client.ts'
+import { useConfig, useSaveConfig } from '../api/config.ts'
 import type { DecisionIn, Draft, ReviewQueue, Verdict } from '../api/types.ts'
 import { Card, Empty, ErrorState, Loading } from '../components/ui.tsx'
 import { ConfirmDialog } from '../components/ConfirmDialog.tsx'
@@ -46,12 +47,16 @@ export default function Review() {
   const queue = useQuery({ queryKey: ['review-queue'], queryFn: api.review.queue })
   const items = queue.data?.items ?? []
 
-  // Where we are: the document's key while it is queued, otherwise the slot it occupied, so a decided
-  // document (which leaves the queue) is replaced by the next one in the same position.
+  // Where we are: always a document's key, so the document on screen stays on screen when the queue
+  // changes around it (a Parse finishing elsewhere adds documents, which sort in by name). The slot is
+  // only the fallback for a key that has left the queue without us (decided in another tab).
   const [cursor, setCursor] = useState<Cursor>({ key: null, index: 0 })
   const found = cursor.key === null ? -1 : items.findIndex((item) => item.key === cursor.key)
   const position = found >= 0 ? found : Math.max(0, Math.min(cursor.index, items.length - 1))
   const key = items[position]?.key ?? null
+  useEffect(() => {
+    if (key !== null && cursor.key !== key) setCursor({ key, index: position })
+  }, [key, position, cursor.key])
   // The document on screen right now, readable after an await.
   const currentKey = useRef(key)
   useEffect(() => {
@@ -92,11 +97,15 @@ export default function Review() {
   const [activeFields, setActiveFields] = useState<readonly string[]>([])
   // Newest first, one per document. Kept in memory: a reload starts a fresh list, like any editor's undo.
   const [recent, setRecent] = useState<Recent[]>([])
-  const [confirmAccept, setConfirmAccept] = useState(false)
+  /** The document the "accept a new name?" question was asked about; it's only answered for that one. */
+  const [confirmAccept, setConfirmAccept] = useState<string | null>(null)
   const [confirmClear, setConfirmClear] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => setError(null), [key])
+  useEffect(() => {
+    setError(null)
+    setConfirmAccept(null)     // a question about another document isn't this one's
+  }, [key])
 
   const decide = useMutation({ mutationFn: api.review.decide })
   const undo = useMutation({ mutationFn: api.review.undo })
@@ -107,6 +116,8 @@ export default function Review() {
 
   /** After any change to decisions: smart matches, name status and prefill depend on them. */
   const refreshAfterDecisionChange = async () => {
+    // Archive's counts and plan follow the decisions; the rest of the app re-reads when next opened.
+    void queryClient.invalidateQueries({ queryKey: ['ingest', 'archive'], refetchType: 'none' })
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['review-queue'] }),
       queryClient.invalidateQueries({ queryKey: ['review-doc'] }),
@@ -119,6 +130,8 @@ export default function Review() {
     deciding.current = true
     const slot = position
     const decidedKey = currentDoc.key
+    // The next document takes its place (the previous one when it was the last).
+    const following = items[slot + 1]?.key ?? items[slot - 1]?.key ?? null
     const decidedForm = form
     const made: DecisionIn = { key: decidedKey, verdict, draft, comment: form.comment }
     decide.mutate(made, {
@@ -127,7 +140,7 @@ export default function Review() {
         // you already moved to another document while this was saving.
         queryClient.setQueryData<ReviewQueue>(['review-queue'], (old) =>
           old && { ...old, summary, items: old.items.filter((item) => item.key !== decidedKey) })
-        setCursor((prev) => (prev.key === decidedKey || prev.key === null ? { key: null, index: slot } : prev))
+        setCursor((prev) => (prev.key === decidedKey || prev.key === null ? { key: following, index: slot } : prev))
         setDrafts((all) => {
           const rest = { ...all }
           delete rest[decidedKey]
@@ -135,12 +148,12 @@ export default function Review() {
         })
         setRecent((all) => [{ made, label: decidedForm.name, form: decidedForm },
           ...all.filter((entry) => entry.made.key !== decidedKey)].slice(0, RECENT_KEPT))
-        setConfirmAccept(false)
+        setConfirmAccept(null)
         setError(null)
         void refreshAfterDecisionChange()
       },
       onError: (e) => {
-        setConfirmAccept(false)
+        setConfirmAccept(null)
         setError(e.message)
       },
       onSettled: () => {
@@ -177,7 +190,7 @@ export default function Review() {
         return
       }
       if (check.name_status === 'unseen') {
-        setConfirmAccept(true)
+        setConfirmAccept(checkedKey)
         return
       }
     }
@@ -332,9 +345,10 @@ export default function Review() {
           </>
         )}
 
-      {confirmAccept && form && (
+      {confirmAccept !== null && confirmAccept === key && form && (
         <ConfirmDialog title="Accept a new name?" confirmLabel="Accept" busy={decide.isPending}
-          onConfirm={() => save('accepted')} onCancel={() => setConfirmAccept(false)}>
+          onConfirm={() => (currentKey.current === confirmAccept ? save('accepted') : setConfirmAccept(null))}
+          onCancel={() => setConfirmAccept(null)}>
           <strong>{form.name}</strong> was not seen in previous reviews. Accept it anyway?
         </ConfirmDialog>
       )}
@@ -363,19 +377,16 @@ export default function Review() {
   )
 }
 
-/** Parse's custom instructions, edited here as in Streamlit; saved when the box loses focus. Only this
+/** Parse's custom instructions, editable here too; saved when the box loses focus. Only this
  *  one setting is sent, so settings changed on other pages meanwhile are left alone. */
 function CustomInstructions() {
-  const config = useQuery({ queryKey: ['config'], queryFn: api.config })
-  const queryClient = useQueryClient()
+  const config = useConfig()
   const [text, setText] = useState<string | null>(null)
-  const save = useMutation({
-    mutationFn: (value: string) => api.patchConfig({ parse_custom_instruction: value }),
-    onSuccess: (saved) => {
-      queryClient.setQueryData(['config'], saved)
-      setText(null)
-    },
-  })
+  const saveConfig = useSaveConfig()
+  const save = {
+    ...saveConfig,
+    mutate: (value: string) => saveConfig.mutate({ parse_custom_instruction: value }, { onSuccess: () => setText(null) }),
+  }
   if (!config.data) return null
   const saved = config.data.parse_custom_instruction
   const value = text ?? saved

@@ -1,8 +1,8 @@
 """Editing an already-archived document: re-filing, sidecars and the smart-match cache."""
 
-import pytest
-
 from pathlib import Path
+
+import pytest
 
 import document_files
 from data import load_smart_match_cache, read_sidecar
@@ -32,7 +32,7 @@ def test_saving_unchanged_values_keeps_the_same_file(archive_dir):
 
     after = apply_receipt_edit(archive_dir, before, _edit(row))
 
-    assert after == before  # Streamlit renamed it to "… (2).png" on every save
+    assert after == before  # not renamed to "… (2).png" on every save
     assert (archive_dir / after[0]).exists()
 
 
@@ -57,7 +57,7 @@ def test_every_page_of_a_multi_page_document_is_refiled_in_scan_order(archive_di
     after = apply_receipt_edit(archive_dir, list(row["paths"]), _edit(row, name="Two Page Doc"))
 
     assert len(after) == len(serials)
-    assert all("Two Page Doc" in p for p in after)                   # Streamlit renamed only the first page
+    assert all("Two Page Doc" in p for p in after)                   # every page is re-filed, not just the first
     assert after[1].endswith("(2).png") and after[0] != after[1]     # pages keep distinct names
     # the earlier scan keeps the plain name; "(2)" sorts before "." by filename, so this pins the order
     assert [read_sidecar(archive_dir / p).serial for p in after] == sorted(serials)
@@ -75,26 +75,26 @@ def test_re_saving_a_multi_page_document_does_not_swap_its_pages(archive_dir):
                                                                     for p in first]
 
 
-def test_a_page_is_never_left_without_its_sidecar(archive_dir, monkeypatch):
+def test_an_edit_failing_part_way_leaves_the_document_as_it_was(archive_dir, monkeypatch):
     row = next(r for _, r in build_viz_records(archive_dir).iterrows() if len(r["paths"]) > 1)
-    real_move = document_files.shutil.move
-    calls = []
+    month = (archive_dir / row["path"]).parent
+    before = sorted((f.name, f.read_bytes()) for f in month.iterdir())
+    real_rename = document_files.os.rename
+    moves = []
 
-    def flaky_move(src, dst):
-        calls.append(src)
-        if len(calls) == 2:            # the second page's image fails to move
-            raise OSError("disk hiccup")
-        return real_move(src, dst)
+    def second_page_fails(src, dst):
+        if Path(src).suffix != ".json":
+            moves.append(src)
+            if len(moves) == 2:            # the second page's image fails to move
+                raise OSError("disk hiccup")
+        return real_rename(src, dst)
 
-    monkeypatch.setattr(document_files.shutil, "move", flaky_move)
+    monkeypatch.setattr(document_files.os, "rename", second_page_fails)
     with pytest.raises(OSError):
         apply_receipt_edit(archive_dir, list(row["paths"]), _edit(row, name="Half Done"))
 
-    # every page still on disk is one the archive can see (image + sidecar), so nothing is orphaned
-    month = (archive_dir / row["path"]).parent
-    for image in (p for p in month.iterdir() if p.suffix != ".json"):
-        assert read_sidecar(image) is not None, f"{image.name} has no sidecar"
-    assert len(build_viz_records(archive_dir)[lambda df: df["filename"] == row["filename"]]["paths"].iloc[0]) == 2
+    # the whole document is back under its old name, both pages with their own sidecars
+    assert sorted((f.name, f.read_bytes()) for f in month.iterdir()) == before
 
 
 def test_a_scan_without_a_sidecar_is_not_overwritten(archive_dir):

@@ -14,6 +14,7 @@ from api import cache
 from api.deps import get_output_path
 from api.guards import no_job_running
 from api.schemas import (
+    DocumentListItem,
     BrandTotals, DateRange, MerchantProfile, MonthlySpend, MonthlyVolume, NameTotals, ReceiptEditIn, VizItem,
     VizRecord,
 )
@@ -176,7 +177,7 @@ def merchant_endpoint(
         "metrics": to_jsonable(analytics.merchant_metrics(subset)),
         "locations": locations,
         "trend": df_records(analytics.complete_monthly_series(analytics.monthly_spend(dated), "spend")),
-        "cadence": df_records(analytics.visit_cadence(dated)) if len(dated) >= 2 else [],
+        "cadence": df_records(analytics.visit_cadence(dated)) if len(dated) >= 3 else [],   # a gap needs a trend
         "items": df_records(analytics.item_breakdown(merchant_items)) if not merchant_items.empty else [],
         "receipts": df_records(gallery),
     }
@@ -213,6 +214,17 @@ def calendar_endpoint(
     return {d.isoformat(): [to_jsonable(r) for r in recs] for d, recs in by_date.items()}
 
 
+@router.get("/documents", response_model=list[DocumentListItem])
+def documents(output_path: Path = Depends(get_output_path)):
+    """Every archived document, by original filename: what Receipt Detail's picker offers, including the
+    undated and non-receipt documents no chart or calendar leads to."""
+    df = cache.viz_records(output_path)
+    if df.empty:
+        return []
+    listed = df[["filename", "name", "date", "time", "document_type"]].fillna("").astype(str)
+    return listed.sort_values("filename").to_dict("records")
+
+
 @router.get("/receipt", response_model=VizRecord)
 def receipt_endpoint(
     file: str = Query(...),
@@ -245,8 +257,6 @@ def edit_receipt_endpoint(body: ReceiptEditIn, output_path: Path = Depends(get_o
         with no_job_running("edit a document", kind="archive"):
             receipt_edit.apply_receipt_edit(output_path, paths, edit)
     except receipt_edit.NotEditable as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except FileExistsError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

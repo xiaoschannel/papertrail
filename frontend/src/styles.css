@@ -203,8 +203,7 @@ table.fixed td, table.fixed th { overflow: hidden; text-overflow: ellipsis; whit
 /* --- Receipt Detail: scan | details ---------------------------------------
    Two bounded columns, left-aligned. The scan column's width is what sets the
    zoom, and the scan is never cropped; the details column holds a table and some
-   text. Neither gains from a wider monitor, so the slack stays at the right — it
-   used to be an empty third column doing that same job less honestly.      */
+   text. Neither gains from a wider monitor, so the slack stays at the right. */
 .detail-page {
   --scan-col: 27.5rem; --detail-col: 40rem;
   /* one edge for the whole page: the head, the tiles and the edit form all stop
@@ -221,6 +220,8 @@ table.fixed td, table.fixed th { overflow: hidden; text-overflow: ellipsis; whit
   .detail-layout { grid-template-columns: minmax(0, 1fr); }
 }
 .scan-full { display: grid; gap: 10px; justify-items: center; }
+.document-picker { margin-bottom: 14px; }
+.document-picker input { width: 100%; max-width: 32rem; }
 .scan-full img {
   width: 100%; max-width: var(--scan-col); height: auto; display: block;
   border-radius: 6px; background: #fff;
@@ -248,13 +249,11 @@ table.fixed td, table.fixed th { overflow: hidden; text-overflow: ellipsis; whit
 /* Receipts in a day. Gaps are tight on purpose: each card's hover outline, not
    whitespace, is what separates them (card<->card and card<->cell edge).
 
-   Two columns follow the Streamlit month view (pages/visualize/calendar.py,
-   analytics.balance_into_columns): only month view, only days with 2+ receipts
-   (the JSX adds .split), so a lone receipt stays full width. Added: only once the
-   CELL is wide enough for each column to stay >= ~120px (2 x 120 + gap = 248px).
+   Two columns only in month view, only on days with 2+ receipts (the JSX adds
+   .split), so a lone receipt stays full width, and only once the CELL is wide
+   enough for each column to stay >= ~120px (2 x 120 + gap = 248px).
    On a 2560px window that's two ~150px columns; at 1920px and below days stay
-   single so receipts don't shrink. Balanced by actual rendered height, where
-   Streamlit used an aspect-ratio estimate. */
+   single so receipts don't shrink. CSS columns balance by actual rendered height. */
 .cal-items > .doc-card { margin-bottom: 3px; break-inside: avoid; }
 @container (min-width: 248px) {
   .cal-items.split { columns: 2; column-gap: 3px; }

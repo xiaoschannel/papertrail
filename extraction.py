@@ -1,12 +1,15 @@
+import functools
 import typing
 
 from ollama import chat, generate
-from openai import OpenAI
+from openai import BadRequestError, OpenAI
 
 from models import DocumentExtraction, DocumentExtractionAdapter, ExtractionFlat
 
 OLLAMA_MODEL = "qwen3:8b"
-OPENAI_MODEL = "gpt-5.4"
+#: The hosted models on offer, each its own extractor. GPT-5.6 Luna is the cheapest, for runs over many
+#: documents; Terra sits between it and GPT-5.4.
+OPENAI_MODELS = ("gpt-5.4", "gpt-5.6-terra", "gpt-5.6-luna")
 
 EXTRACTION_PROMPT = """You are extracting structured data from OCR text of a scanned document.
 If the text contains multiple pages (marked with --- Page N ---), treat as one document and extract from all pages.
@@ -113,15 +116,18 @@ def extract_ollama(ocr_text: str, has_boxes: bool = False, custom_instruction: s
     return DocumentExtractionAdapter.validate_json(response.message.content)
 
 
-def extract_openai(ocr_text: str, has_boxes: bool = False, custom_instruction: str = "") -> DocumentExtraction:
+def extract_openai(ocr_text: str, has_boxes: bool = False, custom_instruction: str = "",
+                   model: str = OPENAI_MODELS[0]) -> DocumentExtraction:
     client = OpenAI()
     prompt = build_extraction_prompt(ocr_text, has_boxes, custom_instruction=custom_instruction)
-    response = client.chat.completions.parse(
-        model=OPENAI_MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        response_format=ExtractionFlat,
-        temperature=0.2,
-    )
+    request = dict(model=model, messages=[{"role": "user", "content": prompt}], response_format=ExtractionFlat)
+    try:
+        response = client.chat.completions.parse(**request, temperature=0.2)
+    except BadRequestError as exc:
+        # A model that only takes its default temperature refuses the setting: ask again without it.
+        if "temperature" not in str(exc):
+            raise
+        response = client.chat.completions.parse(**request)
     return response.choices[0].message.parsed.to_extraction()
 
 
@@ -131,6 +137,6 @@ def unload_ollama() -> None:
 
 
 EXTRACTORS: dict[str, typing.Callable[..., DocumentExtraction]] = {
-    f"OpenAI - {OPENAI_MODEL}": extract_openai,
+    **{f"OpenAI - {model}": functools.partial(extract_openai, model=model) for model in OPENAI_MODELS},
     f"Ollama - {OLLAMA_MODEL}": extract_ollama,
 }

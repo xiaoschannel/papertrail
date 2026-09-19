@@ -1,21 +1,19 @@
 """Server-side cache for the archive-derived visualization frames.
 
 Every visualize endpoint needs ``build_viz_records()``, which parses every sidecar
-in the archive (~1.4 s for ~5,000 documents). Uncached, each page pays that per
+in the archive (over a second on a large archive). Uncached, each page pays that per
 request — a dashboard view fires several in parallel, and a merchant profile would
 parse the archive twice (records, then items).
 
-Invalidation mirrors what the Streamlit app already did
-(``viz_data._load_viz_records_cached``: keyed on the brand-registry mtime,
-``ttl=120``) and adds a cheap archive-structure signature. Archiving, tossing and
+An entry is keyed on a cheap archive-structure signature (which includes the
+brand-registry mtime) and expires after ``TTL_SECONDS``. Archiving, tossing and
 reorganizing create/move/delete files, which bumps the containing directory's
-mtime, so those changes show up on the next request. The TTL stays as the backstop
+mtime, so those changes show up on the next request. The TTL is the backstop
 for in-place sidecar edits, which do not touch directory mtimes.
 
-``viz_records`` itself stays uncached — caching is a serving concern, the same way
-``st.cache_data`` lived in ``viz_data`` rather than in the pure module. Cached
-frames are shared between requests; pandas 3 copy-on-write keeps callers from
-mutating them through filters/slices.
+``viz_records`` itself stays uncached — caching is a serving concern, so it lives
+here rather than in the pure module. Cached frames are shared between requests;
+pandas 3 copy-on-write keeps callers from mutating them through filters/slices.
 """
 
 from __future__ import annotations

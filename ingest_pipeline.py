@@ -1,12 +1,12 @@
-"""The ingest pipeline steps — File Index, OCR, Parse, Archive — without Streamlit.
+"""The ingest pipeline steps — File Index, OCR, Parse, Archive — as plain functions.
 
-Ports what ``pages/ingest/{file_index,ocr,parse,archive}.py`` do into plain functions: each step has a
-``plan_*`` (what would happen, for the page to show) and, for the long steps, a ``run_*`` that takes a
-progress context and the model to use as arguments, so tests run them with fakes (no GPU, no network).
+Each step has a ``plan_*`` (what would happen, for the page to show) and, for the long steps, a
+``run_*`` that takes a progress context and the model to use as arguments, so tests run them with
+fakes (no GPU, no network).
 
-Deliberate fixes over the Streamlit pages:
-- OCR and Parse never drop results for items outside the current run (the pages rewrote ocr.json /
-  extractions.json from a filtered or emptied dict).
+Guarantees the steps keep:
+- OCR and Parse never drop results for items outside the current run (they merge into ocr.json /
+  extractions.json rather than rewriting it from a filtered or emptied dict).
 - Reprocessing replaces results as each item finishes, so cancelling keeps the old results of items
   not yet redone.
 - OCR runs the second "structured" pass only for providers that return grounding boxes.
@@ -257,8 +257,8 @@ def grouping_state(output_path: Path, batch_id: int) -> GroupingState:
 
 def save_grouping(output_path: Path, batch_id: int, groups: list[list[str]]) -> bool:
     """Save a batch's page grouping (groups of active pages). Returns False (and changes nothing) if the
-    multi-page groups are unchanged. A change clears the batch's extractions and review decisions, as in
-    Streamlit, because documents' keys and contents changed — except tosses: a tossed document keeps its
+    multi-page groups are unchanged. A change clears the batch's extractions and review decisions,
+    because documents' keys and contents changed — except tosses: a tossed document keeps its
     decision and, if it was a saved group, its group (tossed pages can't be regrouped)."""
     _, batch = _non_archived_batch(output_path, batch_id)
     keys = _batch_keys(batch)
@@ -304,7 +304,7 @@ def set_page_tossed(output_path: Path, key: str, tossed: bool) -> None:
 
 
 def rotate_page_image(output_path: Path, input_path: Path, key: str, top_points: str) -> None:
-    """Rotate an unarchived page's scan in place (like Streamlit's ←/→/↓ buttons)."""
+    """Rotate an unarchived page's scan in place given where its top currently points."""
     parsed = parse_batch_serial_key(key)
     if parsed is None:
         raise KeyError(f"not a page key: {key}")
@@ -507,7 +507,7 @@ class ArchivePlan:
 
 
 def plan_archive(output_path: Path) -> ArchivePlan:
-    """Where every file of the fully reviewed batches would go (like Streamlit's Archive preview)."""
+    """Where every file of the fully reviewed batches would go, for the page to preview."""
     scan_index = _load_index(output_path)
     if scan_index is None:
         return ArchivePlan(0, 0, 0, 0, 0, 0, 0, 0, [], "Run File Index first to create batches.json.")

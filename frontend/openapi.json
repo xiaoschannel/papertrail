@@ -385,7 +385,7 @@
           "brands"
         ],
         "summary": "Suggestions",
-        "description": "Prefixes shared by unmatched receipt names. The settings are remembered, as in Streamlit.",
+        "description": "Prefixes shared by unmatched receipt names. The settings are remembered for the next visit.",
         "operationId": "suggestions_api_brands_suggestions_get",
         "parameters": [
           {
@@ -493,7 +493,7 @@
           "curate"
         ],
         "summary": "Dedupe Clusters",
-        "description": "Archived documents that look like the same purchase scanned twice: equal cost, minutes apart.\n\nClustered per DOCUMENT, not per file: the pages of one multi-page receipt share a date, time and\ncost, so clustering files (as the Streamlit page did) reported every multi-page document as its\nown duplicate.",
+        "description": "Archived documents that look like the same purchase scanned twice: equal cost, minutes apart.\n\nClustered per DOCUMENT, not per file: the pages of one multi-page receipt share a date, time and\ncost, so clustering files would report every multi-page document as its own duplicate.",
         "operationId": "dedupe_clusters_api_curate_dedupe_get",
         "responses": {
           "200": {
@@ -1113,7 +1113,7 @@
           "workshop"
         ],
         "summary": "Context",
-        "description": "The week around the form's date and time, and the rest of the document's batch (as Streamlit showed).",
+        "description": "The week around the form's date and time, and the rest of the document's batch.",
         "operationId": "context_api_curate_workshop_context_get",
         "parameters": [
           {
@@ -1228,7 +1228,7 @@
           "workshop"
         ],
         "summary": "Reprocess",
-        "description": "Read the treated scan again and extract from it, as a job: it loads the same models as ingest.",
+        "description": "Read the treated scan again and extract from it, as a job: it loads the same models as ingest.\n\nThe result waits for the decision (see ``workshop.Reread``); nothing on disk changes yet.",
         "operationId": "reprocess_api_curate_workshop_reprocess_post",
         "requestBody": {
           "content": {
@@ -1247,6 +1247,49 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/JobOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/curate/workshop/reread": {
+      "delete": {
+        "tags": [
+          "workshop"
+        ],
+        "summary": "Discard Reread",
+        "description": "Drop a pending reread: the document goes back to what its sidecars say.",
+        "operationId": "discard_reread_api_curate_workshop_reread_delete",
+        "parameters": [
+          {
+            "name": "key",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkshopOut"
                 }
               }
             }
@@ -1848,6 +1891,32 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents": {
+      "get": {
+        "tags": [
+          "visualize"
+        ],
+        "summary": "Documents",
+        "description": "Every archived document, by original filename: what Receipt Detail's picker offers, including the\nundated and non-receipt documents no chart or calendar leads to.",
+        "operationId": "documents_api_documents_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DocumentListItem"
+                  },
+                  "type": "array",
+                  "title": "Response Documents Api Documents Get"
                 }
               }
             }
@@ -4818,6 +4887,41 @@
         ],
         "title": "DistinctOut"
       },
+      "DocumentListItem": {
+        "properties": {
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "date": {
+            "type": "string",
+            "title": "Date"
+          },
+          "time": {
+            "type": "string",
+            "title": "Time"
+          },
+          "document_type": {
+            "type": "string",
+            "title": "Document Type"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "filename",
+          "name",
+          "date",
+          "time",
+          "document_type"
+        ],
+        "title": "DocumentListItem",
+        "description": "One archived document, as a picker lists it."
+      },
       "DraftIn": {
         "properties": {
           "document_type": {
@@ -5383,7 +5487,7 @@
         "additionalProperties": false,
         "type": "object",
         "title": "ExperimentTreatmentIn",
-        "description": "The Workshop's treatments, plus the denoising Streamlit's Experiment page had."
+        "description": "The Workshop's treatments, plus denoising before and/or after them."
       },
       "FieldBoxOut": {
         "properties": {
@@ -6110,6 +6214,10 @@
             "type": "boolean",
             "title": "Cancel Requested"
           },
+          "cancellable": {
+            "type": "boolean",
+            "title": "Cancellable"
+          },
           "version": {
             "type": "integer",
             "title": "Version"
@@ -6146,6 +6254,7 @@
           "seconds_per_item",
           "eta_seconds",
           "cancel_requested",
+          "cancellable",
           "version",
           "batches",
           "gpu",
@@ -7262,6 +7371,37 @@
         ],
         "title": "ReceiptResult"
       },
+      "RereadOut": {
+        "properties": {
+          "top_points": {
+            "type": "string",
+            "enum": [
+              "",
+              "left",
+              "right",
+              "down"
+            ],
+            "title": "Top Points"
+          },
+          "ocr_model": {
+            "type": "string",
+            "title": "Ocr Model"
+          },
+          "extractor": {
+            "type": "string",
+            "title": "Extractor"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "top_points",
+          "ocr_model",
+          "extractor"
+        ],
+        "title": "RereadOut",
+        "description": "A reread of the open document waiting for the decision; the document shows what it read."
+      },
       "RestoreIn": {
         "properties": {
           "paths": {
@@ -8146,6 +8286,16 @@
               }
             ]
           },
+          "reread": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RereadOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "ocr_models": {
             "items": {
               "type": "string"
@@ -8174,6 +8324,7 @@
         "required": [
           "documents",
           "document",
+          "reread",
           "ocr_models",
           "extractors",
           "ocr_model",

@@ -49,13 +49,20 @@ export default function Dedupe() {
     await queryClient.cancelQueries({ queryKey: DEDUPE })   // an in-flight answer is already stale
   }
 
+  /** A decision the server refused: show its cluster again, with the error, so it can be retried. */
+  const undecide = (id: string) => {
+    decided.current.delete(id)
+    setWorking(null)
+  }
+
   const toss = useMutation({
     mutationKey: DECIDE,
-    mutationFn: (member: DedupeMember) => api.curate.tossDuplicate(member.path),
+    mutationFn: ({ member }: { member: DedupeMember; id: string }) => api.curate.tossDuplicate(member.path),
     onSuccess: (result) => {
       setUndoable({ paths: result.tossed, verdict: result.previous_verdict, name: result.name })
       setWorking(null)
     },
+    onError: (_error, { id }) => undecide(id),
     onSettled: refreshWhenIdle,
   })
   const restore = useMutation({
@@ -68,8 +75,9 @@ export default function Dedupe() {
   })
   const keep = useMutation({
     mutationKey: DECIDE,
-    mutationFn: (documents: string[]) => api.curate.keepBoth(documents),
+    mutationFn: ({ documents }: { documents: string[]; id: string }) => api.curate.keepBoth(documents),
     onSuccess: () => setWorking(null),
+    onError: (_error, { id }) => undecide(id),
     onSettled: refreshWhenIdle,
   })
 
@@ -104,11 +112,11 @@ export default function Dedupe() {
               busy={working === clusterId(cluster) && (toss.isPending || keep.isPending)}
               onToss={async (member) => {
                 await decide(clusterId(cluster))
-                toss.mutate(member)
+                toss.mutate({ member, id: clusterId(cluster) })
               }}
               onKeep={async () => {
                 await decide(clusterId(cluster))
-                keep.mutate(cluster.members.map((m) => m.filename))
+                keep.mutate({ documents: cluster.members.map((m) => m.filename), id: clusterId(cluster) })
               }} />
           ))}
         </div>

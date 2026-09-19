@@ -1,4 +1,4 @@
-"""Archive/index integrity checks (extracted from the Dev pages)."""
+"""Archive/index integrity checks (behind the Dev pages)."""
 
 from archive_audit import (
     batch_coverage,

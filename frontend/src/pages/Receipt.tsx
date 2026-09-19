@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, mediaUrl } from '../api/client.ts'
@@ -8,7 +8,7 @@ import { money, num } from '../format.ts'
 import { Card, Empty, ErrorState, Loading, Tile } from '../components/ui.tsx'
 
 export default function Receipt() {
-  const [params] = useSearchParams()
+  const [params, setParams] = useSearchParams()
   const file = params.get('file') || ''
   const [editing, setEditing] = useState(false)
   useEffect(() => setEditing(false), [file])   // ?file= changes without remounting this page
@@ -19,25 +19,30 @@ export default function Receipt() {
     enabled: Boolean(file),
   })
 
+  const picker = <DocumentPicker file={file} onPick={(picked) => setParams({ file: picked })} />
   if (!file) {
     return (
-      <>
+      <div className="detail-page">
         <h1>Receipt Detail</h1>
-        <Empty>Open a receipt from the Merchant Profile, Calendar or Time Capsule to view it here.</Empty>
-      </>
+        {picker}
+        <Empty>Pick a document, or open one from the Merchant Profile, Calendar or Time Capsule.</Empty>
+      </div>
     )
   }
-  if (q.isError) return <ErrorState error={q.error} />
+  if (q.isError) return <div className="detail-page">{picker}<ErrorState error={q.error} /></div>
   if (!q.data) return <Loading what="document" />
 
   const r = q.data
   const pages = r.paths.length ? r.paths : (r.path ? [r.path] : [])
   const items = r.items
-  const merchantLink = r.brand_id ? `/merchant?brand=${encodeURIComponent(r.brand_id)}`
+  // Only a receipt has a merchant profile; a title of some other document isn't a shop.
+  const merchantLink = r.document_type !== 'receipt' ? null
+    : r.brand_id ? `/merchant?brand=${encodeURIComponent(r.brand_id)}`
     : r.name ? `/merchant?name=${encodeURIComponent(r.name)}` : null
 
   return (
     <div className="detail-page">
+      {picker}
       <div className="detail-head">
         <div>
           <h1 style={{ overflowWrap: 'anywhere' }}>{r.name || r.filename}</h1>
@@ -241,3 +246,36 @@ function EditForm({ record, onDone }: { record: VizRecord; onDone: () => void })
     </Card>
   )
 }
+
+/**
+ * Any archived document by its original filename, name or date: type to narrow the list. Charts, the
+ * calendar and merchant pages lead only to dated receipts; this reaches the rest too.
+ */
+function DocumentPicker({ file, onPick }: { file: string; onPick: (file: string) => void }) {
+  const documents = useQuery({ queryKey: ['documents'], queryFn: api.documents })
+  const [typed, setTyped] = useState<string | null>(null)
+  const byFilename = useMemo(() => new Set((documents.data ?? []).map((d) => d.filename)), [documents.data])
+  return (
+    <div className="field document-picker">
+      <label htmlFor="receipt-picker">Document{documents.data ? ` (${documents.data.length})` : ''}</label>
+      <input id="receipt-picker" type="text" list="receipt-picker-list" value={typed ?? file}
+        placeholder="Type a filename, name or date" autoComplete="off"
+        onChange={(e) => {
+          const value = e.target.value
+          setTyped(value)
+          if (byFilename.has(value)) {
+            onPick(value)
+            setTyped(null)
+          }
+        }} />
+      <datalist id="receipt-picker-list">
+        {(documents.data ?? []).map((d) => (
+          <option key={d.filename} value={d.filename}>
+            {[d.date || 'undated', d.name || d.document_type].join(' · ')}
+          </option>
+        ))}
+      </datalist>
+    </div>
+  )
+}
+

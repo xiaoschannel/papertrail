@@ -36,7 +36,7 @@ from archive_audit import (
 from data import scan_organized_filenames
 from extraction import build_extraction_prompt
 from grounding import parse_grounding_output
-from models import DetectedBox, iter_indexed_files, load_scan_index
+from models import iter_indexed_files, load_scan_index
 from scan_enhance import Enhancement, enhance
 from settings import IMAGE_EXTENSIONS, get_config, update_config
 
@@ -131,10 +131,9 @@ def _enhancement(body: ExperimentTreatmentIn) -> Enhancement:
     return Enhancement(**body.model_dump(include=set(ExperimentTreatmentIn.model_fields)))
 
 
-def _box_out(index: int, fields: list[str], box: DetectedBox) -> FieldBoxOut:
-    rects = [BoxRect(x1=min(c[0], c[2]), y1=min(c[1], c[3]), x2=max(c[0], c[2]), y2=max(c[1], c[3]))
-             for c in box.coords if len(c) == 4]
-    return FieldBoxOut(index=index, fields=fields, rects=rects, text=box.text)
+def _boxes_out(boxes: list[rl.FieldBox]) -> list[FieldBoxOut]:
+    return [FieldBoxOut(index=b.index, fields=list(b.fields), text=b.text,
+                        rects=[BoxRect(x1=r[0], y1=r[1], x2=r[2], y2=r[3]) for r in b.rects]) for b in boxes]
 
 
 @router.get("/experiment", response_model=ExperimentOut)
@@ -148,7 +147,7 @@ def experiment():
         grounding_models=[name for name, provider in providers.items() if getattr(provider, "grounding", False)],
         extractors=list(extractors),
         local_extractors=[name for name in extractors if registry.extractor_needs_gpu(name)],
-        # the pipeline's own models, as Streamlit's bench started from (and saved back to) them
+        # the pipeline's own models: the bench starts from them (and saves back to them)
         ocr_model=cfg.ocr_model if cfg.ocr_model in providers else next(iter(providers), ""),
         extractor=cfg.extractor_model if cfg.extractor_model in extractors else next(iter(extractors), ""),
         with_boxes=cfg.extract_structured,
@@ -157,11 +156,18 @@ def experiment():
     )
 
 
+#: Far above any scan (a full-page 600 dpi colour scan is a few tens of MB).
+MAX_UPLOAD_BYTES = 100 * 1024 * 1024
+
+
 @router.post("/experiment", response_model=ExperimentRunOut)
 async def upload(file: UploadFile):
     """Start a run from an uploaded image. It's kept in a scratch folder, not the archive."""
+    data = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail=f"That file is over {MAX_UPLOAD_BYTES // (1024 * 1024)} MB.")
     try:
-        run = runs.create(file.filename or "image.png", await file.read())
+        run = runs.create(file.filename or "image.png", data)
     except ValueError as exc:
         raise HTTPException(status_code=415, detail=str(exc)) from exc
     return _run_out(run)
@@ -185,7 +191,7 @@ def _run_out(run: runs.Run) -> ExperimentRunOut:
         ocr_out = ExperimentOcrOut(
             model=ocr.model, read_at=ocr.read_at, with_boxes=ocr.with_boxes, treatment=ExperimentTreatmentIn(**ocr.treatment),
             markdown=ocr.markdown, structured_raw=ocr.structured_raw,
-            boxes=[_box_out(index, [], box) for index, box in enumerate(ocr.boxes)],
+            boxes=_boxes_out(rl.all_boxes(ocr.boxes)),
             seconds=ocr.seconds, structured_seconds=ocr.structured_seconds)
     parse_out = None
     if ocr and parse:
@@ -193,9 +199,7 @@ def _run_out(run: runs.Run) -> ExperimentRunOut:
         parse_out = ExperimentParseOut(
             extractor=parse.extractor, custom_instruction=parse.custom_instruction,
             extraction=parse.extraction, seconds=parse.seconds,
-            field_boxes=[FieldBoxOut(index=b.index, fields=list(b.fields), text=b.text,
-                                     rects=[BoxRect(x1=r[0], y1=r[1], x2=r[2], y2=r[3]) for r in b.rects])
-                         for b in rl.field_boxes(1, ocr.boxes, sources)])
+            field_boxes=_boxes_out(rl.field_boxes(1, ocr.boxes, sources)))
     return ExperimentRunOut(id=run.id, filename=run.image.name, width=width, height=height,
                             ocr=ocr_out, parse=parse_out)
 
@@ -246,7 +250,7 @@ def run_ocr(run_id: str, body: ExperimentOcrIn):
     provider = registry.ocr_providers().get(body.model)
     if provider is None:
         raise HTTPException(status_code=422, detail=f"unknown OCR model {body.model}")
-    update_config(ocr_model=body.model)   # as Streamlit's bench did: the model tried is the pipeline's next
+    update_config(ocr_model=body.model)   # the model tried becomes the pipeline's next
     with_boxes = body.with_boxes and bool(getattr(provider, "grounding", False))
     settings = _enhancement(body)
 
@@ -313,4 +317,4 @@ def run_parse(run_id: str, body: ExperimentParseIn):
 
     with planning_a_job():
         return runner.start("experiment-parse", f"Experiment: Parse with {body.extractor}", job,
-                            Claim(gpu=True) if local else NOTHING_HELD)
+                            Claim(gpu=True) if local else NOTHING_HELD, cancellable=False)

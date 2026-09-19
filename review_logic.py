@@ -1,8 +1,7 @@
-"""Pure logic behind the Review step, extracted so the web API and tests share it.
+"""Pure logic behind the Review step, kept apart so the API and tests share it.
 
-Mirrors ``pages/ingest/review.py`` (Streamlit): queue order, form defaults, smart-match name prefill,
-hint rules evaluated on the user's unsaved edits, accept validation, and which OCR boxes belong to which
-extracted fields. No ``streamlit`` import and no disk access.
+Queue order, form defaults, smart-match name prefill, hint rules evaluated on the user's unsaved edits,
+accept validation, and which OCR boxes belong to which extracted fields. No disk access.
 """
 
 from __future__ import annotations
@@ -203,12 +202,18 @@ def field_boxes(page_num: int, boxes: list[DetectedBox], field_sources: dict[str
     for index in sorted(cited):
         if index >= len(boxes):
             continue
-        rects = tuple(
-            (min(c[0], c[2]), min(c[1], c[3]), max(c[0], c[2]), max(c[1], c[3]))
-            for c in boxes[index].coords
-            if len(c) == 4
-        )
+        rects = _rects(boxes[index])
         if not rects:
             continue
         out.append(FieldBox(index=index, fields=tuple(cited[index]), rects=rects, text=boxes[index].text))
     return out
+
+
+def _rects(box: DetectedBox) -> tuple[tuple[int, int, int, int], ...]:
+    return tuple((min(c[0], c[2]), min(c[1], c[3]), max(c[0], c[2]), max(c[1], c[3])) for c in box.coords if len(c) == 4)
+
+
+def all_boxes(boxes: list[DetectedBox]) -> list[FieldBox]:
+    """Every box OCR found on a page, citing no field (for a reading nothing has cited yet)."""
+    return [FieldBox(index=index, fields=(), rects=rects, text=box.text)
+            for index, box in enumerate(boxes) if (rects := _rects(box))]

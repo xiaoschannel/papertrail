@@ -8,7 +8,7 @@ import json
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
-from api.jobs import FINISHED, runner
+from api.jobs import FINISHED, JobConflict, runner
 from api.schemas import JobOut
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
@@ -42,7 +42,10 @@ def get_job(job_id: str):
 @router.post("/{job_id}/cancel", response_model=JobOut)
 def cancel_job(job_id: str):
     """Ask the job to stop after the item it is working on."""
-    job = runner.cancel(job_id)
+    try:
+        job = runner.cancel(job_id)
+    except JobConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if job is None:
         raise HTTPException(status_code=404, detail="no such job")
     return job

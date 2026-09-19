@@ -16,7 +16,7 @@ def _duplicate_of(api_client, index=1):
 
 
 def test_a_multi_page_document_is_not_a_duplicate_of_itself(api_client):
-    """Its pages share a date, time and cost — clustering files instead of documents flagged them."""
+    """Its pages share a date, time and cost — clustering files would flag them."""
     body = api_client.get("/api/curate/dedupe").json()
 
     assert body["archived"] > 0
@@ -178,3 +178,62 @@ def test_tossing_can_be_undone(api_client, configured_archive):
 def test_restoring_something_that_is_not_there_is_a_404(api_client):
     assert api_client.post("/api/curate/dedupe/restore",
                            json={"paths": ["tossed/nope.png"], "verdict": "accepted"}).status_code == 404
+
+
+def test_only_a_document_in_tossed_can_be_restored(api_client, configured_archive, tmp_path):
+    record = api_client.get("/api/viz/records").json()[0]
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "victim.png").write_bytes(b"x")
+
+    for paths in ([record["path"]], ["../outside/victim.png"], [str(outside / "victim.png")], []):
+        response = api_client.post("/api/curate/dedupe/restore", json={"paths": paths, "verdict": "accepted"})
+        assert response.status_code == 404, paths
+    assert (outside / "victim.png").exists() and (configured_archive / record["path"]).exists()
+
+
+def _running(kind, claim):
+    """A job of ``kind`` that holds ``claim`` until the returned event is set."""
+    import threading
+
+    from api.jobs import runner
+
+    release = threading.Event()
+    runner.start(kind, f"{kind} (test)", lambda progress: release.wait(10), claim)
+    return release
+
+
+def test_names_cluster_and_merge_while_ocr_reads_another_batch(api_client):
+    from api.jobs import Claim
+
+    release = _running("ocr", Claim(batches=frozenset({12}), gpu=True))
+    try:
+        assert api_client.get("/api/curate/normalize", params={"engine": "string"}).status_code == 200
+    finally:
+        release.set()
+
+
+def test_names_cluster_with_embeddings_only_when_the_gpu_is_free(api_client, monkeypatch):
+    from api.jobs import Claim
+
+    release = _running("ocr", Claim(batches=frozenset({12}), gpu=True))
+    try:
+        assert api_client.get("/api/curate/normalize", params={"engine": "embedding"}).status_code == 409
+    finally:
+        release.set()
+
+
+def test_pairs_kept_apart_by_two_clicks_at_once_are_both_kept(api_client):
+    import threading
+
+    records = api_client.get("/api/viz/records").json()
+    a, b, c = (r["filename"] for r in records[:3])
+    threads = [threading.Thread(target=api_client.post, args=("/api/curate/dedupe/keep",),
+                                kwargs={"json": {"documents": pair}}) for pair in ([a, b], [a, c])]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    kept = {tuple(p["documents"]) for p in api_client.get("/api/curate/dedupe").json()["kept"]}
+    assert kept == {tuple(sorted([a, b])), tuple(sorted([a, c]))}

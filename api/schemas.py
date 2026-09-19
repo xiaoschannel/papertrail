@@ -32,6 +32,16 @@ class LineItem(_Model):
     total_price: float | None
 
 
+class DocumentListItem(_Model):
+    """One archived document, as a picker lists it."""
+
+    filename: str
+    name: str
+    date: str
+    time: str
+    document_type: str
+
+
 class VizRecord(_Model):
     """One archived document (multi-page documents collapsed to their first page)."""
 
@@ -328,6 +338,7 @@ class JobOut(_Model):
     seconds_per_item: float | None
     eta_seconds: int | None
     cancel_requested: bool
+    cancellable: bool
     version: int
     #: what the job holds while it runs - which controls it locks on the other pages
     batches: list[int]
@@ -487,9 +498,18 @@ class MarkedDocumentOut(_Model):
     batch_id: int | None
 
 
+class RereadOut(_Model):
+    """A reread of the open document waiting for the decision; the document shows what it read."""
+
+    top_points: Literal["", "left", "right", "down"]   # how the pages were turned for it
+    ocr_model: str
+    extractor: str
+
+
 class WorkshopOut(_Model):
     documents: list[MarkedDocumentOut]
     document: ReviewDocument | None
+    reread: RereadOut | None
     ocr_models: list[str]
     extractors: list[str]
     ocr_model: str
@@ -805,7 +825,7 @@ class IndexAuditOut(_Model):
 
 # --- Dev: Experiment ---------------------------------------------------------------------------------
 class ExperimentTreatmentIn(EnhancementIn):
-    """The Workshop's treatments, plus the denoising Streamlit's Experiment page had."""
+    """The Workshop's treatments, plus denoising before and/or after them."""
 
     denoise_before: bool = False
     denoise_after: bool = False

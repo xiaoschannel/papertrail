@@ -41,15 +41,6 @@ def _receipt(name):
                          currency="JPY", address="", cost=100.0)
 
 
-@pytest.fixture(autouse=True)
-def no_leftover_job():
-    yield
-    for job in runner.running_jobs():
-        runner.cancel(job["id"])
-        runner.wait_until_finished(job["id"], timeout=10)
-    models.release()
-
-
 @pytest.fixture
 def fake_ocr(monkeypatch):
     provider = GatedOcr()

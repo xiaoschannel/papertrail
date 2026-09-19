@@ -12,6 +12,7 @@ import io
 import re
 import shutil
 import tempfile
+import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -84,17 +85,23 @@ def create(filename: str, data: bytes, root: Path | None = None) -> Run:
         raise ValueError(f"Upload a {', '.join(s.lstrip('.') for s in IMAGE_SUFFIXES)} image.")
     try:
         with Image.open(io.BytesIO(data)) as image:
+            too_big = Image.MAX_IMAGE_PIXELS and image.width * image.height > Image.MAX_IMAGE_PIXELS
             image.verify()
+    except Image.DecompressionBombError as exc:
+        raise ValueError("That image is too large to open.") from exc
     except (UnidentifiedImageError, OSError, SyntaxError) as exc:
         raise ValueError("That file isn't an image that can be read.") from exc
+    if too_big:
+        raise ValueError("That image is too large to open.")
 
     root = root or ROOT
-    run_id = uuid.uuid4().hex
+    # 16 hex digits of creation time, then 16 random: still 32 hex, and ids sort by age.
+    run_id = f"{time.time_ns():016x}{uuid.uuid4().hex[:16]}"
     folder = root / run_id
     folder.mkdir(parents=True)
     image_path = folder / _safe_name(filename, suffix)
     image_path.write_bytes(data)
-    _prune(root)
+    _prune(root, keep=folder)
     return Run(run_id, folder, image_path)
 
 
@@ -122,11 +129,13 @@ def _folders_newest_first(root: Path) -> list[Path]:
     if not root.is_dir():
         return []
     folders = [p for p in root.iterdir() if p.is_dir() and _RUN_ID.fullmatch(p.name)]
-    return sorted(folders, key=lambda p: p.stat().st_mtime, reverse=True)
+    return sorted(folders, key=lambda p: (p.stat().st_mtime_ns, p.name), reverse=True)
 
 
-def _prune(root: Path) -> None:
-    for folder in _folders_newest_first(root)[KEEP:]:
+def _prune(root: Path, keep: Path) -> None:
+    """Clear out all but the ``KEEP`` runs used last, never ``keep`` (the run just made)."""
+    others = [folder for folder in _folders_newest_first(root) if folder != keep]
+    for folder in others[KEEP - 1:]:
         shutil.rmtree(folder, ignore_errors=True)
 
 

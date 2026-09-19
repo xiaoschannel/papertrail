@@ -12,6 +12,8 @@ def _checkout(tmp_path, monkeypatch, *, repo=None, parent=None, user=None):
     main = tmp_path / "main"
     worktree = main / ".claude" / "worktrees" / "wt"
     worktree.mkdir(parents=True)
+    (main / ".git").mkdir()                   # the main checkout: a worktree's .git is a file, this one a folder
+    (worktree / ".git").write_text("gitdir: ../../../.git/worktrees/wt\n", encoding="utf-8")
     user_dir = tmp_path / "appdata" / "papertrail"
     user_dir.mkdir(parents=True)
     for folder, value in ((worktree, repo), (main, parent), (user_dir, user)):
@@ -38,6 +40,13 @@ def test_a_worktree_falls_back_to_the_main_checkouts_env(tmp_path, monkeypatch):
 
 def test_a_clone_outside_the_tree_falls_back_to_the_machine_wide_file(tmp_path, monkeypatch):
     _checkout(tmp_path, monkeypatch, user="from-appdata")
+    assert env.load_env() == env.user_env_path()
+    assert os.environ[KEY] == "from-appdata"
+
+
+def test_a_env_above_the_main_checkout_is_never_read(tmp_path, monkeypatch):
+    _checkout(tmp_path, monkeypatch, user="from-appdata")
+    (tmp_path / ".env").write_text(f"{KEY}=from-another-project\n", encoding="utf-8")
     assert env.load_env() == env.user_env_path()
     assert os.environ[KEY] == "from-appdata"
 

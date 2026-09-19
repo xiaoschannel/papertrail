@@ -44,21 +44,58 @@ def test_marked_files_are_listed_as_documents(archive_dir):
     assert [path.name for path in document.pages] == ["08102025142000_202.png", "08102025142100_203.png"]
 
 
-def test_accepting_files_every_page_and_remembers_the_name(archive_dir):
+def test_accepting_files_every_page_and_keeps_what_the_model_read(archive_dir):
     key = _two_page_marked(archive_dir)
     document = workshop.find(archive_dir, key)
-    extraction = ReceiptResult(document_type="receipt", language="ja", date="2025-08-10", time="14:20",
-                               name="ローソン 池袋店", currency="JPY", address="", cost=300.0)
+    read = document.first.extraction
 
-    placed = workshop.accept(archive_dir, document, _decision(), extraction)
+    placed = workshop.accept(archive_dir, document, _decision())
 
     assert len(placed) == 2 and all("Rescued Shop" in path for path in placed)
     assert all((archive_dir / path).exists() for path in placed)
     assert not any(page.exists() for page in document.pages)      # nothing left behind in marked/
     assert {read_sidecar(archive_dir / p).review.verdict for p in placed} == {"accepted"}
+    # the decision is what was confirmed; the extraction stays what the model read
+    assert read_sidecar(archive_dir / placed[0]).extraction == read
+    assert load_smart_match_cache(archive_dir)[key]["confirmed"] == "Rescued Shop"
+    assert workshop.marked_documents(archive_dir) == []
+
+
+def test_accepting_keeps_a_pending_reread_and_turns_the_pages_it_read(archive_dir):
+    from PIL import Image
+
+    from models import DetectedBox, OcrResult
+
+    key = _two_page_marked(archive_dir)
+    document = workshop.find(archive_dir, key)
+    with Image.open(document.pages[0]) as page:
+        width, height = page.size
+    read = ReceiptResult(document_type="receipt", language="ja", date="2025-08-10", time="14:20",
+                         name="ローソン 池袋店", currency="JPY", address="", cost=300.0,
+                         field_sources={"cost": ["1:0"]})
+    boxes = [DetectedBox(ref_type="0", coords=[[1, 2, 3, 4]], text="合計 ¥300")]
+    reread = workshop.Reread(pages=tuple(document.filenames), results=[OcrResult(markdown="p1", boxes=boxes),
+                                                                         OcrResult(markdown="p2")],
+                             extraction=read, top_points="left", ocr_model="m", extractor="e")
+
+    placed = workshop.accept(archive_dir, document, _decision(), reread)
+
+    first = read_sidecar(archive_dir / placed[0])
+    assert first.extraction == read and first.ocr.markdown == "p1" and first.ocr.boxes == boxes
+    assert read_sidecar(archive_dir / placed[1]).ocr.markdown == "p2"
+    with Image.open(archive_dir / placed[0]) as page:
+        assert page.size == (height, width)                        # turned as it was read
     assert load_smart_match_cache(archive_dir)[key] == {
         "extracted": "ローソン 池袋店", "confirmed": "Rescued Shop", "extracted_phone": ""}
-    assert workshop.marked_documents(archive_dir) == []
+
+
+def test_a_reread_of_a_document_that_changed_is_dropped(archive_dir):
+    key = _two_page_marked(archive_dir)
+    document = workshop.find(archive_dir, key)
+    store = workshop.Rereads()
+    store.put(key, workshop.Reread(pages=("somebody else.png",), results=[], extraction=None,  # type: ignore[arg-type]
+                                   top_points="", ocr_model="m", extractor="e"))
+    assert store.get(document) is None and store.get(document) is None
 
 
 def test_tossing_moves_every_page_out_of_marked(archive_dir):
@@ -72,25 +109,26 @@ def test_tossing_moves_every_page_out_of_marked(archive_dir):
     assert {read_sidecar(archive_dir / p).review.verdict for p in tossed} == {"tossed"}
 
 
-def test_ocr_text_joins_the_pages_and_keeps_the_boxes(archive_dir):
+def test_ocr_text_joins_the_pages(archive_dir):
     _two_page_marked(archive_dir)
     document = workshop.find(archive_dir, "9:202-203")
 
-    text, boxes = workshop.ocr_of(document)
+    text = workshop.ocr_of(document)
 
     assert text.startswith("--- Page 1 ---") and "page two" in text and "--- Page 2 ---" in text
-    assert boxes == []                                            # this fixture stored no boxes
 
 
-def test_the_extractor_is_given_boxes_when_there_are_any():
-    from models import DetectedBox
+def test_the_extractor_is_given_every_page_as_parse_gives_it():
+    from models import DetectedBox, OcrResult
 
-    plain, has_boxes = workshop.extractor_input("just text", [])
-    assert (plain, has_boxes) == ("just text", False)
+    plain, has_boxes = workshop.extractor_input([OcrResult(markdown="just text")])
+    assert (plain, has_boxes) == ("--- Page 1 ---\njust text", False)
 
     boxes = [DetectedBox(ref_type="0", coords=[[1, 2, 3, 4]], text="合計 ¥300")]
-    annotated, has_boxes = workshop.extractor_input("ignored", boxes)
-    assert has_boxes and annotated == "--- Page 1 ---\n[P1-BOX-0] 合計 ¥300"
+    text, has_boxes = workshop.extractor_input([OcrResult(markdown="one"), OcrResult(markdown="two", boxes=boxes)])
+    assert has_boxes
+    assert text == ("--- Page 1 ---\none\n\n--- Page 2 ---\ntwo\n"
+                    "--- Page 2 Grounding Boxes ---\n[P2-BOX-0] 合計 ¥300")
 
 
 @pytest.mark.parametrize("treatment", ["none", "clahe", "contrast", "whiten"])
@@ -110,3 +148,17 @@ def test_enhancement_rotates_before_treating():
     original = Image.new("RGB", (40, 80), "white")
     assert enhance(original, Enhancement(top_points="left")).size == (80, 40)
     assert enhance(original, Enhancement(top_points="down")).size == (40, 80)
+
+
+def test_a_scan_marked_by_hand_without_a_sidecar_is_listed_and_can_be_decided(archive_dir):
+    import shutil
+
+    marked = archive_dir / "marked"
+    shutil.copy(marked / "08102025142000_202.png", marked / "hand placed.png")
+
+    document = workshop.find(archive_dir, "hand placed")
+    assert document is not None and document.first.review.verdict == "marked" and document.first.ocr is None
+
+    [placed] = workshop.accept(archive_dir, document, _decision())
+    assert read_sidecar(archive_dir / placed).original_filename == "hand placed.png"
+

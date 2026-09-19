@@ -76,7 +76,7 @@
 
 .review-page .hints { list-style: none; margin: 0; padding: 8px 10px; border-radius: 8px; background: var(--panel-2); display: grid; gap: 3px; }
 .review-page .hints li { font-size: 12.5px; font-weight: 600; }
-.review-page .hints li.plain { color: var(--text); font-weight: 500; }
+.review-page .hints li.plain { color: var(--text); }
 
 .review-page .review-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 14px 0; }
 

@@ -161,8 +161,10 @@ def apply_reorganize(output_path: Path) -> list[tuple[str, str, str]]:
 
     # Moving goes through document_files: sidecar first, and never onto a name already in use —
     # including a scan whose sidecar is missing, which this function can't otherwise see.
-    from document_files import free_name, move_page, taken_stems
+    from document_files import close_gaps, ensure_movable, free_name, move_page, name_group, taken_stems
 
+    ensure_movable([output_path / accepted[fn][1] for fn, dest in destinations.items()
+                    if accepted[fn][1] and accepted[fn][1] != dest])
     moves: list[tuple[str, str, str]] = []
     for fn, new_dest in destinations.items():
         old_path_str = accepted[fn][1]
@@ -180,6 +182,8 @@ def apply_reorganize(output_path: Path) -> list[tuple[str, str, str]]:
         move_page(old_full, new_full, accepted[fn][0])
         moves.append((fn, old_path_str, new_full.relative_to(output_path).as_posix()))
 
+    for folder, base in {((output_path / old).parent, name_group(Path(old).stem)[0]) for _fn, old, _new in moves}:
+        close_gaps(folder, base)
     return moves
 
 

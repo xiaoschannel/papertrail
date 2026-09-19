@@ -1,5 +1,6 @@
 import { useState, type MouseEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { afterArchiveEdit } from '../api/invalidate.ts'
 import { api, type SuggestionSettings } from '../api/client.ts'
 import { useConfig } from '../api/config.ts'
 import type { Brand } from '../api/types.ts'
@@ -112,13 +113,14 @@ function Suggestions({ brands, unmatched }: { brands: Brand[]; unmatched: { name
     enabled: config.isSuccess,
     placeholderData: (previous) => previous,
   })
-  const done = () => queryClient.invalidateQueries({ queryKey: ['brands'] })
+  const done = () => afterArchiveEdit(queryClient, ['brands'])   // brand grouping on every chart changes too
   // Suggestions are casefolded for matching; the label is what you read in the charts, so title it
-  // (as Streamlit did) and keep the prefix exactly as suggested.
+  // and keep the prefix exactly as suggested.
   const titled = (prefix: string) => prefix.replace(/(^|\s)(\p{L})/gu, (_m, gap, letter) => gap + letter.toUpperCase())
   const create = useMutation({ mutationFn: (prefix: string) =>
     api.brands.create({ label: titled(prefix), prefixes: [prefix] }), onSuccess: done })
-  const add = useMutation({ mutationFn: (prefix: string) => api.brands.addPrefix(target, prefix), onSuccess: done })
+  const chosenTarget = target || brands[0]?.id || ''   // the first brand until you pick one
+  const add = useMutation({ mutationFn: (prefix: string) => api.brands.addPrefix(chosenTarget, prefix), onSuccess: done })
   const set = <K extends keyof SuggestionSettings>(key: K, value: SuggestionSettings[K]) =>
     setSettings({ ...current, [key]: value })
 
@@ -147,8 +149,8 @@ function Suggestions({ brands, unmatched }: { brands: Brand[]; unmatched: { name
         </div>
         <div className="field">
           <label htmlFor="sg-target">Add to brand</label>
-          <select id="sg-target" value={target} onChange={(e) => setTarget(e.target.value)}>
-            <option value="">(pick a brand)</option>
+          <select id="sg-target" value={chosenTarget} onChange={(e) => setTarget(e.target.value)} disabled={!brands.length}>
+            {!brands.length && <option value="">(no brands yet)</option>}
             {brands.map((b) => <option key={b.id} value={b.id}>{b.label}</option>)}
           </select>
         </div>
@@ -175,7 +177,7 @@ function Suggestions({ brands, unmatched }: { brands: Brand[]; unmatched: { name
                     <button disabled={create.isPending} onClick={press(() => create.mutate(row.prefix))}>
                       New brand
                     </button>
-                    <button disabled={!target || add.isPending} onClick={press(() => add.mutate(row.prefix))}>
+                    <button disabled={!chosenTarget || add.isPending} onClick={press(() => add.mutate(row.prefix))}>
                       Add prefix
                     </button>
                   </span>
@@ -249,7 +251,7 @@ function ManageBrands({ brands }: { brands: Brand[] }) {
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
   const [adding, setAdding] = useState({ label: '', prefixes: '' })
-  const done = () => queryClient.invalidateQueries({ queryKey: ['brands'] })
+  const done = () => afterArchiveEdit(queryClient, ['brands'])   // brand grouping on every chart changes too
   const create = useMutation({
     mutationFn: () => api.brands.create({ label: adding.label, prefixes: adding.prefixes.split('\n') }),
     onSuccess: () => {
@@ -259,7 +261,8 @@ function ManageBrands({ brands }: { brands: Brand[] }) {
   })
   const needle = search.trim().toLowerCase()
   const shown = needle
-    ? brands.filter((b) => b.label.toLowerCase().includes(needle) || b.prefixes.some((p) => p.toLowerCase().includes(needle)))
+    ? brands.filter((b) => b.id.toLowerCase().includes(needle) || b.label.toLowerCase().includes(needle)
+      || b.prefixes.some((p) => p.toLowerCase().includes(needle)))
     : brands
 
   return (
@@ -267,7 +270,7 @@ function ManageBrands({ brands }: { brands: Brand[] }) {
       <Card title="Brands" hint={`${brands.length} total`}>
         <div className="field">
           <label htmlFor="brand-search">Search</label>
-          <input id="brand-search" type="text" value={search} placeholder="label or prefix"
+          <input id="brand-search" type="text" value={search} placeholder="label, id or prefix"
             onChange={(e) => setSearch(e.target.value)} />
         </div>
         <div className="brand-list">
@@ -324,12 +327,13 @@ function BrandRow({ brand, onDone }: { brand: Brand; onDone: () => void }) {
       </summary>
       <div className="curate-grid">
         <div className="field">
-          <label>Label</label>
-          <input type="text" value={draft.label} onChange={(e) => setDraft({ ...draft, label: e.target.value })} />
+          <label htmlFor={`brand-${brand.id}-label`}>Label</label>
+          <input id={`brand-${brand.id}-label`} type="text" value={draft.label}
+            onChange={(e) => setDraft({ ...draft, label: e.target.value })} />
         </div>
         <div className="field">
-          <label>Prefixes (one per line)</label>
-          <textarea rows={Math.max(2, brand.prefixes.length)} value={draft.prefixes}
+          <label htmlFor={`brand-${brand.id}-prefixes`}>Prefixes (one per line)</label>
+          <textarea id={`brand-${brand.id}-prefixes`} rows={Math.max(2, brand.prefixes.length)} value={draft.prefixes}
             onChange={(e) => setDraft({ ...draft, prefixes: e.target.value })} />
         </div>
       </div>

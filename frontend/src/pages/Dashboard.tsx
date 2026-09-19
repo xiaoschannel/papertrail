@@ -19,7 +19,7 @@ export default function Dashboard() {
   const [year, setYear] = useState<number | undefined>(undefined)   // undefined = all years
   const [groupBy, setGroupBy] = useState<GroupBy>('brand')
 
-  // The ranking is remembered in config.json (as in Streamlit), so the dashboard opens the way it was left.
+  // The ranking is remembered in config.json, so the dashboard opens the way it was left.
   const config = useConfig()
   const saveConfig = useSaveConfig()
   const [chosenRank, setChosenRank] = useState<RankBy | null>(null)

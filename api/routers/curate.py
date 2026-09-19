@@ -11,7 +11,8 @@ import document_files
 import name_merge
 from api import cache
 from api.deps import get_output_path
-from api.guards import no_job_running
+from api.jobs import Claim
+from api.guards import no_job_running, one_edit_at_a_time
 from api.model_manager import models
 from api.schemas import (
     DedupeCluster, DedupeMember, DedupeOut, DistinctIn, DistinctOut, KeepIn, KeptPair, MergeIn, MergeOut,
@@ -35,8 +36,7 @@ def dedupe_clusters(output_path: Path = Depends(get_output_path)):
     """Archived documents that look like the same purchase scanned twice: equal cost, minutes apart.
 
     Clustered per DOCUMENT, not per file: the pages of one multi-page receipt share a date, time and
-    cost, so clustering files (as the Streamlit page did) reported every multi-page document as its
-    own duplicate.
+    cost, so clustering files would report every multi-page document as its own duplicate.
     """
     tossed, _accepted = load_reorganized_state(output_path)
     records = cache.viz_records(output_path)
@@ -70,6 +70,7 @@ def dedupe_clusters(output_path: Path = Depends(get_output_path)):
 
 
 @router.post("/dedupe/keep", response_model=DedupeOut)
+@one_edit_at_a_time
 def keep_both(body: KeepIn, output_path: Path = Depends(get_output_path)):
     """Say these documents are different purchases, so the cluster stops coming back."""
     pairs = load_kept_duplicates(output_path)
@@ -80,6 +81,7 @@ def keep_both(body: KeepIn, output_path: Path = Depends(get_output_path)):
 
 
 @router.delete("/dedupe/keep", response_model=DedupeOut)
+@one_edit_at_a_time
 def consider_again(first: str, second: str, output_path: Path = Depends(get_output_path)):
     """Undo that, so the pair is offered again."""
     pairs = load_kept_duplicates(output_path)
@@ -112,7 +114,10 @@ def toss_duplicate(body: TossIn, output_path: Path = Depends(get_output_path)):
 @router.post("/dedupe/restore", response_model=DedupeOut)
 def restore_tossed(body: RestoreIn, output_path: Path = Depends(get_output_path)):
     """Undo a toss: put the pages back in the archive under the verdict they had."""
-    pages = [output_path / relative for relative in body.paths]
+    tossed_folder = (output_path / document_files.TOSSED).resolve()
+    pages = [(output_path / relative).resolve() for relative in body.paths]
+    if not pages or any(page.parent != tossed_folder for page in pages):
+        raise HTTPException(status_code=404, detail="Only a document in tossed/ can be put back.")
     try:
         loaded = document_files.load_pages(pages)
     except LookupError as exc:
@@ -146,7 +151,7 @@ def normalize_clusters(
                      else {"normalize_string_similarity": int(eps)}))
 
     # The page speaks in the units the user sees — percent similarity, or embedding distance — while
-    # both engines cluster on distance (Streamlit did this conversion inside its slider).
+    # both engines cluster on distance, so percent similarity is converted here.
     eps_value = float(eps) if engine_id == "embedding" else 1.0 - float(eps) / 100.0
 
     by_name, canonical = name_merge.names_in_use(output_path)
@@ -154,7 +159,9 @@ def normalize_clusters(
     pairs = load_distinct_pairs(output_path)
     groups: list[NameGroup] = []
     if len(names) >= 2:
-        with no_job_running("cluster merchant names"):
+        # Archive moves the sidecars the names come from; the embedding engine also needs the GPU.
+        with no_job_running("cluster merchant names", **({"claim": Claim(gpu=True)} if engine_id == "embedding"
+                                                         else {"kind": "archive"})):
             if engine_id == "embedding":
                 models.acquire(f"embed:{EMBED_MODEL}", unload_embeddings)
             clusters = ENGINES[engine_id].run(output_path, names, eps_value)
@@ -186,7 +193,7 @@ def preview_merge(body: MergeIn, output_path: Path = Depends(get_output_path)):
 def merge_names(body: MergeIn, output_path: Path = Depends(get_output_path)):
     """Rewrite every variant to the chosen name and re-file the documents it renames."""
     try:
-        with no_job_running("merge names"):
+        with no_job_running("merge names", kind="archive"):   # the one job that moves archived files
             plan = name_merge.apply_merge(output_path, body.target, body.variants)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -195,11 +202,13 @@ def merge_names(body: MergeIn, output_path: Path = Depends(get_output_path)):
 
 
 @router.post("/normalize/distinct", response_model=DistinctOut)
+@one_edit_at_a_time
 def confirm_distinct(body: DistinctIn, output_path: Path = Depends(get_output_path)):
     """Remember that these names are different shops, so the cluster stops coming back."""
     return DistinctOut(pairs=name_merge.confirm_different(output_path, body.names))
 
 
 @router.delete("/normalize/distinct", response_model=DistinctOut)
+@one_edit_at_a_time
 def forget_distinct(first: str, second: str, output_path: Path = Depends(get_output_path)):
     return DistinctOut(pairs=name_merge.forget_different(output_path, first, second))

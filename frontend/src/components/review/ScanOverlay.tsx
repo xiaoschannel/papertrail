@@ -2,7 +2,7 @@ import type { BoxRect, FieldBox, ReviewPage, TopPoints } from '../../api/types.t
 import { Empty } from '../ui.tsx'
 import './ScanOverlay.css'
 
-/** Colors per extracted field, matching box_drawing.FIELD_COLORS in the Streamlit app. */
+/** Colors per extracted field; other fields get DEFAULT_FIELD_COLOR. */
 export const FIELD_COLORS: Record<string, string> = {
   name: '#4285f4',
   title: '#4285f4',
@@ -14,7 +14,7 @@ const DEFAULT_FIELD_COLOR = '#787878'
 
 export const fieldColor = (field: string | undefined) => (field && FIELD_COLORS[field]) || DEFAULT_FIELD_COLOR
 
-/** A box no field cites (every box OCR found, before Parse): its own colour, as box_drawing.draw_all_boxes. */
+/** A box no field cites (every box OCR found, before Parse): its own colour, cycling by index. */
 const BOX_COLORS = ['#4285f4', '#ea4335', '#34a853', '#fbbc04', '#00bcd4', '#9c27b0', '#ff7043', '#3f51b5']
 const boxColor = (box: FieldBox) =>
   box.fields.length ? fieldColor(box.fields[0]) : BOX_COLORS[box.index % BOX_COLORS.length] ?? DEFAULT_FIELD_COLOR
@@ -87,7 +87,7 @@ export function ScanOverlay({
                     onMouseEnter={() => onHoverField(box.fields[0] ?? null)}
                     onMouseLeave={() => onHoverField(null)}
                   >
-                    {j === 0 && <span className="field-box__label">{boxLabel(box)}</span>}
+                    <span className="field-box__label">{boxLabel(box)}</span>
                   </div>
                 )
               }))}

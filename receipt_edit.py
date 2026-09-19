@@ -1,11 +1,10 @@
-"""Editing a document that is already archived (Receipt Detail's Save), free of Streamlit.
+"""Editing a document that is already archived (Receipt Detail's Save).
 
 Saving re-files every page of the document under the name the new values produce, rewrites each
-page's sidecar and refreshes the smart-match cache, exactly as ``pages/visualize/receipt.py`` does —
-with two fixes: every page of a multi-page document is re-filed (Streamlit renamed only the first,
-leaving the rest under the old name), and a document keeps its name when the values that build it are
-unchanged (Streamlit counted the document's own sidecar as a collision and appended " (2)" on every
-save). The moving itself is ``document_files``, shared with Workshop and Dedupe.
+page's sidecar and refreshes the smart-match cache. Every page of a multi-page document is re-filed,
+so none is left under the old name, and a document keeps its name when the values that build it are
+unchanged: its own sidecar doesn't count as a collision, or every save would append " (2)". The
+moving itself is ``document_files``, shared with Workshop and Dedupe.
 """
 
 from __future__ import annotations

@@ -120,8 +120,8 @@ def box(ref_type: str, coords, text: str) -> dict:
 def legacy_ocr_result(markdown: str, *, original_filename: str, boxes=None) -> dict:
     """An OCR block in the older on-disk shape: the current {markdown, boxes,
     succeeded} fields PLUS the legacy `filename` and `raw` keys that older
-    archived sidecars still carry. pydantic ignores the extras on load; the migration
-    must preserve that tolerance."""
+    archived sidecars still carry. pydantic ignores the extras on load; the loader
+    must keep that tolerance."""
     d = ocr_result(markdown, boxes=boxes)
     d["filename"] = original_filename
     d["raw"] = markdown

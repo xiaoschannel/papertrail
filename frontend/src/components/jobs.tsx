@@ -15,9 +15,18 @@ export const JOBS = ['job', 'list'] as const
 
 /** Every running job, plus the last finished one of each kind with none running. */
 export function useJobs(): Job[] {
+  const queryClient = useQueryClient()
   return useQuery({
     queryKey: JOBS,
-    queryFn: api.jobs.list,
+    // A job that ended between two reads of the list (seen here first, not on its stream) ends here too.
+    queryFn: async () => {
+      const before = queryClient.getQueryData<Job[]>(JOBS) ?? []
+      const jobs = await api.jobs.list()
+      if (before.some((was) => isRunning(was) && jobs.some((job) => job.id === was.id && !isRunning(job)))) {
+        queueMicrotask(() => jobEnded(queryClient))
+      }
+      return jobs
+    },
     // While jobs run, the watcher's streams keep this current. Otherwise poll gently, so a job started in
     // another tab still shows up here (and its locks apply) without waiting for a refused request.
     refetchInterval: (query) => ((query.state.data ?? []).some(isRunning) ? false : 10_000),
@@ -29,10 +38,18 @@ export function useJobs(): Job[] {
 const isRunning = (job: Job) => job.status === 'running'
 
 function upsert(queryClient: QueryClient, job: Job) {
+  const was = queryClient.getQueryData<Job[]>(JOBS)?.find((j) => j.id === job.id)
   queryClient.setQueryData<Job[]>(JOBS, (jobs = []) =>
     jobs.some((j) => j.id === job.id) ? jobs.map((j) => (j.id === job.id ? job : j))
       // a new run replaces the last finished one of its kind
       : [...jobs.filter((j) => j.kind !== job.kind || isRunning(j)), job])
+  if (was && isRunning(was) && !isRunning(job)) jobEnded(queryClient)
+}
+
+/** A job just ended: OCR/Parse/Archive changed what the ingest pages (and, after Archive, the visualize
+ *  pages) show, so everything but the job list re-reads. */
+function jobEnded(queryClient: QueryClient) {
+  void queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] !== 'job' })
 }
 
 /** Put a job the page just started (or cancelled) into the cache, so the watcher follows it. */
@@ -54,11 +71,7 @@ function JobStream({ id }: { id: string }) {
     source.onmessage = (event: MessageEvent<string>) => {
       const next = JSON.parse(event.data) as Job
       upsert(queryClient, next)
-      if (next.status !== 'running') {
-        source.close()
-        // OCR/Parse/Archive changed what the ingest pages (and, after Archive, the visualize pages) show.
-        void queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] !== 'job' })
-      }
+      if (next.status !== 'running') source.close()
     }
     source.onerror = () => {
       // EventSource retries dropped connections by itself; once it gives up (e.g. the server restarted
@@ -157,7 +170,7 @@ export function JobPanel({ job }: { job: Job }) {
       {job.message && <p className={`job-message${job.status === 'failed' ? ' neg' : ''}`}>{job.message}</p>}
       {cancel.error && <div className="error-banner" role="alert">{cancel.error.message}</div>}
       <div className="job-actions">
-        {running && (
+        {running && job.cancellable && (
           <button className="danger-outline" disabled={job.cancel_requested || cancel.isPending} onClick={() => cancel.mutate()}>
             {job.cancel_requested ? 'Cancelling…' : 'Cancel'}
           </button>

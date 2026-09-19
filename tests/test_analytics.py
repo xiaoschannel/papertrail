@@ -1,4 +1,4 @@
-"""Pure visualization aggregations (extracted from the Streamlit pages)."""
+"""Pure visualization aggregations."""
 
 from datetime import date
 

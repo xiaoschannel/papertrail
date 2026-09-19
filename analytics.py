@@ -1,9 +1,8 @@
 """Pure aggregation helpers for the visualization views.
 
-Extracted verbatim from the Streamlit pages so the same computations can be
-unit-tested and reused by the web API (``api/``); ``complete_monthly_series``
-was added for the web charts. No ``streamlit`` import; every
-function takes/returns plain pandas/Python values.
+Kept free of any web or UI framework so the computations can be unit-tested and
+served by the API (``api/``); ``complete_monthly_series`` pads the series for the
+monthly charts. Every function takes/returns plain pandas/Python values.
 """
 
 from __future__ import annotations

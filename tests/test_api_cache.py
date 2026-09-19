@@ -22,7 +22,7 @@ def test_merchant_page_no_longer_parses_twice(api_client, monkeypatch):
     monkeypatch.setattr(cache, "build_viz_records", lambda p, state=None: calls.append(p) or real(p, state))
 
     assert api_client.get("/api/analytics/merchant", params={"brand_id": "seven-eleven"}).status_code == 200
-    assert len(calls) == 1  # records + items used to mean two full parses
+    assert len(calls) == 1  # records + items share one parse
 
 
 def test_removing_a_document_invalidates(api_client, configured_archive):

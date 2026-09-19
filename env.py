@@ -6,8 +6,9 @@ copy per checkout is the problem, not the fix: copies drift, and rotating a key 
 every one of them. So exactly one file is read, the first of:
 
 1. ``<repo>/.env`` — this checkout's own;
-2. the nearest ``.env`` above it — for a worktree under ``<repo>/.claude/worktrees/<name>`` that is
-   the main checkout's file, so a worktree needs nothing of its own;
+2. for a worktree under ``<repo>/.claude/worktrees/<name>``, the main checkout's — so a worktree needs
+   nothing of its own. The search goes no higher than the main checkout (the first folder whose
+   ``.git`` is a directory), so another project's ``.env`` further up is never read;
 3. ``%APPDATA%\papertrail\.env`` (``~/.config/papertrail/.env`` elsewhere) — a machine-wide file for
    a clone that lives outside the main checkout.
 
@@ -36,6 +37,8 @@ def env_path() -> Path | None:
         candidate = folder / ".env"
         if candidate.is_file():
             return candidate
+        if (folder / ".git").is_dir():        # the main checkout: nothing above it belongs to this project
+            break
     user = user_env_path()
     return user if user.is_file() else None
 

@@ -141,7 +141,7 @@ export interface paths {
         };
         /**
          * Suggestions
-         * @description Prefixes shared by unmatched receipt names. The settings are remembered, as in Streamlit.
+         * @description Prefixes shared by unmatched receipt names. The settings are remembered for the next visit.
          */
         get: operations["suggestions_api_brands_suggestions_get"];
         put?: never;
@@ -164,8 +164,7 @@ export interface paths {
          * @description Archived documents that look like the same purchase scanned twice: equal cost, minutes apart.
          *
          *     Clustered per DOCUMENT, not per file: the pages of one multi-page receipt share a date, time and
-         *     cost, so clustering files (as the Streamlit page did) reported every multi-page document as its
-         *     own duplicate.
+         *     cost, so clustering files would report every multi-page document as its own duplicate.
          */
         get: operations["dedupe_clusters_api_curate_dedupe_get"];
         put?: never;
@@ -371,7 +370,7 @@ export interface paths {
         };
         /**
          * Context
-         * @description The week around the form's date and time, and the rest of the document's batch (as Streamlit showed).
+         * @description The week around the form's date and time, and the rest of the document's batch.
          */
         get: operations["context_api_curate_workshop_context_get"];
         put?: never;
@@ -414,9 +413,31 @@ export interface paths {
         /**
          * Reprocess
          * @description Read the treated scan again and extract from it, as a job: it loads the same models as ingest.
+         *
+         *     The result waits for the decision (see ``workshop.Reread``); nothing on disk changes yet.
          */
         post: operations["reprocess_api_curate_workshop_reprocess_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/curate/workshop/reread": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Discard Reread
+         * @description Drop a pending reread: the document goes back to what its sidecars say.
+         */
+        delete: operations["discard_reread_api_curate_workshop_reread_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -634,6 +655,27 @@ export interface paths {
         };
         /** Calendar Endpoint */
         get: operations["calendar_endpoint_api_analytics_calendar_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Documents
+         * @description Every archived document, by original filename: what Receipt Detail's picker offers, including the
+         *     undated and non-receipt documents no chart or calendar leads to.
+         */
+        get: operations["documents_api_documents_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1777,6 +1819,22 @@ export interface components {
             /** Pairs */
             pairs: number;
         };
+        /**
+         * DocumentListItem
+         * @description One archived document, as a picker lists it.
+         */
+        DocumentListItem: {
+            /** Filename */
+            filename: string;
+            /** Name */
+            name: string;
+            /** Date */
+            date: string;
+            /** Time */
+            time: string;
+            /** Document Type */
+            document_type: string;
+        };
         /** DraftIn */
         DraftIn: {
             /**
@@ -1968,7 +2026,7 @@ export interface components {
         };
         /**
          * ExperimentTreatmentIn
-         * @description The Workshop's treatments, plus the denoising Streamlit's Experiment page had.
+         * @description The Workshop's treatments, plus denoising before and/or after them.
          */
         ExperimentTreatmentIn: {
             /**
@@ -2276,6 +2334,8 @@ export interface components {
             eta_seconds: number | null;
             /** Cancel Requested */
             cancel_requested: boolean;
+            /** Cancellable */
+            cancellable: boolean;
             /** Version */
             version: number;
             /** Batches */
@@ -2686,6 +2746,21 @@ export interface components {
                 [key: string]: string[];
             };
         };
+        /**
+         * RereadOut
+         * @description A reread of the open document waiting for the decision; the document shows what it read.
+         */
+        RereadOut: {
+            /**
+             * Top Points
+             * @enum {string}
+             */
+            top_points: "" | "left" | "right" | "down";
+            /** Ocr Model */
+            ocr_model: string;
+            /** Extractor */
+            extractor: string;
+        };
         /** RestoreIn */
         RestoreIn: {
             /** Paths */
@@ -2999,6 +3074,7 @@ export interface components {
             /** Documents */
             documents: components["schemas"]["MarkedDocumentOut"][];
             document: components["schemas"]["ReviewDocument"] | null;
+            reread: components["schemas"]["RereadOut"] | null;
             /** Ocr Models */
             ocr_models: string[];
             /** Extractors */
@@ -3877,6 +3953,37 @@ export interface operations {
             };
         };
     };
+    discard_reread_api_curate_workshop_reread_delete: {
+        parameters: {
+            query: {
+                key: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkshopOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     decide_api_curate_workshop_decide_post: {
         parameters: {
             query?: never;
@@ -4211,6 +4318,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    documents_api_documents_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentListItem"][];
                 };
             };
         };

@@ -4,8 +4,8 @@ A merge is the widest-reaching edit in the app: the chosen spelling replaces eve
 archived sidecars, in ``decisions.json``, in the smart-match cache and in ``name_normalizations.json``,
 and the affected documents are then re-filed, because the file name is built from the merchant name.
 
-Ported from ``pages/curate/normalize.py`` free of Streamlit, with a preview: :func:`plan_merge` says
-exactly what a merge would touch before anything is written.
+Because it reaches that far, it comes with a preview: :func:`plan_merge` says exactly what a merge
+would touch before anything is written.
 """
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ from data import (
     save_smart_match_cache, write_sidecar,
 )
 from dedupe_candidates import drop_confirmed_different as filter_by_distinct_pairs
+from document_files import ensure_movable
 from organize_utils import apply_reorganize, resolve_single_accepted_destination
 
 
@@ -104,6 +105,9 @@ def apply_merge(output_path: Path, target: str, variants: list[str]) -> MergePla
     by_name, _canonical = names_in_use(output_path)
     _tossed, accepted = load_reorganized_state(output_path)
     normalizations = _merged_normalizations(load_name_normalizations(output_path), target, plan.variants)
+    # Every file the merge will re-file must be free to move, or nothing is written at all.
+    ensure_movable([output_path / accepted[filename][1] for variant in plan.variants
+                    for filename in by_name.get(variant, []) if accepted[filename][1]])
 
     for variant in plan.variants:
         for filename in by_name.get(variant, []):

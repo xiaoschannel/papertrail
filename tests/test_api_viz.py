@@ -208,3 +208,11 @@ def test_merchant_profile_lists_brand_locations(api_client):
         expected[receipt["brand_location"] or "(no remainder)"] = expected.get(receipt["brand_location"] or "(no remainder)", 0) + 1
     assert {row["location"]: row["count"] for row in profile["locations"]} == expected
     assert sum(row["count"] for row in profile["locations"]) == profile["metrics"]["visit_count"]
+
+
+def test_documents_lists_every_archived_document_for_the_picker(api_client):
+    listed = api_client.get("/api/documents").json()
+    records = api_client.get("/api/viz/records").json()
+    assert [d["filename"] for d in listed] == sorted(r["filename"] for r in records)
+    assert {d["document_type"] for d in listed} >= {"receipt"}
+    assert any(d["date"] == "" for d in listed)           # the undated one is reachable too

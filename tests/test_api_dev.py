@@ -8,19 +8,9 @@ from PIL import Image
 
 import experiment_runs
 from api import ingest_registry
-from api.jobs import FINISHED, runner
-from api.model_manager import models
+from api.jobs import runner
 from models import ReceiptResult
 from settings import get_config
-
-
-@pytest.fixture(autouse=True)
-def no_leftover_job():
-    yield
-    for job in runner.running_jobs():
-        runner.cancel(job["id"])
-        runner.wait_until_finished(job["id"], timeout=10)
-    models.release()
 
 
 # --- Sanity Check ----------------------------------------------------------------------------------------
@@ -103,7 +93,6 @@ def test_index_audit_finds_a_file_indexed_twice_and_the_scan_folder_delta(api_cl
 @pytest.fixture
 def bench(monkeypatch, tmp_path, configured_archive):
     """Runs in a temp folder, with fake models: a grounding OCR and an extractor that cites box 0."""
-    monkeypatch.setattr(experiment_runs, "ROOT", tmp_path / "experiment")
     seen = {"ocr": [], "prompts": []}
 
     class FakeOcr:
@@ -158,7 +147,7 @@ def test_an_upload_is_kept_outside_the_archive_and_opens_next_time(api_client, b
 
     assert (run["filename"], run["width"], run["height"]) == ("my receipt.png", 40, 80)
     assert run["ocr"] is None and run["parse"] is None
-    assert (tmp_path / "experiment" / run["id"] / "my receipt.png").is_file()
+    assert (experiment_runs.ROOT / run["id"] / "my receipt.png").is_file()
     assert sorted(p.relative_to(configured_archive) for p in configured_archive.rglob("*")) == before
     options = api_client.get("/api/dev/experiment").json()
     assert options["latest"] == run["id"]
@@ -202,7 +191,7 @@ def test_ocr_reads_the_treated_image_and_keeps_the_text_the_boxes_and_what_it_re
     assert ocr["treatment"]["top_points"] == "left"
     seen = api_client.get(f"/api/dev/experiment/{run['id']}/seen")
     assert Image.open(io.BytesIO(seen.content)).size == (80, 40)
-    assert get_config().ocr_model == "Fake OCR"           # the model tried becomes the pipeline's, as in Streamlit
+    assert get_config().ocr_model == "Fake OCR"           # the model tried becomes the pipeline's
 
 
 def test_a_model_without_boxes_reads_once(api_client, bench):
@@ -243,6 +232,6 @@ def test_reading_again_drops_the_extraction_of_the_old_text(api_client, bench):
 
 def test_an_unknown_run_or_model_is_refused(api_client, bench):
     assert api_client.get("/api/dev/experiment/" + "0" * 32).status_code == 404
-    assert api_client.get("/api/dev/experiment/../../etc").status_code == 404
+    assert experiment_runs.find("../../etc") is None and experiment_runs.find("..") is None
     run = _upload(api_client)
     assert api_client.post(f"/api/dev/experiment/{run['id']}/ocr", json={"model": "Nope"}).status_code == 422

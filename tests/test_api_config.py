@@ -33,3 +33,50 @@ def test_patch_changes_only_the_given_fields(api_client):
 
 def test_patch_rejects_unknown_fields(api_client):
     assert api_client.patch("/api/config", json={"not_a_setting": 1}).status_code == 422
+
+
+def test_config_changes_made_together_all_land_and_a_reader_never_sees_half_a_file(tmp_path, monkeypatch):
+    import threading
+
+    import settings
+
+    monkeypatch.setattr(settings, "CONFIG_PATH", tmp_path / "config.json")
+    settings.save_config(settings.AppConfig())
+    failures = []
+
+    def read():
+        for _ in range(300):
+            try:
+                settings.get_config()
+            except Exception as exc:          # a half-written file fails to parse
+                failures.append(exc)
+
+    def write(field, values):
+        for value in values:
+            settings.update_config(**{field: value})
+
+    threads = [threading.Thread(target=read),
+               threading.Thread(target=write, args=("ocr_model", [f"ocr {n}" for n in range(150)])),
+               threading.Thread(target=write, args=("extractor_model", [f"llm {n}" for n in range(150)]))]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert failures == []
+    final = settings.get_config()
+    assert (final.ocr_model, final.extractor_model) == ("ocr 149", "llm 149")
+
+
+def test_only_pages_on_this_machine_are_served(api_client):
+    assert api_client.get("/api/health").status_code == 200
+    # a site whose name was made to resolve to 127.0.0.1 still sends its own name as Host
+    assert api_client.get("/api/health", headers={"host": "rebound.example:8000"}).status_code == 403
+    # a script on another site sends its own Origin
+    assert api_client.patch("/api/config", json={"ocr_model": "x"},
+                            headers={"origin": "https://evil.example"}).status_code == 403
+    # a form or image on another site's page
+    assert api_client.post("/api/ingest/archive", headers={"sec-fetch-site": "cross-site"}).status_code == 403
+    # the web app itself, through the dev server on another local port
+    assert api_client.get("/api/health", headers={"origin": "http://localhost:5173",
+                                                  "sec-fetch-site": "same-origin"}).status_code == 200

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api, type GroupBy } from '../api/client.ts'
 import { totalsLabel, type MerchantTotals } from '../api/types.ts'
@@ -62,14 +62,14 @@ export default function Merchant() {
           </div>
         </div>
         <div className="field" style={{ flex: 1, minWidth: 260 }}>
-          <label>{mode === 'brand' ? 'Brand' : 'Merchant'}</label>
-          <select value={current} onChange={(e) => choose(e.target.value)} style={{ maxWidth: 420 }}>
+          <label htmlFor="merchant-pick">{mode === 'brand' ? 'Brand' : 'Merchant'}</label>
+          <select id="merchant-pick" value={current} onChange={(e) => choose(e.target.value)} style={{ maxWidth: 420 }}>
             {options.map((o) => {
               const value = valueOf(o)
               if (!value) return null
               return (
                 <option key={value} value={value}>
-                  {totalsLabel(o)} — {num(o.visit_count)} receipt(s)
+                  {totalsLabel(o)}{mode === 'brand' && totalsLabel(o) !== value ? ` (${value})` : ''} — {num(o.visit_count)} receipt(s)
                 </option>
               )
             })}
@@ -79,7 +79,9 @@ export default function Merchant() {
 
       {list.isError ? <ErrorState error={list.error} />
         : list.isLoading ? <Loading what="merchants" />
-        : !current ? <Empty>No merchants found.</Empty>
+        : !current ? (mode === 'brand'
+          ? <Empty>No brands have receipts yet. <Link className="rowlink" to="/brands">Add brands in Brand registry →</Link></Empty>
+          : <Empty>No merchants found.</Empty>)
         : detail.isError ? <ErrorState error={detail.error} />
         : !detail.data ? <Loading what="merchant" />
         : (
@@ -99,11 +101,11 @@ export default function Merchant() {
               </ChartCard>
 
               <ChartCard title="Visit Cadence" hint="days since previous visit">
-                {!detail.data.cadence.length ? <Empty>Needs at least two visits.</Empty> : <EChart option={cadenceOption} />}
+                {!detail.data.cadence.length ? <Empty>Needs at least three visits.</Empty> : <EChart option={cadenceOption} />}
               </ChartCard>
             </div>
 
-            {mode === 'brand' && detail.data.locations.length > 1 && (
+            {mode === 'brand' && detail.data.locations.length > 0 && (
               <Card title="Locations" hint={`${detail.data.locations.length} branch(es)`} className="card--table">
                 <div className="table-wrap short">
                   <table>
@@ -153,7 +155,7 @@ export default function Merchant() {
 
             <Card title="Receipts" hint={`${receipts.length} total`}>
               {/* keyed by selection so switching merchant starts at page 1 */}
-              <ReceiptGallery key={`${mode}:${current}`} receipts={receipts} rowsPerPage={3} />
+              <ReceiptGallery key={`${mode}:${current}`} receipts={receipts} rowsPerPage={3} showBranch={mode === 'brand'} />
             </Card>
           </div>
         )}

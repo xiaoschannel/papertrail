@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api/client.ts'
-import { useSaveConfig } from '../api/config.ts'
+import { useConfig, useSaveConfig } from '../api/config.ts'
 import { ConfirmDialog } from '../components/ConfirmDialog.tsx'
 import { JobPanel, useJobGate, useTrackJob } from '../components/jobs.tsx'
 import { Card, Empty, ErrorState, Loading, Tile } from '../components/ui.tsx'
@@ -16,8 +16,8 @@ export default function Parse() {
   const [instruction, setInstruction] = useState<string | null>(null)
   const [confirming, setConfirming] = useState(false)
   const track = useTrackJob()
-  // Streamlit saved instructions as you typed; keep them when you navigate away without starting a run.
-  const saveInstruction = useSaveConfig()
+  // Instructions are saved when the box loses focus, so navigating away without starting a run keeps them.
+  const saveConfig = useSaveConfig()
   const lastSaved = useRef<string | null>(null)   // so typing the original text back is still saved
 
   const status = useQuery({
@@ -25,8 +25,12 @@ export default function Parse() {
     queryFn: () => api.ingest.parse(reprocess, limit),
     placeholderData: (previous) => previous,
   })
-  const chosen = extractor ?? status.data?.extractor ?? ''
-  const customInstruction = instruction ?? status.data?.custom_instruction ?? ''
+  // The saved choices come from the config, where every page saves them (Review and the Experiment
+  // bench edit the instructions too), not from this page's own status, which may be older.
+  const config = useConfig().data
+  const savedExtractor = config && status.data?.extractors.includes(config.extractor_model) ? config.extractor_model : undefined
+  const chosen = extractor ?? savedExtractor ?? status.data?.extractor ?? ''
+  const customInstruction = instruction ?? config?.parse_custom_instruction ?? status.data?.custom_instruction ?? ''
   // A hosted model (OpenAI) runs beside OCR; one on this machine's GPU has to wait for it.
   const gate = useJobGate('parse', { gpu: status.data?.local_extractors.includes(chosen) ?? false })
   const start = useMutation({
@@ -54,7 +58,10 @@ export default function Parse() {
             <div className="controls">
               <div className="field">
                 <label htmlFor="parse-model">Model</label>
-                <select id="parse-model" value={chosen} onChange={(e) => setExtractor(e.target.value)}>
+                <select id="parse-model" value={chosen} onChange={(e) => {
+                  setExtractor(e.target.value)
+                  saveConfig.mutate({ extractor_model: e.target.value })   // remembered as soon as it's picked
+                }}>
                   {s.extractors.map((name) => <option key={name} value={name}>{name}</option>)}
                 </select>
               </div>
@@ -63,16 +70,16 @@ export default function Parse() {
             </div>
             <div className="field parse-instructions">
               <label htmlFor="parse-instruction">
-                Custom instructions (added to the prompt){saveInstruction.isPending ? ' — saving…' : ''}
+                Custom instructions (added to the prompt){saveConfig.isPending ? ' — saving…' : ''}
               </label>
               <textarea id="parse-instruction" rows={3} value={customInstruction}
                 placeholder="e.g. Prefer the Japanese store name over the romanized one"
                 onChange={(e) => setInstruction(e.target.value)}
                 onBlur={() => {
-                  const saved = lastSaved.current ?? s.custom_instruction
+                  const saved = lastSaved.current ?? config?.parse_custom_instruction ?? s.custom_instruction
                   if (instruction !== null && instruction !== saved) {
                     lastSaved.current = instruction
-                    saveInstruction.mutate({ parse_custom_instruction: instruction })
+                    saveConfig.mutate({ parse_custom_instruction: instruction })
                   }
                 }} />
             </div>

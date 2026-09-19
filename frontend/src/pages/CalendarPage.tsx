@@ -26,7 +26,7 @@ export default function CalendarPage() {
   const [period, setPeriodState] = useState<Period | null>(null)
   const [anchor, setAnchorState] = useState<string | null>(null)
 
-  // Where the calendar was left last time (as in Streamlit; the Config page shows both values).
+  // Where the calendar was left last time (the Config page shows both values).
   const config = useConfig()
   const saveConfig = useSaveConfig()
   const range = useQuery({ queryKey: ['date-range'], queryFn: api.dateRange })
@@ -45,7 +45,7 @@ export default function CalendarPage() {
 
   const remember = (view: Period, day: string) => saveConfig.mutate({ calendar_period: view, calendar_date: day })
   // The anchor is always a period START (Monday, or the 1st) inside the archive's range: switching
-  // view or picking a mid-period day snaps to it, as in Streamlit, so the date picker's value always
+  // view or picking a mid-period day snaps to it, so the date picker's value always
   // satisfies its own bounds and the view always lands on a period that can hold documents.
   const startOf = (view: Period, day: string) =>
     iso(view === 'week' ? mondayOfWeek(parseIso(day)) : firstOfMonth(parseIso(day)))
@@ -153,8 +153,8 @@ function CalendarBody({ period, setPeriod, anchor, setAnchor, min, max }: {
           </div>
         </div>
         <div className="field">
-          <label>Go to date</label>
-          <input type="date" value={anchor} min={minAnchor} max={maxAnchor}
+          <label htmlFor="calendar-date">Go to date</label>
+          <input id="calendar-date" type="date" value={anchor} min={minAnchor} max={maxAnchor}
             onChange={(e) => e.target.value && setAnchor(e.target.value)} />
         </div>
         <div className="field">
@@ -181,8 +181,8 @@ function CalendarBody({ period, setPeriod, anchor, setAnchor, min, max }: {
                 return (
                   <div key={key} className={`cal-cell${inRange ? '' : ' empty'}`}>
                     {inRange && <div className="cal-daynum">{date.getDate()}</div>}
-                    {/* Like the Streamlit month view (analytics.balance_into_columns): split a day
-                        into two columns only when it has 2+ receipts; CSS then does it
+                    {/* In month view, split a day into two columns only when it has 2+
+                        receipts; CSS then does it
                         only if the cell is wide enough (see .cal-items.split). */}
                     <div className={`cal-items${period === 'month' && items.length >= 2 ? ' split' : ''}`}>
                       {items.map((r) => (

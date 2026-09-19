@@ -96,3 +96,13 @@
 .workshop-compare { margin: 10px 0 4px; }
 /* the document being worked on, among its neighbours */
 .context-strip .context-card--current { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* A reread waiting for the decision: said once, above the layout, with the way back. */
+.reread-note {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 0 0 12px; padding: 8px 12px;
+  border: 1px solid var(--accent); border-radius: 8px; background: var(--accent-soft); font-size: 13px;
+}
+.reread-note > span:first-child { flex: 1; min-width: 20rem; }
+
+/* Normalize: check or uncheck every name of a cluster at once. */
+.toggle-all { display: inline-flex; align-items: center; gap: 6px; margin: 0 0 6px; font-size: 12.5px; color: var(--muted); }

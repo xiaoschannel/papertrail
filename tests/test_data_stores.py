@@ -56,8 +56,8 @@ def test_build_smart_match_history(ingest_dir):
 
 def test_clear_extractions_decisions_keeps_tossed_decisions(tmp_path):
     # Regrouping a batch drops all of its extractions and every non-tossed decision. Tosses survive
-    # (tossed pages can't be regrouped, so their document keys stay valid). Streamlit also dropped a
-    # tossed decision that had an extraction, which silently un-tossed it.
+    # (tossed pages can't be regrouped, so their document keys stay valid), including a tossed decision
+    # that has an extraction: dropping it would silently un-toss the document.
     from models import ReceiptResult, ReviewDecision
 
     def receipt(name, cost):

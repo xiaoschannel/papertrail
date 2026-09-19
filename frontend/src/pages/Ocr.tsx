@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api/client.ts'
+import { useSaveConfig } from '../api/config.ts'
 import { ConfirmDialog } from '../components/ConfirmDialog.tsx'
 import { JobPanel, useJobGate, useTrackJob } from '../components/jobs.tsx'
 import { Card, Empty, ErrorState, Loading, Tile } from '../components/ui.tsx'
@@ -13,6 +14,7 @@ export default function Ocr() {
   const [reprocess, setReprocess] = useState(false)
   const [limit, setLimit] = useState(0)
   const [provider, setProvider] = useState<string | null>(null)
+  const saveConfig = useSaveConfig()
   const [confirming, setConfirming] = useState(false)
   const gate = useJobGate('ocr', { gpu: true })   // every OCR model runs on this machine's GPU
   const track = useTrackJob()
@@ -47,7 +49,10 @@ export default function Ocr() {
             <div className="controls">
               <div className="field">
                 <label htmlFor="ocr-model">OCR model</label>
-                <select id="ocr-model" value={chosen} onChange={(e) => setProvider(e.target.value)}>
+                <select id="ocr-model" value={chosen} onChange={(e) => {
+                  setProvider(e.target.value)
+                  saveConfig.mutate({ ocr_model: e.target.value })     // remembered as soon as it's picked
+                }}>
                   {s.providers.map((name) => <option key={name} value={name}>{name}</option>)}
                 </select>
               </div>

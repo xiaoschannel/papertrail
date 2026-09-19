@@ -128,16 +128,20 @@ export function DocumentCard<C extends ElementType = 'div'>({
 
 /** The fields a receipt card needs — satisfied by full records and slim gallery rows alike. */
 export type CardDocument = Pick<VizRecord, 'filename' | 'path' | 'name' | 'date' | 'cost' | 'currency' | 'document_type'>
+  & { brand_location?: string | null }
 
-function captionFor(rec: CardDocument, showDate: boolean): string {
+function captionFor(rec: CardDocument, showDate: boolean, showBranch: boolean): string {
   const amount = rec.document_type === 'receipt' ? money(rec.cost, rec.currency) : rec.document_type
-  return showDate && rec.date ? `${rec.date} · ${amount}` : amount
+  const caption = showDate && rec.date ? `${rec.date} · ${amount}` : amount
+  return showBranch && rec.brand_location ? `${caption} · ${rec.brand_location}` : caption
 }
 
 type ReceiptCardProps = {
   rec: CardDocument
   /** Prefix the caption with the date (off where context already gives it). */
   showDate?: boolean
+  /** End the caption with the branch (a brand's receipts come from several). */
+  showBranch?: boolean
 } & Pick<DocumentCardOwnProps<'div'>, 'compact' | 'capRatio' | 'className'>
 
 /**
@@ -145,7 +149,7 @@ type ReceiptCardProps = {
  * The whole card is a real <a>, so middle/ctrl-click, right-click "open in new tab"
  * and keyboard (Tab + Enter) behave like any link.
  */
-export function ReceiptCard({ rec, showDate = true, ...cardProps }: ReceiptCardProps) {
+export function ReceiptCard({ rec, showDate = true, showBranch = false, ...cardProps }: ReceiptCardProps) {
   const name = rec.name || '(untitled)'
   return (
     <DocumentCard
@@ -154,7 +158,7 @@ export function ReceiptCard({ rec, showDate = true, ...cardProps }: ReceiptCardP
       title={name}
       src={mediaUrl(rec.path)}
       name={name}
-      caption={captionFor(rec, showDate)}
+      caption={captionFor(rec, showDate, showBranch)}
       {...cardProps}
     />
   )
@@ -171,8 +175,8 @@ export function ReceiptCard({ rec, showDate = true, ...cardProps }: ReceiptCardP
  * the column count changes on resize the same receipts stay on screen.
  * Remount (change `key`) to reset to the first page when the list itself changes.
  */
-export function ReceiptGallery({ receipts, showDate = true, rowsPerPage }:
-  { receipts: readonly CardDocument[]; showDate?: boolean; rowsPerPage?: number }) {
+export function ReceiptGallery({ receipts, showDate = true, showBranch = false, rowsPerPage }:
+  { receipts: readonly CardDocument[]; showDate?: boolean; showBranch?: boolean; rowsPerPage?: number }) {
   const gridRef = useRef<HTMLDivElement>(null)
   const columns = useGridColumnCount(gridRef)
   const [firstIndex, setFirstIndex] = useState(0)
@@ -188,13 +192,13 @@ export function ReceiptGallery({ receipts, showDate = true, rowsPerPage }:
     <>
       <div className="receipt-gallery" ref={gridRef}>
         {shown.map((rec) => (
-          <ReceiptCard key={rec.filename} rec={rec} showDate={showDate} />
+          <ReceiptCard key={rec.filename} rec={rec} showDate={showDate} showBranch={showBranch} />
         ))}
       </div>
       {rows !== null && pages > 1 && (
         <div className="pager">
           <button disabled={page === 0} onClick={() => goTo(page - 1)}>← Prev</button>
-          <span>Page {page + 1} of {pages}</span>
+          <span>Page {page + 1} of {pages} — {page * pageSize + 1}–{Math.min((page + 1) * pageSize, receipts.length)} of {receipts.length}</span>
           <button disabled={page >= pages - 1} onClick={() => goTo(page + 1)}>Next →</button>
         </div>
       )}

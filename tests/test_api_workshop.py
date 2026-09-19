@@ -8,20 +8,10 @@ import pytest
 from PIL import Image
 
 from api import ingest_registry
-from api.jobs import FINISHED, runner
+from api.jobs import runner
 from api.model_manager import models
 from data import read_sidecar
 from models import ReceiptResult
-
-
-@pytest.fixture(autouse=True)
-def no_leftover_job():
-    yield
-    job = runner.current()
-    if job and job["status"] not in FINISHED:
-        runner.cancel(job["id"])
-        runner.wait_until_finished(job["id"], timeout=10)
-    models.release()
 
 
 @pytest.fixture
@@ -89,26 +79,57 @@ def test_the_scan_preview_is_the_treated_image(api_client, configured_archive):
                           params={"filename": "../brand_directory.json"}).status_code == 404
 
 
-def test_reprocess_runs_as_a_job_and_keeps_what_it_read(api_client, configured_archive, fake_models):
-    scan = configured_archive / "marked" / "08102025142000_202.png"
-    with Image.open(scan) as before:
-        width, height = before.size
+def _reread(api_client, top_points="right"):
     job = api_client.post("/api/curate/workshop/reprocess", json={
         "key": "9:202", "ocr_model": "Fake OCR", "extractor": "Fake LLM",
-        "top_points": "right", "treatment": "clahe"}).json()
-    done = runner.wait_until_finished(job["id"], timeout=20)
+        "top_points": top_points, "treatment": "clahe"}).json()
+    assert job["cancellable"] is False                  # two model calls: nothing to stop between
+    return runner.wait_until_finished(job["id"], timeout=20)
+
+
+def test_a_reread_waits_for_the_decision_and_changes_nothing_on_disk(api_client, configured_archive, fake_models):
+    scan = configured_archive / "marked" / "08102025142000_202.png"
+    before = (scan.read_bytes(), (scan.with_suffix(".json")).read_bytes())
+
+    done = _reread(api_client)
 
     assert (done["status"], done["done"], done["failed"]) == ("succeeded", 2, 0)
-    sidecar = read_sidecar(configured_archive / "marked" / "08102025142000_202.png")
-    assert sidecar.ocr.markdown.startswith("re-read")
-    assert sidecar.extraction.name == "ローソン 池袋店 (rescued)"
+    assert (scan.read_bytes(), scan.with_suffix(".json").read_bytes()) == before
     assert not list((configured_archive / "marked").glob("*.enhanced.png"))   # the temp scan is cleaned up
-    with Image.open(scan) as after:                    # OCR's boxes were measured on the turned page, so the
-        assert after.size == (height, width)           # file is turned too; the treatment is not kept
     assert models.loaded is None                                              # the model is unloaded after
-    # the form now offers what the reprocess found
-    assert api_client.get("/api/curate/workshop").json()["document"]["defaults"]["name"] \
-        == "ローソン 池袋店 (rescued)"
+    # the page now shows what the reread found
+    body = api_client.get("/api/curate/workshop").json()
+    assert body["reread"] == {"top_points": "right", "ocr_model": "Fake OCR", "extractor": "Fake LLM"}
+    assert body["document"]["defaults"]["name"] == "ローソン 池袋店 (rescued)"
+    assert body["document"]["ocr_text"].startswith("--- Page 1 ---\nre-read")
+    assert body["document"]["pages"][0]["boxes"][0]["text"] == "合計"       # every box, since nothing cites one
+
+
+def test_discarding_a_reread_goes_back_to_the_stored_reading(api_client, configured_archive, fake_models):
+    _reread(api_client)
+    body = api_client.delete("/api/curate/workshop/reread", params={"key": "9:202"}).json()
+    assert body["reread"] is None and body["document"]["defaults"]["name"] == "ローソン 池袋店"
+
+
+def test_accepting_keeps_the_reread_and_turns_the_page_it_read(api_client, configured_archive, fake_models):
+    with Image.open(configured_archive / "marked" / "08102025142000_202.png") as before:
+        width, height = before.size
+    _reread(api_client)
+    draft = {"document_type": "receipt", "name": "Rescued Shop", "date": "2025-08-10", "time": "14:20",
+             "cost": 300.0, "currency": "JPY"}
+
+    api_client.post("/api/curate/workshop/decide", json={"key": "9:202", "verdict": "accepted", "draft": draft})
+
+    [record] = [r for r in api_client.get("/api/viz/records").json() if r["name"] == "Rescued Shop"]
+    sidecar = read_sidecar(configured_archive / record["path"])
+    assert sidecar.ocr.markdown.startswith("re-read") and sidecar.extraction.name == "ローソン 池袋店 (rescued)"
+    with Image.open(configured_archive / record["path"]) as after:
+        assert after.size == (height, width)
+
+
+def test_a_reread_cannot_be_cancelled(api_client, fake_models):
+    job = runner.start("workshop", "Reprocess", lambda progress: None, cancellable=False)
+    assert api_client.post(f"/api/jobs/{job['id']}/cancel").status_code == 409
 
 
 def test_accepting_files_every_page_and_empties_the_queue(api_client, configured_archive, fake_models):
@@ -267,3 +288,18 @@ def test_one_impossible_date_in_the_archive_does_not_break_the_week(api_client, 
     cache.clear()
 
     assert _context(api_client, date=receipt["date"], time=receipt["time"])["week"] is not None
+
+
+def test_a_marked_document_can_be_decided_while_parse_runs(api_client, configured_archive, fake_models):
+    import threading
+
+    from api.jobs import Claim
+
+    release = threading.Event()
+    runner.start("parse", "Parse (test)", lambda progress: release.wait(10), Claim(batches=frozenset({3})))
+    draft = {"document_type": "receipt", "name": "x", "date": "", "time": "", "cost": 0.0, "currency": ""}
+    try:
+        response = api_client.post("/api/curate/workshop/decide", json={"key": "9:202", "verdict": "tossed", "draft": draft})
+    finally:
+        release.set()
+    assert response.status_code == 200

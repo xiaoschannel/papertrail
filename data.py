@@ -45,8 +45,8 @@ def delete_sidecar(file_path: Path):
 def atomic_write_text(target: Path, text: str) -> None:
     """Write via a uniquely named sibling temp file swapped into place.
 
-    A crash mid-write can't leave a truncated file, and concurrent writers (Streamlit pages, the web
-    API, background jobs) never share a temp file. On Windows the swap fails while another process
+    A crash mid-write can't leave a truncated file, and concurrent writers (API requests, background
+    jobs) never share a temp file. On Windows the swap fails while another process
     has the target open for reading; readers are brief, so retry for a moment before giving up.
     """
     fd, tmp_name = tempfile.mkstemp(dir=target.parent, prefix=f"{target.stem}.", suffix=".tmp")
@@ -54,6 +54,8 @@ def atomic_write_text(target: Path, text: str) -> None:
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(text)
+            f.flush()
+            os.fsync(f.fileno())     # on disk before the swap, so a power cut can't leave the new name empty
         for attempt in range(20):
             try:
                 tmp.replace(target)
@@ -344,7 +346,7 @@ def load_embeddings_cache(output_path: Path) -> tuple[list[str], np.ndarray | No
     f = output_path / "name_embeddings.npz"
     if not f.exists():
         return [], None
-    data = np.load(f, allow_pickle=True)
+    data = np.load(f, allow_pickle=False)
     return data["names"].tolist(), data["matrix"]
 
 

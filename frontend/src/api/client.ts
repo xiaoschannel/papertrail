@@ -56,6 +56,8 @@ export const api = {
   timecapsule: (month: number, day: number) =>
     unwrap(client.GET('/api/analytics/timecapsule', { params: { query: { month, day } } })),
   receipt: (file: string) => unwrap(client.GET('/api/receipt', { params: { query: { file } } })),
+  /** Every archived document (original filename, name, date, type), for Receipt Detail's picker. */
+  documents: () => unwrap(client.GET('/api/documents')),
   /** Correct an archived document: the server re-files its pages and rewrites their sidecars. */
   editReceipt: (body: ReceiptEditIn) => unwrap(client.PATCH('/api/receipt', { body })),
 
@@ -141,6 +143,9 @@ export const api = {
   workshop: {
     queue: (key?: string) => unwrap(client.GET('/api/curate/workshop', { params: { query: { key: key ?? null } } })),
     reprocess: (body: WorkshopReprocessIn) => unwrap(client.POST('/api/curate/workshop/reprocess', { body })),
+    /** Drop a pending reread: the document goes back to what its sidecars say. */
+    discardReread: (key: string) =>
+      unwrap(client.DELETE('/api/curate/workshop/reread', { params: { query: { key } } })),
     decide: (body: WorkshopDecisionIn) => unwrap(client.POST('/api/curate/workshop/decide', { body })),
     hints: (key: string, draft: Draft) => unwrap(client.POST('/api/curate/workshop/hints', { body: { key, draft } })),
     /** The week around the form's date and time, and the document's batch. */

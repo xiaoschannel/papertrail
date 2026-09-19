@@ -1,4 +1,4 @@
-"""The streamlit-free visualization dataframes built from the archive."""
+"""The visualization dataframes built from the archive."""
 
 import pandas as pd
 

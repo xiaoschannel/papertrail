@@ -18,6 +18,7 @@ import './curate.css'
 export default function Normalize() {
   const config = useConfig()
   const [engine, setEngine] = useState<string | null>(null)
+  const [merged, setMerged] = useState<string | null>(null)
   const [threshold, setThreshold] = useState<number | null>(null)
   const chosenEngine = engine ?? config.data?.normalize_engine ?? 'string'
   const chosenThreshold = threshold ?? (chosenEngine === 'embedding'
@@ -65,6 +66,8 @@ export default function Normalize() {
         </div>
       </div>
 
+      {merged && <p className="ingest-note ok" role="status">{merged}</p>}
+
       <div className="tiles">
         <Tile label="Names in use" value={num(data.names)} />
         <Tile label="Clusters" value={num(data.groups.length)} />
@@ -73,17 +76,25 @@ export default function Normalize() {
 
       {data.groups.length === 0
         ? <Empty>No name clusters at this setting. Loosen the threshold to see more.</Empty>
-        : data.groups.map((group) => <Cluster key={JSON.stringify(group.names)} group={group} />)}
+        : data.groups.map((group) => <Cluster key={JSON.stringify(group.names)} group={group} onMerged={setMerged} />)}
 
       {data.distinct_pairs.length > 0 && <DistinctPairs pairs={data.distinct_pairs} />}
     </div>
   )
 }
 
-function Cluster({ group }: { group: NameGroup }) {
+function Cluster({ group, onMerged }: { group: NameGroup; onMerged: (message: string) => void }) {
   const queryClient = useQueryClient()
   const [checked, setChecked] = useState<string[]>(group.names)
   const [target, setTarget] = useState(group.canonical[0] ?? group.names[0] ?? '')
+  /** Check or uncheck names. The name kept is always a checked one: unchecking it passes to the next. */
+  const check = (names: string[], on: boolean) => {
+    const next = on ? group.names.filter((n) => checked.includes(n) || names.includes(n))
+      : checked.filter((n) => !names.includes(n))
+    setChecked(next)
+    if (!next.includes(target)) setTarget(next[0] ?? '')
+  }
+  const allChecked = checked.length === group.names.length
   const [confirming, setConfirming] = useState(false)
   const variants = checked.filter((name) => name !== target)
   const refresh = () => afterArchiveEdit(queryClient, ['curate', 'normalize'])
@@ -95,8 +106,10 @@ function Cluster({ group }: { group: NameGroup }) {
   })
   const merge = useMutation({
     mutationFn: () => api.curate.merge(target, variants),
-    onSuccess: () => {
+    onSuccess: (result) => {
       setConfirming(false)
+      onMerged(`Merged ${variants.length} name(s) into “${target}”${result.moves.length
+        ? `; ${num(result.moves.length)} file(s) renamed on disk.` : '.'}`)
       void refresh()
     },
   })
@@ -105,11 +118,16 @@ function Cluster({ group }: { group: NameGroup }) {
 
   return (
     <Card title={`${group.names.length} similar names`} hint={`${group.names.reduce((n, name) => n + count(name), 0)} document(s)`}>
+      <label className="toggle-all">
+        <input type="checkbox" checked={allChecked}
+          ref={(box) => { if (box) box.indeterminate = checked.length > 0 && !allChecked }}
+          onChange={(e) => check(group.names, e.target.checked)} /> All of them
+      </label>
       <div className="name-list">
         {group.names.map((name) => (
           <label key={name} className="name-row">
             <input type="checkbox" checked={checked.includes(name)}
-              onChange={(e) => setChecked(e.target.checked ? [...checked, name] : checked.filter((n) => n !== name))} />
+              onChange={(e) => check([name], e.target.checked)} />
             <span className="name-row__name">{name}</span>
             <span className="config-hint">
               {count(name) ? `${num(count(name))} document(s)` : 'no documents'}
@@ -128,7 +146,7 @@ function Cluster({ group }: { group: NameGroup }) {
       )}
 
       <div className="start-bar">
-        <button className="primary" disabled={variants.length === 0 || merge.isPending}
+        <button className="primary" disabled={variants.length === 0 || !checked.includes(target) || merge.isPending}
           onClick={() => setConfirming(true)}>
           Merge {variants.length} into “{target}”
         </button>

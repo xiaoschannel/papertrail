@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useId, useRef } from 'react'
 import type { Enhancement } from '../api/types.ts'
 
 /**
@@ -80,10 +80,11 @@ export function Slider({ label, value, min, max, step, onChange }: {
   step: number
   onChange: (value: number) => void
 }) {
+  const id = useId()
   return (
     <div className="field">
-      <label>{label} <strong>{value}</strong></label>
-      <input type="range" min={min} max={max} step={step} value={value}
+      <label htmlFor={id}>{label} <strong>{value}</strong></label>
+      <input id={id} type="range" min={min} max={max} step={step} value={value}
         onChange={(e) => onChange(Number(e.target.value))} />
     </div>
   )

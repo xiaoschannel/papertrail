@@ -1,9 +1,8 @@
 """Making a stubborn scan readable before OCR runs on it again (the Marked Workshop's controls).
 
 A marked document is usually one the model misread: too dark, washed out, upside down, or printed on
-coloured paper. These are the treatments the Streamlit workshop offered, lifted out of the page so the
-web app can apply them server-side — the browser asks for a treatment, the server produces the pixels
-that OCR actually sees, and the same function draws the preview.
+coloured paper. The treatments are applied server-side — the browser asks for a treatment, the server
+produces the pixels that OCR actually sees, and the same function draws the preview.
 """
 
 from __future__ import annotations

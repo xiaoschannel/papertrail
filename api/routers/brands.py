@@ -2,7 +2,7 @@
 
 A brand is a label plus prefixes; a receipt name matches by longest prefix and the remainder becomes
 its location (``brand_registry.resolve_brand``). Every write replaces ``brand_directory.json``, so the
-edits are field-level here rather than the read-modify-write the Streamlit page did in the browser.
+edits are field-level, applied to the file as it is, rather than a whole registry the browser sends back.
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 import brand_registry as registry
 from api import cache
+from api.guards import one_edit_at_a_time
 from api.deps import get_output_path
 from api.schemas import (
     BrandBranchOut, BrandIn, BrandOut, BrandOverview, BrandPrefixIn, BrandPrefixOut, BrandsOut, NameCount,
@@ -78,6 +79,7 @@ def list_brands(output_path: Path = Depends(get_output_path)):
 
 
 @router.post("", response_model=BrandOut, status_code=201)
+@one_edit_at_a_time
 def create_brand(body: BrandIn, output_path: Path = Depends(get_output_path)):
     directory = _directory()
     label = body.label.strip()
@@ -91,6 +93,7 @@ def create_brand(body: BrandIn, output_path: Path = Depends(get_output_path)):
 
 
 @router.patch("/{brand_id}", response_model=BrandOut)
+@one_edit_at_a_time
 def update_brand(brand_id: str, body: BrandIn, output_path: Path = Depends(get_output_path)):
     """Rename a brand or replace its prefixes. The id never changes, so receipts keep their grouping."""
     directory = _directory()
@@ -105,6 +108,7 @@ def update_brand(brand_id: str, body: BrandIn, output_path: Path = Depends(get_o
 
 
 @router.post("/{brand_id}/prefixes", response_model=BrandOut)
+@one_edit_at_a_time
 def add_prefix(brand_id: str, body: BrandPrefixIn, output_path: Path = Depends(get_output_path)):
     """Add one prefix — the quick action on a suggestion."""
     directory = _directory()
@@ -116,6 +120,7 @@ def add_prefix(brand_id: str, body: BrandPrefixIn, output_path: Path = Depends(g
 
 
 @router.delete("/{brand_id}", response_model=BrandOverview)
+@one_edit_at_a_time
 def delete_brand(brand_id: str, output_path: Path = Depends(get_output_path)):
     """Remove a brand. Its receipts stay where they are; they simply stop being grouped."""
     directory = _directory()
@@ -133,7 +138,7 @@ def suggestions(
     min_count: int | None = Query(None, ge=1, le=50),
     output_path: Path = Depends(get_output_path),
 ):
-    """Prefixes shared by unmatched receipt names. The settings are remembered, as in Streamlit."""
+    """Prefixes shared by unmatched receipt names. The settings are remembered for the next visit."""
     cfg = get_config()
     settings = dict(
         boundary_only=cfg.prefix_suggestion_boundary_only if boundary_only is None else boundary_only,

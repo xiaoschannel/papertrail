@@ -1,13 +1,14 @@
 """The Marked Workshop: rescuing documents that review marked instead of accepting or tossing.
 
 A marked document sits in ``marked/`` with one sidecar per page, each carrying the document key it
-belongs to. The Streamlit workshop walked those files one at a time, so a two-page document appeared
-twice and accepting one page filed it alone and stranded the other (issue #14). Here the pages are
-grouped back into documents, and accepting or tossing moves all of them together.
+belongs to. The pages are grouped back into documents, and accepting or tossing moves all of them
+together: walking the files one at a time would show a two-page document twice, and accepting one page
+would file it alone and strand the other (issue #14).
 """
 
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -15,10 +16,11 @@ from urllib.parse import quote
 
 from data import load_smart_match_cache, read_sidecar, save_smart_match_cache
 from dedupe_candidates import WEEK_WINDOW, parse_verdict_datetime
-from document_files import MARKED, load_pages, place_document, toss_document
+from document_files import MARKED, ensure_movable, load_pages, place_document, toss_document
 from document_grouping import rotate_file_upright
 from models import (
     DocumentExtraction, DocumentKey, OcrResult, ReceiptResult, ReviewDecision, ScanIndex, Sidecar, batch_serial_key,
+    ocr_page_section,
 )
 from viz_records import page_order
 
@@ -40,19 +42,27 @@ class MarkedDocument:
         return [path.name for path in self.pages]
 
 
+def _unrecorded(path: Path) -> Sidecar:
+    """A scan in ``marked/`` without a sidecar (put there by hand): marked, with nothing read yet."""
+    return Sidecar(original_filename=path.name, review=ReviewDecision(
+        verdict="marked", document_type="receipt", name="", date="", time="", cost=0.0, currency="", comment=""))
+
+
 def marked_documents(output_path: Path) -> list[MarkedDocument]:
-    """Everything in ``marked/``, grouped into documents and ordered by scan order."""
+    """Everything in ``marked/``, grouped into documents and ordered by scan order.
+
+    A scan without a sidecar is listed too, as its own document with nothing read yet; deciding it writes
+    the sidecar it lacked.
+    """
     folder = output_path / MARKED
     if not folder.is_dir():
         return []
 
     grouped: dict[str, list[tuple[Path, Sidecar]]] = {}
     for path in sorted(folder.iterdir()):
-        if not path.is_file() or path.suffix.lower() == ".json":
+        if not path.is_file() or path.suffix.lower() == ".json" or path.name.endswith(".enhanced.png"):
             continue
-        sidecar = read_sidecar(path)
-        if sidecar is None:
-            continue
+        sidecar = read_sidecar(path) or _unrecorded(path)
         key = sidecar.document_key or _page_key(sidecar) or path.stem
         grouped.setdefault(key, []).append((path, sidecar))
 
@@ -68,74 +78,127 @@ def find(output_path: Path, key: str) -> MarkedDocument | None:
     return next((document for document in marked_documents(output_path) if document.key == key), None)
 
 
-def ocr_of(document: MarkedDocument) -> tuple[str, list]:
-    """The document's stored OCR text (pages joined as Review does) and the first page's boxes."""
-    parts = []
-    for page_number, sidecar in enumerate(document.sidecars, start=1):
-        if sidecar.ocr and sidecar.ocr.markdown:
-            parts.append(f"--- Page {page_number} ---\n{sidecar.ocr.markdown}")
-    boxes = document.first.ocr.boxes if document.first.ocr else None
-    return "\n\n".join(parts), list(boxes or [])
+def ocr_of(document: MarkedDocument, reread: Reread | None = None) -> str:
+    """The document's OCR text, pages joined as Review joins them: the reread's if there is one."""
+    results = reread.results if reread else [sidecar.ocr for sidecar in document.sidecars]
+    return "\n\n".join(f"--- Page {number} ---\n{result.markdown}"
+                        for number, result in enumerate(results, start=1) if result and result.markdown)
 
 
-def extractor_input(ocr_text: str, boxes: list) -> tuple[str, bool]:
-    """What the extractor is given: box-annotated lines when OCR found boxes, else the plain text."""
-    if not boxes:
-        return ocr_text, False
-    lines = ["--- Page 1 ---"]
-    lines.extend(f"[P1-BOX-{index}] {box.text}" for index, box in enumerate(boxes))
-    return "\n".join(lines), True
+def extractor_input(results: list[OcrResult]) -> tuple[str, bool]:
+    """What the extractor is given for a reread: every page as the pipeline's Parse gives it, boxes and all."""
+    return ("\n\n".join(ocr_page_section(number, result) for number, result in enumerate(results, start=1)),
+            any(result.boxes for result in results))
 
 
-def store_reprocessed(output_path: Path, document: MarkedDocument, results: list[OcrResult],
-                      extraction: DocumentExtraction, top_points: str = "") -> None:
-    """Keep what a reprocess produced: each page's OCR, and the extraction on the first page.
+@dataclass(frozen=True)
+class Reread:
+    """What reading a marked document again produced, held until the document is decided.
 
-    OCR read the pages turned by ``top_points``, so its boxes are measured on the turned image: the
-    files are turned too, or the boxes would sit in the wrong places wherever the scan is shown later.
-    Only the turn is kept; the treatments were only there to help OCR read, and change no geometry.
+    Nothing on disk changes until then: Accept keeps it (turning the files as they were read, so its
+    boxes line up), Toss or Discard drops it. It is held in memory, so it doesn't outlive the server.
+    """
+
+    pages: tuple[str, ...]           # the files it read, so it is dropped if the document changed since
+    results: list[OcrResult]
+    extraction: DocumentExtraction
+    top_points: str
+    ocr_model: str
+    extractor: str
+
+
+class Rereads:
+    """Rereads waiting for a decision, by document key."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._by_key: dict[str, Reread] = {}
+
+    def put(self, key: str, reread: Reread) -> None:
+        with self._lock:
+            self._by_key[key] = reread
+
+    def get(self, document: MarkedDocument) -> Reread | None:
+        with self._lock:
+            reread = self._by_key.get(document.key)
+            if reread is not None and reread.pages != tuple(document.filenames):
+                del self._by_key[document.key]
+                return None
+            return reread
+
+    def drop(self, key: str) -> None:
+        with self._lock:
+            self._by_key.pop(key, None)
+
+
+rereads = Rereads()
+
+
+def store_reprocessed(document: MarkedDocument, reread: Reread) -> None:
+    """Write a reread into the document's own sidecars: each page's OCR, and the extraction on the first.
+
+    OCR read the pages turned by ``top_points``, so its boxes are measured on the turned image: the files
+    are turned too, or the boxes would sit in the wrong places wherever the scan is shown later. Only the
+    turn is kept; the treatments were only there to help OCR read, and change no geometry.
     """
     from data import write_sidecar
 
     for index, (path, sidecar) in enumerate(zip(document.pages, document.sidecars)):
-        if index >= len(results):
+        if index >= len(reread.results):
             break
-        rotate_file_upright(path, top_points)
-        update = {"ocr": results[index]}
+        rotate_file_upright(path, reread.top_points)
+        update = {"ocr": reread.results[index]}
         if index == 0:
-            update["extraction"] = extraction
+            update["extraction"] = reread.extraction
         write_sidecar(path, sidecar.model_copy(update=update))
 
 
 def accept(output_path: Path, document: MarkedDocument, decision: ReviewDecision,
-           extraction: DocumentExtraction | None) -> list[str]:
-    """File the document into the archive under ``decision`` and remember its confirmed name."""
+           reread: Reread | None = None) -> list[str]:
+    """File the document into the archive under ``decision``, keeping what the model read.
+
+    The sidecars keep the model's extraction untouched (with the boxes each field came from), as review
+    does: the decision is what was confirmed, the extraction what was read. A pending reread is kept.
+    """
+    ensure_movable(document.pages)
+    _write_missing_sidecars(document)
+    if reread is not None:
+        store_reprocessed(document, reread)
     pages = load_pages(document.pages)
-
-    def updated(sidecar: Sidecar) -> Sidecar:
-        return sidecar.model_copy(update={"review": decision,
-                                          "extraction": extraction if extraction is not None else sidecar.extraction})
-
-    placed = place_document(output_path, pages, decision, sidecar_for=updated)
-    _remember_name(output_path, document, decision, extraction)
+    placed = place_document(output_path, pages, decision,
+                            sidecar_for=lambda sidecar: sidecar.model_copy(update={"review": decision}))
+    _remember_name(output_path, pages[0][1], decision)
+    rereads.drop(document.key)
     return placed
 
 
 def toss(output_path: Path, document: MarkedDocument) -> list[str]:
-    """Move every page of the document into ``tossed/``."""
-    return toss_document(output_path, document.pages)
+    """Move every page of the document into ``tossed/`` (a pending reread goes with it, unkept)."""
+    ensure_movable(document.pages)
+    _write_missing_sidecars(document)
+    tossed = toss_document(output_path, document.pages)
+    rereads.drop(document.key)
+    return tossed
 
 
-def _remember_name(output_path: Path, document: MarkedDocument, decision: ReviewDecision,
-                   extraction: DocumentExtraction | None) -> None:
-    sidecar = document.first
+def _write_missing_sidecars(document: MarkedDocument) -> None:
+    """Give a hand-placed scan the sidecar it lacked, so it moves like any other page."""
+    from data import write_sidecar
+
+    for path, sidecar in zip(document.pages, document.sidecars):
+        if read_sidecar(path) is None:
+            write_sidecar(path, sidecar)
+
+
+def _remember_name(output_path: Path, sidecar: Sidecar, decision: ReviewDecision) -> None:
+    """Teach the smart-match cache the name the model read and the name it turned out to be."""
     key = sidecar.document_key or _page_key(sidecar) or sidecar.original_filename
-    source = extraction if extraction is not None else sidecar.extraction
+    read = sidecar.extraction
     cache = load_smart_match_cache(output_path)
     cache[key] = {
-        "extracted": getattr(source, "name", "") or getattr(source, "title", ""),
+        "extracted": getattr(read, "name", "") or getattr(read, "title", ""),
         "confirmed": decision.name,
-        "extracted_phone": getattr(source, "phone", "") if isinstance(source, ReceiptResult) else "",
+        "extracted_phone": read.phone if isinstance(read, ReceiptResult) else "",
     }
     save_smart_match_cache(output_path, cache)
 
@@ -182,9 +245,9 @@ def week_around(document: MarkedDocument, date: str, time: str, archived: list[d
                 scan_index: ScanIndex | None) -> list[ContextScan] | None:
     """Receipts within a week either side of ``date``/``time`` (the form's values), in time order.
 
-    Streamlit only looked at the batch mid-review; a marked document is archived, so the week comes
-    from the archive, the other marked documents and whatever is mid-ingest. None when the form has no
-    usable date yet. Tossed documents are left out, as they were. A document whose date isn't one
+    A marked document is archived, so the week comes from the archive, the other marked documents and
+    whatever is mid-ingest, not just its own batch. None when the form has no usable date yet. Tossed
+    documents are left out. A document whose date isn't one
     (2025-02-31) is skipped rather than failing the whole strip.
     """
     target = _when(date, time)

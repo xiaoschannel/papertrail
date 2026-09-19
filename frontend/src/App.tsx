@@ -19,7 +19,7 @@ import SanityCheck from './pages/SanityCheck.tsx'
 import IndexAudit from './pages/IndexAudit.tsx'
 import { JobIndicator, JobWatcher } from './components/jobs.tsx'
 
-// Ordered the way the work runs: Ingest -> Curate -> Visualize, as in the Streamlit app. Settings is for
+// Ordered the way the work runs: Ingest -> Curate -> Visualize. Settings is for
 // everyone; the Dev pages, for working on the app itself, come after it.
 const NAV = [
   {

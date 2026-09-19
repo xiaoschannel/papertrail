@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, inputThumbUrl, inputUrl } from '../api/client.ts'
+import { useSaveConfig } from '../api/config.ts'
 import type { Grouping, GroupingPage, IndexStatus, TopPoints } from '../api/types.ts'
 import { ConfirmDialog } from '../components/ConfirmDialog.tsx'
 import { useBatchHolder, useEverythingHolder } from '../components/jobs.tsx'
@@ -23,6 +24,7 @@ export default function FileIndex() {
 function Batches() {
   const queryClient = useQueryClient()
   const [scheme, setScheme] = useState<string | undefined>(undefined)
+  const saveConfig = useSaveConfig()
   // A new batch belongs to no job yet, so only a job holding everything (Archive) can stop you adding it.
   const archiving = useEverythingHolder()
   const status = useQuery({
@@ -49,7 +51,10 @@ function Batches() {
       <div className="controls">
         <div className="field">
           <label htmlFor="index-scheme">Scanner naming scheme</label>
-          <select id="index-scheme" value={s.scheme} onChange={(e) => setScheme(e.target.value)}>
+          <select id="index-scheme" value={s.scheme} onChange={(e) => {
+            setScheme(e.target.value)
+            saveConfig.mutate({ indexing_scheme: e.target.value })   // remembered as soon as it's picked
+          }}>
             {s.schemes.map((name) => <option key={name} value={name}>{name}</option>)}
           </select>
           <span className="config-hint">
@@ -222,7 +227,11 @@ function GroupingEditor({ data, batchId, onBatch }: { data: Grouping; batchId: n
   const pageAction = useMutation({
     mutationFn: ({ action, key, top }: { action: 'toss' | 'recover' | 'rotate'; key: string; top?: TopPoints }) =>
       action === 'rotate' ? api.ingest.rotate(key, top ?? 'down') : api.ingest[action](key),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['ingest'] }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['ingest'] })
+      // tossing or recovering a page also decides it (or takes the decision back) for Review
+      for (const root of ['review-queue', 'review-doc']) void queryClient.invalidateQueries({ queryKey: [root] })
+    },
   })
   const save = useMutation({
     mutationFn: (groups: string[][]) => api.ingest.saveGrouping(batchId, groups),

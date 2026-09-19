@@ -29,6 +29,8 @@ from api.model_manager import models
 JobStatus = Literal["running", "succeeded", "failed", "cancelled"]
 FINISHED: frozenset[str] = frozenset({"succeeded", "failed", "cancelled"})
 MAX_REPORTED_ERRORS = 200
+#: Finished jobs kept (the pages show the last of each kind); older ones are forgotten.
+MAX_FINISHED_KEPT = 50
 
 
 class JobConflict(Exception):
@@ -83,6 +85,7 @@ class Job:
     started_at: float = field(default_factory=time.time)
     finished_at: float | None = None
     cancel_requested: bool = False
+    cancellable: bool = True             # whether it checks for Cancel between items
     version: int = 0
 
     def snapshot(self) -> dict:
@@ -104,6 +107,7 @@ class Job:
             "seconds_per_item": round(avg, 2) if avg is not None else None,
             "eta_seconds": round(eta) if eta is not None else None,
             "cancel_requested": self.cancel_requested,
+            "cancellable": self.cancellable,
             "version": self.version,
             # what it holds, so pages can tell which of their controls it locks
             "batches": sorted(self.claim.batches),
@@ -160,17 +164,19 @@ class JobRunner:
             yield
 
     @contextmanager
-    def exclusive(self, what: str, kind: str | None = None, claim: Claim | None = None) -> Iterator[None]:
+    def exclusive(self, what: str, kind: str | tuple[str, ...] | None = None,
+                  claim: Claim | None = None) -> Iterator[None]:
         """Run the body with nothing it touches held by a job, and no such job able to start until it ends.
 
         Refused (JobConflict) if a running job holds what ``claim`` touches; with ``kind`` instead, if a
-        job of that kind runs; with neither, if any job runs. Starting a job inside the body is allowed
-        (the lock is re-entrant).
+        job of that kind (or one of those kinds) runs; with neither, if any job runs. Starting a job inside
+        the body is allowed (the lock is re-entrant).
         """
+        kinds = (kind,) if isinstance(kind, str) else kind
         with self._edit_lock:
             for job in self._running():
-                if kind is not None:
-                    hit = job.kind == kind
+                if kinds is not None:
+                    hit = job.kind in kinds
                 elif claim is not None:
                     hit = claim.collides_with(job.claim)
                 else:
@@ -181,8 +187,10 @@ class JobRunner:
                                       else f"Can't {what} while {job.title} is using {held}.")
             yield
 
-    def start(self, kind: str, title: str, fn: JobFn, claim: Claim = EVERYTHING) -> dict:
+    def start(self, kind: str, title: str, fn: JobFn, claim: Claim = EVERYTHING, cancellable: bool = True) -> dict:
         """Run ``fn`` on a worker thread, holding ``claim``. ``fn`` returns a final message (or None).
+
+        ``cancellable=False`` is for a job too short to have items to stop between: Cancel is refused.
 
         Refused if a job of the same kind runs (each page follows one job of its kind) or a running job
         holds anything ``claim`` needs.
@@ -195,9 +203,10 @@ class JobRunner:
                     held = claim.shared_with(other.claim)
                     raise JobConflict(f"{title} has to wait: {other.title} is running." if held == "the archive"
                                       else f"{title} has to wait: {other.title} is using {held}.")
-            job = Job(id=uuid.uuid4().hex, kind=kind, title=title, claim=claim)
+            job = Job(id=uuid.uuid4().hex, kind=kind, title=title, claim=claim, cancellable=cancellable)
             self._jobs[job.id] = job
             self._order.append(job.id)
+            self._forget_old_locked()
             snapshot = job.snapshot()
         threading.Thread(target=self._run, args=(job, fn), name=f"job-{kind}", daemon=True).start()
         return snapshot
@@ -206,6 +215,8 @@ class JobRunner:
         job = self._jobs.get(job_id)
         if job is None:
             return None
+        if not job.cancellable:
+            raise JobConflict(f"{job.title} can't be stopped part-way; it finishes on its own shortly.")
         if job.status not in FINISHED:
             self._update(job, cancel_requested=True, message="Cancelling after the current item…")
         return self.get(job_id)
@@ -302,6 +313,12 @@ class JobRunner:
         return snapshot
 
     # --- internals ------------------------------------------------------------------------
+    def _forget_old_locked(self) -> None:
+        finished = [i for i in self._order if self._jobs[i].status in FINISHED]
+        for job_id in finished[:max(0, len(finished) - MAX_FINISHED_KEPT)]:
+            self._order.remove(job_id)
+            del self._jobs[job_id]
+
     def _mutate(self, job: Job, change: Callable[[Job], None]) -> None:
         with self._changed:
             change(job)

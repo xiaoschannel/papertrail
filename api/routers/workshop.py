@@ -3,7 +3,8 @@
 The form is Review's — same defaults, smart matches, hints and validation — because it is the same
 decision, and the page reuses the same component. What the workshop adds is the image: rotate and
 enhance the scan, then run OCR and extraction again as a background job, since it loads the models the
-ingest jobs use.
+ingest jobs use. A reread is held (``workshop.rereads``) until the document is decided: Accept keeps it,
+Toss or Discard drops it, and until then the page shows what it read.
 """
 
 from __future__ import annotations
@@ -24,8 +25,8 @@ from api.jobs import Claim, runner
 from api.model_manager import models
 from api.schemas import (
     BoxRect, ContextScanOut, DecisionOut, FieldBoxOut, FormDefaultsOut, HintOut, HintsResponse, JobOut,
-    MarkedDocumentOut, ReviewDocument, ReviewPage, SmartMatch, WorkshopContextOut, WorkshopDecisionIn, WorkshopHintsIn,
-    WorkshopOut, WorkshopReprocessIn,
+    MarkedDocumentOut, RereadOut, ReviewDocument, ReviewPage, SmartMatch, WorkshopContextOut, WorkshopDecisionIn,
+    WorkshopHintsIn, WorkshopOut, WorkshopReprocessIn,
 )
 from data import build_smart_match_history, load_decisions
 from document_files import MARKED
@@ -45,18 +46,30 @@ def _document_or_404(output_path: Path, key: str) -> workshop.MarkedDocument:
     return document
 
 
-def _review_document(output_path: Path, document: workshop.MarkedDocument) -> ReviewDocument:
-    """The marked document in Review's shape, so both pages share one form and one set of rules."""
+def _extraction(document: workshop.MarkedDocument, reread: workshop.Reread | None):
+    return reread.extraction if reread else document.first.extraction
+
+
+def _review_document(output_path: Path, document: workshop.MarkedDocument,
+                     reread: workshop.Reread | None) -> ReviewDocument:
+    """The marked document in Review's shape, so both pages share one form and one set of rules.
+
+    With a reread pending, the text, the form's defaults and the boxes are the reread's.
+    """
     sidecar = document.first
-    extraction = sidecar.extraction
-    ocr_text, _boxes = workshop.ocr_of(document)
+    extraction = _extraction(document, reread)
+    ocr_text = workshop.ocr_of(document, reread)
     defaults = rl.form_defaults(extraction) if extraction else rl.defaults_from_decision(sidecar.review)
     field_sources = getattr(extraction, "field_sources", {}) or {}
+    results = reread.results if reread else [page.ocr for page in document.sidecars]
 
     pages = []
-    for page_number, (path, page_sidecar) in enumerate(zip(document.pages, document.sidecars), start=1):
-        page_boxes = (page_sidecar.ocr.boxes if page_sidecar.ocr else None) or []
-        drawn = rl.field_boxes(page_number, page_boxes, field_sources) if field_sources else []
+    for page_number, path in enumerate(document.pages, start=1):
+        ocr = results[page_number - 1] if page_number <= len(results) else None
+        page_boxes = (ocr.boxes if ocr else None) or []
+        # Every box the fields cite; with nothing cited, every box OCR found, so the scan still shows what was read.
+        drawn = rl.field_boxes(page_number, page_boxes, field_sources) if field_sources \
+            else rl.all_boxes(page_boxes)
         pages.append(ReviewPage(
             file_key=path.name, filename=path.name, image_available=path.is_file(),
             boxes=[FieldBoxOut(index=b.index, fields=list(b.fields), text=b.text,
@@ -88,12 +101,15 @@ def workshop_queue(key: str | None = None, output_path: Path = Depends(get_outpu
     cfg = get_config()
     listed = [MarkedDocumentOut(key=d.key, pages=d.filenames, name=d.first.review.name,
                                 comment=d.first.review.comment, batch_id=d.first.batch_id) for d in documents]
-    # A key that no longer exists (decided in another tab, or by Streamlit) falls back to the first
+    # A key that no longer exists (decided in another tab, say) falls back to the first
     # document rather than leaving the page on an error it can't recover from.
     chosen = next((d for d in documents if d.key == key), None) or (documents[0] if documents else None)
+    reread = workshop.rereads.get(chosen) if chosen else None
     return WorkshopOut(
         documents=listed,
-        document=_review_document(output_path, chosen) if chosen else None,
+        document=_review_document(output_path, chosen, reread) if chosen else None,
+        reread=RereadOut(top_points=reread.top_points, ocr_model=reread.ocr_model,  # type: ignore[arg-type]
+                         extractor=reread.extractor) if reread else None,
         ocr_models=list(providers), extractors=list(extractors),
         ocr_model=cfg.workshop_ocr_model if cfg.workshop_ocr_model in providers else next(iter(providers), ""),
         extractor=cfg.workshop_extractor_model if cfg.workshop_extractor_model in extractors
@@ -137,7 +153,7 @@ def enhanced_scan(
 @router.get("/context", response_model=WorkshopContextOut)
 def context(key: str = Query(...), date: str = "", time: str = "", document_type: str = "receipt",
             output_path: Path = Depends(get_output_path)):
-    """The week around the form's date and time, and the rest of the document's batch (as Streamlit showed)."""
+    """The week around the form's date and time, and the rest of the document's batch."""
     document = _document_or_404(output_path, key)
     try:
         scan_index = load_scan_index(output_path)
@@ -167,7 +183,7 @@ def hints(body: WorkshopHintsIn, output_path: Path = Depends(get_output_path)):
     document = _document_or_404(output_path, body.key)
     draft = rl.Draft(document_type=body.draft.document_type, name=body.draft.name, date=body.draft.date,
                      time=body.draft.time, cost=body.draft.cost, currency=body.draft.currency)
-    extraction = document.first.extraction
+    extraction = _extraction(document, workshop.rereads.get(document))
     drafted = rl.draft_extraction(extraction, draft) if extraction else rl.draft_extraction(
         rl.form_defaults_extraction(draft), draft)
     history = build_smart_match_history(store.extractions(output_path), load_decisions(output_path),
@@ -182,7 +198,10 @@ def hints(body: WorkshopHintsIn, output_path: Path = Depends(get_output_path)):
 
 @router.post("/reprocess", response_model=JobOut)
 def reprocess(body: WorkshopReprocessIn, output_path: Path = Depends(get_output_path)):
-    """Read the treated scan again and extract from it, as a job: it loads the same models as ingest."""
+    """Read the treated scan again and extract from it, as a job: it loads the same models as ingest.
+
+    The result waits for the decision (see ``workshop.Reread``); nothing on disk changes yet.
+    """
     document = _document_or_404(output_path, body.key)
     providers = registry.ocr_providers()
     provider = providers.get(body.ocr_model)
@@ -213,18 +232,26 @@ def reprocess(body: WorkshopReprocessIn, output_path: Path = Depends(get_output_
             progress.tick(item=page.name)
 
         models.acquire(f"extract:{body.extractor}", registry.unload_extractor(body.extractor))
-        joined = "\n\n".join(f"--- Page {number} ---\n{result.markdown}"
-                             for number, result in enumerate(results, start=1))
-        text, has_boxes = workshop.extractor_input(joined, results[0].boxes or [])
+        text, has_boxes = workshop.extractor_input(results)
         extraction = extract(text, has_boxes=has_boxes, custom_instruction=get_config().parse_custom_instruction)
         progress.tick(item=document.key)
 
-        workshop.store_reprocessed(output_path, document, results, extraction, top_points=body.top_points)
-        return f"Re-read {len(results)} page(s) of {document.key} and extracted it again."
+        workshop.rereads.put(document.key, workshop.Reread(
+            pages=tuple(document.filenames), results=results, extraction=extraction, top_points=body.top_points,
+            ocr_model=body.ocr_model, extractor=body.extractor))
+        return f"Re-read {len(results)} page(s) of {document.key}. Accept keeps it; nothing is saved until then."
 
-    # Marked documents are already archived, so no batch is involved: the run holds only the GPU.
+    # Marked documents are already archived, so no batch is involved: the run holds only the GPU. It is a
+    # couple of model calls, with nothing to stop between, so it can't be cancelled.
     with planning_a_job():
-        return runner.start("workshop", f"Reprocess {document.key}", job, Claim(gpu=True))
+        return runner.start("workshop", f"Reprocess {document.key}", job, Claim(gpu=True), cancellable=False)
+
+
+@router.delete("/reread", response_model=WorkshopOut)
+def discard_reread(key: str = Query(...), output_path: Path = Depends(get_output_path)):
+    """Drop a pending reread: the document goes back to what its sidecars say."""
+    workshop.rereads.drop(key)
+    return workshop_queue(key=key, output_path=output_path)
 
 
 @router.post("/decide", response_model=WorkshopOut)
@@ -232,7 +259,7 @@ def decide(body: WorkshopDecisionIn, output_path: Path = Depends(get_output_path
     """Accept the document into the archive, or toss it. Every page of it moves together."""
     document = _document_or_404(output_path, body.key)
     if body.verdict == "tossed":
-        with no_job_running("toss a marked document"):
+        with no_job_running("toss a marked document", kind=("archive", "workshop")):
             workshop.toss(output_path, document)
     else:
         draft = rl.Draft(document_type=body.draft.document_type, name=body.draft.name, date=body.draft.date,
@@ -245,10 +272,8 @@ def decide(body: WorkshopDecisionIn, output_path: Path = Depends(get_output_path
             verdict=body.verdict, document_type=draft.document_type, name=draft.name, date=draft.date,
             time=draft.time, cost=(draft.cost or 0.0) if receipt else 0.0,
             currency=draft.currency if receipt else "", comment=body.comment)
-        extraction = document.first.extraction
-        with no_job_running("file a marked document"):
-            workshop.accept(output_path, document, decision,
-                            rl.draft_extraction(extraction, draft) if extraction else None)
+        with no_job_running("file a marked document", kind=("archive", "workshop")):
+            workshop.accept(output_path, document, decision, workshop.rereads.get(document))
 
     cache.clear()   # the archive gained (or tossed) a document
     store.clear()

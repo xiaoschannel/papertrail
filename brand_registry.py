@@ -131,7 +131,7 @@ def brand_breakdown(
     branches and no receipts rather than being left out - a prefix that does nothing is exactly what
     you want to see when you are deciding whether to keep it.
 
-    Resolution runs once per DISTINCT name (a few thousand) instead of once per receipt, because
+    Resolution runs once per DISTINCT name (far fewer than receipts) instead of once per receipt, because
     ``resolve_brand`` only ever looks at the name.
     """
     matched: dict[str, dict[str, dict[str, int]]] = {}
