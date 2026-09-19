@@ -72,6 +72,44 @@ def test_records_in_range_and_column_balance():
     assert len(col1) == 2 and len(col2) == 1  # greedy: shorter column gets the tie
 
 
+def test_complete_monthly_series_fills_gaps_with_zero():
+    from analytics import complete_monthly_series
+
+    monthly = pd.DataFrame({
+        "period": pd.PeriodIndex(["2025-01", "2025-04"], freq="M"),
+        "spend": [100.0, 40.0],
+    })
+    monthly["month_ts"] = monthly["period"].dt.to_timestamp()
+
+    out = complete_monthly_series(monthly, "spend")
+    assert [str(p) for p in out["period"]] == ["2025-01", "2025-02", "2025-03", "2025-04"]
+    assert list(out["spend"]) == [100.0, 0.0, 0.0, 40.0]
+    assert list(out.columns) == ["period", "spend", "month_ts"]
+    assert out["month_ts"].iloc[1] == pd.Timestamp("2025-02-01")
+
+
+def test_complete_monthly_series_start_end_widen_never_narrow():
+    from analytics import complete_monthly_series
+
+    monthly = pd.DataFrame({"period": pd.PeriodIndex(["2025-03"], freq="M"), "count": [5]})
+    monthly["month_ts"] = monthly["period"].dt.to_timestamp()
+
+    widened = complete_monthly_series(monthly, "count", start="2025-01", end="2025-04")
+    assert [str(p) for p in widened["period"]] == ["2025-01", "2025-02", "2025-03", "2025-04"]
+    assert list(widened["count"]) == [0, 0, 5, 0]
+
+    # a start/end inside the data range must not cut data off
+    kept = complete_monthly_series(monthly, "count", start="2025-03", end="2025-03")
+    assert list(kept["count"]) == [5]
+
+
+def test_complete_monthly_series_empty_passthrough():
+    from analytics import complete_monthly_series
+
+    empty = pd.DataFrame(columns=["period", "spend", "month_ts"])
+    assert complete_monthly_series(empty, "spend").empty
+
+
 def test_calendar_date_helpers():
     assert monday_of_week(date(2025, 1, 8)) == date(2025, 1, 6)   # Wed -> Mon
     assert first_of_next_month(date(2025, 12, 15)) == date(2026, 1, 1)
