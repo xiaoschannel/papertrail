@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { api, jobEventsUrl } from '../api/client.ts'
 import type { Job } from '../api/types.ts'
+import { spend, spendExactly } from '../format.ts'
 import './jobs.css'
 
 /**
@@ -144,6 +145,32 @@ const STATUS_LABEL: Record<Job['status'], string> = {
   running: 'Running', succeeded: 'Done', failed: 'Failed', cancelled: 'Cancelled',
 }
 
+/** Every number behind the spend, under the provider's own names for them. */
+function TokenBreakdown({ job }: { job: Job }) {
+  const per = (total: number) => (job.calls ? Math.round(total / job.calls).toLocaleString() : '—')
+  const rows: [string, string, string][] = [
+    ['prompt_tokens', job.prompt_tokens.toLocaleString(), per(job.prompt_tokens)],
+    ['cached_tokens', job.cached_tokens.toLocaleString(), per(job.cached_tokens)],
+    ['completion_tokens', job.completion_tokens.toLocaleString(), per(job.completion_tokens)],
+    ['reasoning_tokens', job.thinking_tokens.toLocaleString(), per(job.thinking_tokens)],
+  ]
+  return (
+    <details className="job-tokens">
+      <summary>Tokens ({job.calls.toLocaleString()} call{job.calls === 1 ? '' : 's'})</summary>
+      <table>
+        <thead><tr><th /><th className="num">Total</th><th className="num">Per document</th></tr></thead>
+        <tbody>
+          {rows.map(([label, total, each]) => (
+            <tr key={label}><th>{label}</th><td className="num">{total}</td><td className="num">{each}</td></tr>
+          ))}
+          <tr><th>spent</th><td className="num">{spendExactly(job.spent)}</td>
+            <td className="num">{spendExactly(job.spent / (job.calls || 1))}</td></tr>
+        </tbody>
+      </table>
+    </details>
+  )
+}
+
 export function JobPanel({ job }: { job: Job }) {
   const track = useTrackJob()
   const cancel = useMutation({ mutationFn: () => api.jobs.cancel(job.id), onSuccess: track })
@@ -166,7 +193,17 @@ export function JobPanel({ job }: { job: Job }) {
         <span>{duration(job.elapsed_seconds)} elapsed</span>
         {job.seconds_per_item != null && <span>{job.seconds_per_item.toFixed(1)} s/item</span>}
         {running && job.eta_seconds != null && <span>~{duration(job.eta_seconds)} left</span>}
+        {job.spent > 0 && (
+          // A model that bills by the token: what the run has spent, what all of it comes to at that
+          // rate, and how much of the prompt is being charged a tenth. Only Parse on a hosted model does.
+          <span>
+            {spend(job.spent)} spent
+            {running && job.done > 0 && job.total > job.done && ` · ${spend(job.spent / job.done * job.total)} for all ${job.total}`}
+            {job.prompt_tokens > 0 && ` · ${Math.round((job.cached_tokens / job.prompt_tokens) * 100)}% cached`}
+          </span>
+        )}
       </div>
+      {job.calls > 0 && <TokenBreakdown job={job} />}
       {job.message && <p className={`job-message${job.status === 'failed' ? ' neg' : ''}`}>{job.message}</p>}
       {cancel.error && <div className="error-banner" role="alert">{cancel.error.message}</div>}
       <div className="job-actions">

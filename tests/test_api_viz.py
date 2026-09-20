@@ -155,6 +155,24 @@ def test_year_filter_narrows_results(api_client):
         assert months and all(str(m["month_ts"]).startswith("2023") for m in months)
 
 
+def test_a_documents_runs_come_from_its_sidecar(api_client, configured_archive):
+    from data import read_sidecar, write_sidecar
+    from models import ModelRun, TokenUse
+
+    page = next((configured_archive / "2025" / "01").glob("*.png"))
+    sidecar = read_sidecar(page)
+    write_sidecar(page, sidecar.model_copy(update={
+        "ocr_run": ModelRun(model="DeepSeek OCR 2", at=1.0, seconds=30.0),
+        "extraction_run": ModelRun(model="OpenAI - gpt-5.6-luna", at=2.0, seconds=1.2,
+                                   tokens=TokenUse(prompt=2000, cached=1024), cost=0.0007)}))
+
+    body = api_client.get("/api/receipt/runs", params={"file": sidecar.original_filename}).json()
+
+    assert body["ocr"]["model"] == "DeepSeek OCR 2" and body["ocr"]["cost"] is None
+    assert body["extraction"]["cost"] == 0.0007 and body["extraction"]["tokens"]["cached"] == 1024
+    assert api_client.get("/api/receipt/runs", params={"file": "nope.png"}).status_code == 404
+
+
 def test_receipt_lookup_and_404(api_client):
     ok = api_client.get("/api/receipt", params={"file": "5:106-107"})
     assert ok.status_code == 200

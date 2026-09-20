@@ -16,7 +16,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from models import DocumentExtraction
+from models import DocumentExtraction, ModelRun, TokenUse
 
 
 class _Model(BaseModel):
@@ -164,6 +164,14 @@ class MerchantProfile(_Model):
 
 
 DocumentType = Literal["receipt", "other", "corrupted"]
+
+
+class DocumentRunsOut(_Model):
+    """What the model calls behind one archived document took. Absent for a document filed before
+    Papertrail kept them."""
+
+    ocr: ModelRun | None
+    extraction: ModelRun | None
 
 
 class ReceiptEditIn(_Model):
@@ -336,6 +344,13 @@ class JobOut(_Model):
     elapsed_seconds: float
     seconds_per_item: float | None
     eta_seconds: int | None
+    #: dollars spent so far and the tokens behind them, for a run calling a model that bills
+    spent: float
+    calls: int
+    prompt_tokens: int
+    cached_tokens: int
+    completion_tokens: int
+    thinking_tokens: int
     cancel_requested: bool
     cancellable: bool
     version: int
@@ -869,6 +884,16 @@ class ExperimentParseOut(_Model):
     extraction: DocumentExtraction
     field_boxes: list[FieldBoxOut]       # the boxes the extraction cites, as Review draws them
     seconds: float
+    tokens: TokenUse | None              # what the call read and wrote; absent if the model doesn't say
+    cost: float | None                   # dollars for this one call; None for a model that runs here
+
+
+class PriceOut(_Model):
+    """What a hosted model charges per million tokens."""
+
+    input: float
+    cached_input: float
+    output: float
 
 
 class ExperimentRunOut(_Model):
@@ -892,3 +917,5 @@ class ExperimentOut(_Model):
     with_boxes: bool
     custom_instruction: str
     latest: str | None
+    #: per extractor that bills by the token, so a run can be priced on the others too
+    prices: dict[str, PriceOut]

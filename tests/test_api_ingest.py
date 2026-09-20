@@ -11,7 +11,7 @@ from api import ingest_registry
 from api.jobs import EVERYTHING, FINISHED, Claim, JobConflict, JobRunner, runner
 from api.model_manager import ModelManager, models
 from data import load_decisions, load_extractions, load_ocr_results, save_decisions
-from models import ReceiptResult, load_scan_index
+from models import ReceiptResult, TokenUse, load_scan_index
 
 PAGE_1 = "01102025132642_1.png"  # the only scan conftest puts in the input folder (page 1:1)
 
@@ -184,6 +184,24 @@ def test_parse_job(ingest_client, configured_ingest, fake_extractor):
     assert fake_extractor == ["Ollama - Fake"] and models.loaded is None      # and unloads it when done
     assert ingest_client.get("/api/config").json()["parse_custom_instruction"] == "Prefer Japanese names"
     assert ingest_client.post("/api/ingest/parse", json={"extractor": "Nope"}).status_code == 422
+
+
+def test_a_parse_run_on_a_billed_model_adds_up_what_it_is_spending(ingest_client, configured_ingest, monkeypatch):
+    def extract(text, has_boxes=False, custom_instruction="", on_usage=None):
+        on_usage(TokenUse(prompt=2000, cached=1024, completion=400, thinking=250))
+        return _receipt("Parsed")
+
+    monkeypatch.setattr(ingest_registry, "extractors", lambda: {"OpenAI - gpt-5.6-luna": extract})
+    monkeypatch.setattr(ingest_registry, "unload_extractor", lambda name: lambda: None)
+
+    job = ingest_client.post("/api/ingest/parse", json={"extractor": "OpenAI - gpt-5.6-luna", "reprocess": True,
+                                                        "limit": 2}).json()
+    done = _finish(job)
+
+    assert done["done"] == 2
+    assert done["spent"] == pytest.approx(2 * 0.000696, abs=1e-5)     # both calls, at Luna's prices
+    assert (done["calls"], done["prompt_tokens"], done["cached_tokens"]) == (2, 4000, 2048)
+    assert (done["completion_tokens"], done["thinking_tokens"]) == (800, 500)
 
 
 def test_ocr_on_one_batch_while_parse_and_edits_run_on_another(ingest_client, configured_ingest, fake_ocr,

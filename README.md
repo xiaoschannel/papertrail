@@ -31,6 +31,9 @@ The web app also needs [Node.js](https://nodejs.org/) 22 or newer:
 ```
 npm --prefix frontend install
 ```
+---
+The hosted extractors need an API key. Copy `.env.example` to `.env` and put yours in it; the file is
+gitignored, and `env.py` says which one is read when you have several checkouts.
 
 Run the API and the web app, each in its own terminal:
 ```

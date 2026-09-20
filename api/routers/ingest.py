@@ -14,6 +14,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 import ingest_pipeline as pipeline
+import rate_budget
 from api import cache, ingest_registry as registry
 from api import ingest_store as store
 from api.deps import get_input_path, get_output_path
@@ -22,8 +23,8 @@ from api.jobs import EVERYTHING, NOTHING_HELD, Claim, JobConflict, runner
 from api.model_manager import models
 from api.schemas import (
     ArchiveMoveOut, ArchiveStatus, BatchFile, BatchOut, ConfirmIndexIn, GroupingOut, GroupingPageOut, IndexStatus,
-    JobOut, OcrStatus, PageIn, ParseStatus, ProposedBatch, RotateIn, SaveGroupingIn, SaveGroupingOut, StartOcrIn,
-    StartParseIn,
+    JobOut, OcrStatus, PageIn, ParseStatus, ProposedBatch, RotateIn, SaveGroupingIn, SaveGroupingOut,
+    StartOcrIn, StartParseIn,
 )
 from indexing_schemes import SCHEMES
 from models import ScanBatch, parse_batch_serial_key
@@ -234,7 +235,7 @@ def start_ocr(
 
         def job(progress) -> str:
             models.acquire(f"ocr:{body.provider}", provider.teardown)
-            return pipeline.run_ocr(output_path, plan.items, provider, structured, progress)
+            return pipeline.run_ocr(output_path, plan.items, provider, structured, progress, model=body.provider)
         # Every OCR model runs on this machine, so OCR always holds the GPU.
         return job, Claim(batches=plan.batches, gpu=True)
 
@@ -242,6 +243,11 @@ def start_ocr(
 
 
 # --- Parse ------------------------------------------------------------------------------------------
+#: The most documents a hosted run will have in flight. How many it actually uses is decided as it
+#: runs (``rate_budget``): it climbs while calls go through and halves when one is refused.
+HOSTED_WORKERS = rate_budget.MAX_SLOTS
+
+
 @router.get("/parse", response_model=ParseStatus)
 def parse_status(
     reprocess: bool = False,
@@ -284,7 +290,8 @@ def start_parse(body: StartParseIn, output_path: Path = Depends(get_output_path)
             # unload the OCR model a concurrent run is using.
             if local:
                 models.acquire(f"extract:{body.extractor}", registry.unload_extractor(body.extractor))
-            return pipeline.run_parse(output_path, plan, extract, body.custom_instruction, progress)
+            return pipeline.run_parse(output_path, plan, extract, body.custom_instruction, progress,
+                                      model=body.extractor, workers=1 if local else HOSTED_WORKERS)
         return job, Claim(batches=plan.batches, gpu=local)
 
     return _start("parse", f"Parse with {body.extractor}", prepare)

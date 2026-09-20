@@ -11,9 +11,16 @@ it (``npm --prefix frontend run dev``), and only pages on this machine are serve
 
 from __future__ import annotations
 
+import logging
+
 from env import load_env
 
 load_env()  # API keys: process env, then <repo>/.env, then the shared user-level file (see env.py)
+
+# What the app itself has to say -- what a model call consumed, when a run changes pace, which model
+# is loaded -- goes to the terminal running the API. uvicorn's own loggers carry their own handlers,
+# so this adds one for everything else rather than replacing theirs.
+logging.basicConfig(level=logging.INFO, format="%(levelname)s:     %(name)s: %(message)s")
 
 from urllib.parse import urlsplit
 

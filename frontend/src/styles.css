@@ -181,6 +181,8 @@ tbody td { padding: 7px 10px; border-bottom: 1px solid var(--border); }
 tbody tr:last-child td { border-bottom: 0; }
 tbody tr:hover { background: var(--panel-2); }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+/* A table of labelled facts rather than rows of data: the label is the row's own heading. */
+table.kv tbody th { width: 7rem; padding: 7px 10px; text-align: left; font-weight: 500; color: var(--muted); }
 /* long merchant names truncate rather than stretching the table */
 td.ellipsis { max-width: 16rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 td.ellipsis > a { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

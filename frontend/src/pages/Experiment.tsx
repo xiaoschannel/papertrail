@@ -9,7 +9,7 @@ import { Markdown } from '../components/Markdown.tsx'
 import { ScanOverlay, fieldColor } from '../components/review/ScanOverlay.tsx'
 import { CompareButton, DEFAULT_ENHANCEMENT, Slider, TreatmentControls, isTreated } from '../components/ScanTreatment.tsx'
 import { useDebounced } from '../components/useDebounced.ts'
-import { money } from '../format.ts'
+import { money, num, spend, spendExactly } from '../format.ts'
 import { Card, Empty, ErrorState, Loading } from '../components/ui.tsx'
 import './curate.css'
 import './ingest.css'
@@ -248,6 +248,7 @@ function Bench({ run, options }: { run: ExperimentRun; options: ExperimentOption
         {parseGate.job && <JobPanel job={parseGate.job} />}
         {run.parse && <Extraction parse={run.parse} activeFields={activeFields}
           onHoverField={(field) => setActiveFields(field ? [field] : [])} />}
+        {run.parse && <Cost parse={run.parse} prices={options.prices} />}
       </Card>
     </div>
   )
@@ -387,6 +388,71 @@ function Extraction({ parse, activeFields, onHoverField }: {
 }
 
 const TYPE_LABEL = { receipt: 'Receipt', other: 'Other document', corrupted: 'Corrupted' } as const
+
+/**
+ * What the run cost: the tokens it actually used, priced for the model that ran, then scaled to a batch
+ * and across the other billed models. The other models are an estimate — the same text, but each one
+ * thinks a different amount — so they answer "which model for this run", not "what will the bill be".
+ */
+function Cost({ parse, prices }: { parse: NonNullable<ExperimentRun['parse']>; prices: ExperimentOptions['prices'] }) {
+  const tokens = parse.tokens
+  if (!tokens) return null
+  const billed = Object.entries(prices)
+  return (
+    <>
+      <h3 className="experiment-step">What it cost</h3>
+      <table className="experiment-fields">
+        <tbody>
+          <tr><th>prompt_tokens</th><td>{num(tokens.prompt)}</td></tr>
+          <tr><th>cached_tokens</th><td>{num(tokens.cached)}</td></tr>
+          <tr><th>completion_tokens</th><td>{num(tokens.completion)}</td></tr>
+          <tr><th>reasoning_tokens</th><td>{num(tokens.thinking)}</td></tr>
+        </tbody>
+      </table>
+      {tokens.raw && (
+        <details className="ingest-details">
+          <summary>Usage, as it came back</summary>
+          <pre className="textdump">{JSON.stringify(tokens.raw, null, 2)}</pre>
+        </details>
+      )}
+      {parse.cost == null
+        ? <p className="ingest-note">{parse.extractor} runs on this machine: it costs GPU time, not money.</p>
+        : (
+          <p className="experiment-cost">
+            <strong>{spendExactly(parse.cost)}</strong> for this document — {spend(parse.cost * 100)} per 100,{' '}
+            {spend(parse.cost * 1000)} per 1,000.
+          </p>
+        )}
+      {billed.length > 1 && (
+        <table className="experiment-items">
+          <thead>
+            <tr><th>Same tokens on</th><th className="num">Per document</th><th className="num">Per 1,000</th></tr>
+          </thead>
+          <tbody>
+            {billed.map(([name, price]) => {
+              const each = (tokens.prompt - tokens.cached) * price.input / 1e6
+                + tokens.cached * price.cached_input / 1e6 + tokens.completion * price.output / 1e6
+              return (
+                <tr key={name} className={name === parse.extractor ? 'active' : ''}>
+                  <td>{name.replace(/^OpenAI - /, '')}{name === parse.extractor ? ' (this run)' : ''}</td>
+                  <td className="num">{spendExactly(each)}</td>
+                  <td className="num">{spend(each * 1000)}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      )}
+      {billed.length > 1 && (
+        <p className="config-hint">
+          The other models are priced on this run's tokens; each one thinks a different amount, so run it to be sure.
+        </p>
+      )}
+    </>
+  )
+}
+
+
 
 /** The prompt Parse would send now, as the instructions are typed. */
 function PromptPreview({ runId, instruction }: { runId: string; instruction: string }) {

@@ -14,11 +14,11 @@ from api import cache
 from api.deps import get_output_path
 from api.guards import no_job_running
 from api.schemas import (
-    DocumentListItem,
-    BrandTotals, DateRange, MerchantProfile, MonthlySpend, MonthlyVolume, NameTotals, ReceiptEditIn, VizItem,
-    VizRecord,
+    BrandTotals, DateRange, DocumentListItem, DocumentRunsOut, MerchantProfile, MonthlySpend, MonthlyVolume,
+    NameTotals, ReceiptEditIn, VizItem, VizRecord,
 )
 from api.serialization import df_records, to_jsonable
+from data import read_sidecar
 
 router = APIRouter(prefix="/api", tags=["visualize"])
 
@@ -236,6 +236,19 @@ def receipt_endpoint(
         if not match.empty:
             return to_jsonable(match.iloc[0].to_dict())
     raise HTTPException(status_code=404, detail="document not found")
+
+
+@router.get("/receipt/runs", response_model=DocumentRunsOut)
+def receipt_runs(file: str = Query(...), output_path: Path = Depends(get_output_path)):
+    """What reading and extracting this document took, from the sidecar of its first page."""
+    df = cache.viz_records(output_path)
+    match = df[df["filename"] == file] if not df.empty else df
+    if match.empty:
+        raise HTTPException(status_code=404, detail="document not found")
+    sidecar = read_sidecar(output_path / match.iloc[0]["paths"][0])
+    if sidecar is None:
+        raise HTTPException(status_code=404, detail="document not found")
+    return DocumentRunsOut(ocr=sidecar.ocr_run, extraction=sidecar.extraction_run)
 
 
 @router.patch("/receipt", response_model=VizRecord)

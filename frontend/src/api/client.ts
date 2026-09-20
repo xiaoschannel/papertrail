@@ -56,6 +56,8 @@ export const api = {
   timecapsule: (month: number, day: number) =>
     unwrap(client.GET('/api/analytics/timecapsule', { params: { query: { month, day } } })),
   receipt: (file: string) => unwrap(client.GET('/api/receipt', { params: { query: { file } } })),
+  /** What reading and extracting this document took, when it was filed after Papertrail kept that. */
+  receiptRuns: (file: string) => unwrap(client.GET('/api/receipt/runs', { params: { query: { file } } })),
   /** Every archived document (original filename, name, date, type), for Receipt Detail's picker. */
   documents: () => unwrap(client.GET('/api/documents')),
   /** Correct an archived document: the server re-files its pages and rewrites their sidecars. */

@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, mediaUrl } from '../api/client.ts'
 import type { DocumentType, VizRecord } from '../api/types.ts'
 import { costIsInvalid, parseCost } from '../components/review/ReviewForm.tsx'
-import { money, num } from '../format.ts'
+import { money, num, spendExactly } from '../format.ts'
 import { Card, Empty, ErrorState, Loading, Tile } from '../components/ui.tsx'
 
 export default function Receipt() {
@@ -129,6 +129,8 @@ export default function Receipt() {
                 ? <pre className="textdump">{r.ocr_markdown}</pre>
                 : <Empty>No OCR text stored.</Empty>}
             </Card>
+
+            <HowItWasRead file={r.filename} />
           </div>
         </div>
       </div>
@@ -279,3 +281,29 @@ function DocumentPicker({ file, onPick }: { file: string; onPick: (file: string)
   )
 }
 
+/** What the models behind this document took, kept when it was archived. */
+function HowItWasRead({ file }: { file: string }) {
+  const runs = useQuery({ queryKey: ['receipt', file, 'runs'], queryFn: () => api.receiptRuns(file), retry: false })
+  const rows = ([['Read', runs.data?.ocr], ['Extracted', runs.data?.extraction]] as const)
+    .filter(([, run]) => run != null)
+  if (rows.length === 0) return null
+  return (
+    <Card title="How it was read">
+      <table className="kv">
+        <tbody>
+          {rows.map(([label, run]) => (
+            <tr key={label}>
+              <th>{label}</th>
+              <td>
+                {run!.model} · {run!.seconds.toFixed(1)} s
+                {run!.cost != null && ` · ${spendExactly(run!.cost)}`}
+                {run!.tokens && ` · ${num(run!.tokens.prompt)} prompt tokens`}
+                {run!.tokens && run!.tokens.cached > 0 && ` (${num(run!.tokens.cached)} cached)`}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </Card>
+  )
+}

@@ -33,15 +33,19 @@ def isolated_config(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytes
 
     Code that reads the config (the brand registry, viz records, the API's archive path) then sees
     defaults unless a fixture such as ``configured_archive`` points it at a fixture copy. The same goes
-    for the Experiment bench's scratch folder and the Workshop's rereads held in memory.
+    for the Experiment bench's scratch folder, the Workshop's rereads held in memory, and what a run
+    believes about the rate limit -- a test that is refused a call must not slow the next one down.
     """
     import experiment_runs
+    import extraction
     import workshop
+    from rate_budget import RateBudget
 
     scratch = tmp_path_factory.mktemp("isolated")
     monkeypatch.setattr(settings, "CONFIG_PATH", scratch / "config.json")
     monkeypatch.setattr(experiment_runs, "ROOT", scratch / "experiment")
     monkeypatch.setattr(workshop, "rereads", workshop.Rereads())
+    monkeypatch.setattr(extraction, "budget", RateBudget())
 
 
 @pytest.fixture(autouse=True)

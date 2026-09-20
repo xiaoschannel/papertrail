@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 from api.model_manager import models
+from models import ModelRun
 
 JobStatus = Literal["running", "succeeded", "failed", "cancelled"]
 FINISHED: frozenset[str] = frozenset({"succeeded", "failed", "cancelled"})
@@ -87,6 +88,13 @@ class Job:
     cancel_requested: bool = False
     cancellable: bool = True             # whether it checks for Cancel between items
     version: int = 0
+    # what the run has spent so far, for a job that calls a model that bills by the token
+    spent: float = 0.0
+    calls: int = 0
+    prompt_tokens: int = 0
+    cached_tokens: int = 0
+    completion_tokens: int = 0
+    thinking_tokens: int = 0
 
     def snapshot(self) -> dict:
         end = self.finished_at or time.time()
@@ -106,6 +114,12 @@ class Job:
             "elapsed_seconds": round(elapsed, 1),
             "seconds_per_item": round(avg, 2) if avg is not None else None,
             "eta_seconds": round(eta) if eta is not None else None,
+            "spent": round(self.spent, 6),
+            "calls": self.calls,
+            "prompt_tokens": self.prompt_tokens,
+            "cached_tokens": self.cached_tokens,
+            "completion_tokens": self.completion_tokens,
+            "thinking_tokens": self.thinking_tokens,
             "cancel_requested": self.cancel_requested,
             "cancellable": self.cancellable,
             "version": self.version,
@@ -129,6 +143,24 @@ class JobContext:
 
     def set_total(self, total: int) -> None:
         self._runner._update(self._job, total=total)
+
+    @property
+    def job_id(self) -> str:
+        return self._job.id
+
+    def record(self, run: ModelRun) -> None:
+        """Add one call to the run's totals, so its spend and tokens are visible while it runs."""
+        use = run.tokens
+        if use is None:
+            return
+        def change(job: Job) -> None:
+            job.spent += run.cost or 0.0
+            job.calls += 1
+            job.prompt_tokens += use.prompt
+            job.cached_tokens += use.cached
+            job.completion_tokens += use.completion
+            job.thinking_tokens += use.thinking
+        self._runner._mutate(self._job, change)
 
     def tick(self, ok: bool = True, item: str = "", error: str = "") -> None:
         def change(job: Job) -> None:

@@ -16,3 +16,5 @@ frontend/src/api/schema.d.ts
 .venv/
 .pytest_cache/
 .env.*
+# the sample is blank: it names the keys, the keys themselves never leave this machine
+!.env.example
