@@ -72,6 +72,8 @@ scan("03012026100100_7.png", [((80, 40, 880, 104), "(blank page)")])
 receipt("03012026100110_8.png", "Coffee Stand Foo", "2026/02/25 09:05", 420)
 for i in range(9, 15):
     receipt(f"030120261002{i:02d}_{i}.png", f"Shop Number {i}", f"2026/02/{i + 5:02d} 10:{i:02d}", 100 * i)
+# The same shop, shouted: real scans come out styled differently and smart match has to see through it.
+receipt("03012026100215_15.png", "COFFEE STAND FOO", "2026/02/24 09:12", 380)
 
 
 class FakeOcr:

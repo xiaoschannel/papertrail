@@ -84,7 +84,10 @@ def defaults_from_decision(decision) -> FormDefaults:
 
 
 def initial_name(default_name: str, candidates: list[SmartMatchCandidate]) -> str:
-    """An exact smart-match hit replaces the extracted name with the previously confirmed spelling."""
+    """An exact smart-match hit replaces the extracted name with the previously confirmed spelling.
+
+    Exact here ignores capitalization, so an OCR shout of a known name comes back in its usual case.
+    """
     if candidates and abs(candidates[0].name_score - 1.0) < 1e-9:
         return candidates[0].confirmed_name
     return default_name
