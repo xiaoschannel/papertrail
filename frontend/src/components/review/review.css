@@ -73,6 +73,7 @@
 .review-page .name-status.ok { color: #28a745; }
 .review-page .name-status.warn { color: #b8860b; }
 .review-page .name-status.bad { color: var(--neg); }
+.review-page .extracted-name { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
 
 .review-page .hints { list-style: none; margin: 0; padding: 8px 10px; border-radius: 8px; background: var(--panel-2); display: grid; gap: 3px; }
 .review-page .hints li { font-size: 12.5px; font-weight: 600; }

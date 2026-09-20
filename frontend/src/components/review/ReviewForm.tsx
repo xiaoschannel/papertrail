@@ -138,6 +138,11 @@ export function ReviewForm({ doc, form, onChange, hints, activeFields, onActivat
       <div {...linked('name')}>
         <label htmlFor="rv-name">Name</label>
         <input id="rv-name" type="text" value={form.name} onChange={(e) => onChange({ name: e.target.value })} />
+        {/* A confident smart match overwrites the box, so what the OCR actually read would otherwise
+            be off the screen at the moment you are deciding whether the match is right. */}
+        {doc.defaults.name && doc.defaults.name !== form.name && (
+          <span className="extracted-name">Extracted: {doc.defaults.name}</span>
+        )}
         {hints && hints.name_status !== 'placeholder' && (
           <span className={`name-status ${NAME_STATUS[hints.name_status].className}`}>
             {NAME_STATUS[hints.name_status].text}
