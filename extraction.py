@@ -167,13 +167,13 @@ def extract_openai(ocr_text: str, has_boxes: bool = False, custom_instruction: s
     messages = extraction_messages(ocr_text, has_boxes, custom_instruction=custom_instruction)
     # Reading fields off OCR text is closer to transcription than reasoning, and thinking is billed at the
     # output rate, so ask for little of it -- enough to weigh the custom instructions, not to deliberate.
-    request = dict(model=model, messages=messages, response_format=ExtractionFlat,
-                   reasoning_effort="low", temperature=0.2)
+    # No temperature: these models take their own and refuse any other, and a refusal costs a whole call.
+    request = dict(model=model, messages=messages, response_format=ExtractionFlat, reasoning_effort="low")
     try:
         response = _call(client, request)
     except BadRequestError as exc:
-        # A model takes only its own default for some of these: ask again without the ones it named.
-        refused = [name for name in ("temperature", "reasoning_effort") if name in str(exc)]
+        # A model that fixes one of these settings names it: ask again without the ones it named.
+        refused = [name for name in ("reasoning_effort",) if name in str(exc)]
         if not refused:
             raise
         response = _call(client, {k: v for k, v in request.items() if k not in refused})

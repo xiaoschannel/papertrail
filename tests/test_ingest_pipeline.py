@@ -287,6 +287,23 @@ def test_a_run_refused_for_pacing_waits_and_tries_the_document_again(ingest_dir,
     assert attempts[-1] == pytest.approx(7, abs=1)                # it waited as long as it was told to
 
 
+def test_a_call_that_failed_is_in_the_log_with_what_the_model_said(ingest_dir):
+    """A job keeps its errors only until the next run of its kind; the log is where they last."""
+    import run_log
+
+    plan = ip.plan_parse(ingest_dir, reprocess=True, limit=1)
+
+    def extract(ocr_text, has_boxes, custom_instruction):
+        raise ValueError("Unsupported value: 'nonsense' with this model")
+
+    ip.run_parse(ingest_dir, plan, extract, "", FakeProgress(), model="Fake LLM", shuffle=False)
+
+    [row] = run_log.read(ingest_dir)
+    assert row["kind"] == "parse" and row["item"] == str(plan.documents[0])
+    assert "Unsupported value" in row["error"]
+    assert "cost" not in row                               # nothing was produced, so nothing was charged
+
+
 def test_a_wait_longer_than_a_run_should_sit_through_ends_it_and_says_why(ingest_dir):
     """A minute's limit comes round; a day's quota does not, and 500 documents must not queue for it."""
     import httpx

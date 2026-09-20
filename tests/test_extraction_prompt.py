@@ -70,7 +70,7 @@ USAGE_PAYLOAD = {"prompt_tokens": 2000, "completion_tokens": 400, "total_tokens"
                  "completion_tokens_details": {"reasoning_tokens": 250, "audio_tokens": 0}}
 
 
-def _fake_openai(monkeypatch, refuses=("temperature",)):
+def _fake_openai(monkeypatch, refuses=("reasoning_effort",)):
     """Stand in for the OpenAI client, refusing the named settings the way a model that fixes them does."""
     import httpx
     from openai import BadRequestError
@@ -110,10 +110,14 @@ def _fake_openai(monkeypatch, refuses=("temperature",)):
     return calls
 
 
-def test_the_hosted_models_are_asked_to_think_only_a_little(monkeypatch):
+def test_the_hosted_models_are_asked_to_think_only_a_little_and_for_nothing_they_refuse(monkeypatch):
     calls = _fake_openai(monkeypatch, refuses=())
+
     extraction.EXTRACTORS["OpenAI - gpt-5.6-terra"]("text")
+
+    # No temperature: a reasoning model takes only its own, and asking costs a whole call to be told so.
     assert [c["reasoning_effort"] for c in calls] == ["low"]
+    assert "temperature" not in calls[0]
 
 
 def test_a_call_reports_what_it_read_and_wrote_to_a_caller_that_asks(monkeypatch):
@@ -131,13 +135,14 @@ def test_a_call_reports_what_it_read_and_wrote_to_a_caller_that_asks(monkeypatch
     assert extraction.cost_of("Ollama - qwen3:8b", seen[0]) is None      # it runs here; it bills nothing
 
 
-def test_each_hosted_model_is_its_own_extractor_and_one_refusing_a_temperature_is_asked_without(monkeypatch):
+def test_each_hosted_model_is_its_own_extractor_and_one_refusing_a_setting_is_asked_without(monkeypatch):
     assert [name for name in extraction.EXTRACTORS if name.startswith("OpenAI")] == [
         "OpenAI - gpt-5.6-luna", "OpenAI - gpt-5.6-terra"]     # cheapest first: it is the default
-    calls = _fake_openai(monkeypatch)
+    calls = _fake_openai(monkeypatch)                          # a model that fixes its reasoning effort
 
     result = extraction.EXTRACTORS["OpenAI - gpt-5.6-luna"]("text")
 
     assert result.document_type == "corrupted"
-    assert [(c["model"], "temperature" in c) for c in calls] == [("gpt-5.6-luna", True), ("gpt-5.6-luna", False)]
-    assert calls[1]["reasoning_effort"] == "low"      # only the setting it refused is dropped
+    assert [(c["model"], "reasoning_effort" in c) for c in calls] == [("gpt-5.6-luna", True),
+                                                                      ("gpt-5.6-luna", False)]
+    assert calls[1]["response_format"] is ExtractionFlat       # only the setting it refused is dropped

@@ -409,19 +409,26 @@ def run_ocr(output_path: Path, items: list[tuple[str, Path]], provider: OcrProvi
         ran += 1
         failed += 0 if ok else 1
         save_ocr_results(output_path, results)
-        if ok:
-            _keep_run(output_path, OCR_RUNS, "ocr", key, progress,
-                      ModelRun(model=model, at=time.time(), seconds=round(time.perf_counter() - started, 3)))
+        _keep_run(output_path, OCR_RUNS, "ocr", key, progress,
+                  ModelRun(model=model, at=time.time(), seconds=round(time.perf_counter() - started, 3)),
+                  error=error)
         progress.tick(ok, item=key, error=error)
     return _outcome("OCR read", ran, failed, len(work), "page")
 
 
-def _keep_run(output_path: Path, store: str, kind: str, item: str, progress: Progress, run: ModelRun) -> None:
+def _keep_run(output_path: Path, store: str, kind: str, item: str, progress: Progress, run: ModelRun,
+              error: str = "") -> None:
     """Keep what one call took: on the job, beside the result it produced, and in the log of every call.
+
+    A call that failed produced no result, so it goes to the log alone -- but it goes, because that is
+    where the answer lives once the job has been replaced by a later one.
 
     The provider's own payload goes to the job, where it answers "what exactly came back" while the run
     is on screen. What is kept is the counts: an archive should hold what a call cost, not its envelope.
     """
+    if error:
+        run_log.append(output_path, kind, progress.job_id, item, run, error=error)
+        return
     progress.record(run)
     kept = run.model_copy(update={"tokens": run.tokens.model_copy(update={"raw": None})}) if run.tokens else run
     merge_model_runs(output_path, store, {item: kept})
@@ -514,11 +521,11 @@ def run_parse(output_path: Path, plan: ParsePlan, extract: ExtractFn, custom_ins
             return
         except Exception as exc:  # the previous extraction (if any) is kept
             result, ok, error = None, False, _short_error(exc)
-        if ok:
-            tokens = used[0] if used else None
-            _keep_run(output_path, EXTRACTION_RUNS, "parse", str(doc_key), progress,
-                      ModelRun(model=model, at=time.time(), seconds=round(time.perf_counter() - started, 3),
-                               tokens=tokens, cost=cost_of(model, tokens) if tokens else None))
+        tokens = used[0] if used else None
+        _keep_run(output_path, EXTRACTION_RUNS, "parse", str(doc_key), progress,
+                  ModelRun(model=model, at=time.time(), seconds=round(time.perf_counter() - started, 3),
+                           tokens=tokens, cost=cost_of(model, tokens) if tokens else None),
+                  error=error)
         with guard:
             if result is not None:
                 extractions[str(doc_key)] = result
