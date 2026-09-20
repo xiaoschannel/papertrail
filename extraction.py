@@ -1,15 +1,44 @@
 import functools
+import inspect
+import logging
 import typing
+from collections.abc import Callable
 
 from ollama import chat, generate
 from openai import BadRequestError, OpenAI
+from pydantic import BaseModel
 
-from models import DocumentExtraction, DocumentExtractionAdapter, ExtractionFlat
+from models import DocumentExtraction, DocumentExtractionAdapter, ExtractionFlat, TokenUse
+from rate_budget import RateBudget
+
+log = logging.getLogger(__name__)
+
+#: What is left of the hosted models' rate limit, as their responses last described it.
+budget = RateBudget()
+
+#: Where a caller that wants a call's token counts hands in something to receive them.
+UsageSink = Callable[[TokenUse], None] | None
 
 OLLAMA_MODEL = "qwen3:8b"
-#: The hosted models on offer, each its own extractor. GPT-5.6 Luna is the cheapest, for runs over many
-#: documents; Terra sits between it and GPT-5.4.
-OPENAI_MODELS = ("gpt-5.4", "gpt-5.6-terra", "gpt-5.6-luna")
+#: The hosted models on offer, each its own extractor, cheapest first: Luna is what a whole batch runs
+#: on, Terra is there for the awkward ones.
+OPENAI_MODELS = ("gpt-5.6-luna", "gpt-5.6-terra")
+
+
+class Price(BaseModel):
+    """Dollars per million tokens. A prompt the model has already seen bills at ``cached_input``."""
+
+    input: float
+    cached_input: float
+    output: float
+
+
+#: What each hosted model charges, from OpenAI's pricing page, checked 2026-09-20. Models that run on
+#: this machine are absent: they cost time and electricity, not money.
+PRICES = {
+    "OpenAI - gpt-5.6-luna": Price(input=0.20, cached_input=0.02, output=1.20),
+    "OpenAI - gpt-5.6-terra": Price(input=2.00, cached_input=0.20, output=12.00),
+}
 
 EXTRACTION_PROMPT = """You are extracting structured data from OCR text of a scanned document.
 If the text contains multiple pages (marked with --- Page N ---), treat as one document and extract from all pages.
@@ -76,12 +105,10 @@ If document_type is "other", output:
   - Where/whom this document is from: e.g. "John Doe"
     - Do not force this if nothing appears to make sense immediately.
   - In the above case the title should be "Business Card - John Doe"
-
-{optional_custom}OCR text:
-{ocr_text}"""
+{field_sources}
+{optional_custom}"""
 
 FIELD_SOURCES_ADDENDUM = """
-
 After each page's OCR text there is a "Grounding Boxes" section listing detected regions of that page, each tagged like [P1-BOX-0].
 For each field you extract, also output field_sources: a dict mapping field names to the list of box tags (as "page:box" strings) that the field's value came from.
 For example: "field_sources": {{"name": ["1:0"], "date": ["1:2"], "cost": ["2:1"]}}
@@ -96,16 +123,31 @@ Both can be unreliable, but they can be used as additional cues for inference-ba
 """
 
 
-def build_extraction_prompt(ocr_text: str, has_boxes: bool = False, custom_instruction: str = "") -> str:
+def extraction_messages(ocr_text: str, has_boxes: bool = False,
+                        custom_instruction: str = "") -> list[dict[str, str]]:
+    """The instructions, then the document: two messages, because a message boundary is what caches.
+
+    A hosted model saves a prefix that ends where a message ends, not wherever two requests happen to
+    stop agreeing. Everything that stays the same between documents therefore goes in the first
+    message and only the document's own text in the second, so a run pays for the instructions once.
+    With boxes and without are two instruction messages, each cached in its own right; editing the
+    custom instructions writes a new one, at the cost of a single miss.
+    """
     stripped = custom_instruction.strip()
-    optional_custom = (
-        f"Additional instructions:\n{stripped}\n\n" if stripped else ""
-    )
-    base = EXTRACTION_PROMPT.format(optional_custom=optional_custom, ocr_text=ocr_text)
-    return base + FIELD_SOURCES_ADDENDUM if has_boxes else base
+    optional_custom = f"Additional instructions:\n{stripped}\n" if stripped else ""
+    instructions = EXTRACTION_PROMPT.format(field_sources=FIELD_SOURCES_ADDENDUM if has_boxes else "",
+                                            optional_custom=optional_custom)
+    return [{"role": "system", "content": instructions.rstrip()},
+            {"role": "user", "content": f"OCR text:\n{ocr_text}"}]
 
 
-def extract_ollama(ocr_text: str, has_boxes: bool = False, custom_instruction: str = "") -> DocumentExtraction:
+def build_extraction_prompt(ocr_text: str, has_boxes: bool = False, custom_instruction: str = "") -> str:
+    """The same prompt as one piece of text, for a model that takes a prompt rather than messages."""
+    return "\n\n".join(m["content"] for m in extraction_messages(ocr_text, has_boxes, custom_instruction))
+
+
+def extract_ollama(ocr_text: str, has_boxes: bool = False, custom_instruction: str = "",
+                   on_usage: UsageSink = None) -> DocumentExtraction:
     prompt = build_extraction_prompt(ocr_text, has_boxes, custom_instruction=custom_instruction)
     response = chat(
         model=OLLAMA_MODEL,
@@ -113,22 +155,81 @@ def extract_ollama(ocr_text: str, has_boxes: bool = False, custom_instruction: s
         format=DocumentExtractionAdapter.json_schema(),
         options={"temperature": 0.2},
     )
+    report(on_usage, OLLAMA_MODEL, TokenUse(prompt=response.prompt_eval_count or 0,
+                                            completion=response.eval_count or 0,
+                                            raw=response.model_dump(exclude={"message"})))
     return DocumentExtractionAdapter.validate_json(response.message.content)
 
 
 def extract_openai(ocr_text: str, has_boxes: bool = False, custom_instruction: str = "",
-                   model: str = OPENAI_MODELS[0]) -> DocumentExtraction:
+                   model: str = OPENAI_MODELS[0], on_usage: UsageSink = None) -> DocumentExtraction:
     client = OpenAI()
-    prompt = build_extraction_prompt(ocr_text, has_boxes, custom_instruction=custom_instruction)
-    request = dict(model=model, messages=[{"role": "user", "content": prompt}], response_format=ExtractionFlat)
+    messages = extraction_messages(ocr_text, has_boxes, custom_instruction=custom_instruction)
+    # Reading fields off OCR text is closer to transcription than reasoning, and thinking is billed at the
+    # output rate, so ask for little of it -- enough to weigh the custom instructions, not to deliberate.
+    request = dict(model=model, messages=messages, response_format=ExtractionFlat,
+                   reasoning_effort="low", temperature=0.2)
     try:
-        response = client.chat.completions.parse(**request, temperature=0.2)
+        response = _call(client, request)
     except BadRequestError as exc:
-        # A model that only takes its default temperature refuses the setting: ask again without it.
-        if "temperature" not in str(exc):
+        # A model takes only its own default for some of these: ask again without the ones it named.
+        refused = [name for name in ("temperature", "reasoning_effort") if name in str(exc)]
+        if not refused:
             raise
-        response = client.chat.completions.parse(**request)
+        response = _call(client, {k: v for k, v in request.items() if k not in refused})
+    use = token_use(response)
+    budget.spent(use.prompt + use.completion)
+    report(on_usage, model, use)
     return response.choices[0].message.parsed.to_extraction()
+
+
+def _call(client: OpenAI, request: dict):
+    """One call, taking the rate limits off the response on the way past: they are only told to us here."""
+    raw = client.chat.completions.with_raw_response.parse(**request)
+    budget.observe(raw.headers)
+    return raw.parse()
+
+
+def token_use(response) -> TokenUse:
+    """An OpenAI response's usage: the numbers pricing needs, and the payload it came in."""
+    usage = response.usage
+    if usage is None:
+        return TokenUse()
+    raw = {field: getattr(response, field, None) for field in ("model", "service_tier", "system_fingerprint")}
+    raw["usage"] = usage.model_dump()
+    return TokenUse(prompt=usage.prompt_tokens, completion=usage.completion_tokens,
+                    cached=getattr(usage.prompt_tokens_details, "cached_tokens", 0) or 0,
+                    thinking=getattr(usage.completion_tokens_details, "reasoning_tokens", 0) or 0,
+                    raw=raw)
+
+
+def report(on_usage: UsageSink, model: str, use: TokenUse) -> None:
+    """Log what the call consumed, and hand it to a caller that asked (the Experiment bench does)."""
+    log.info("%s: %d prompt tokens (%d cached), %d completion (%d thinking)",
+             model, use.prompt, use.cached, use.completion, use.thinking)
+    if on_usage is not None:
+        on_usage(use)
+
+
+def cost_of(extractor: str, use: TokenUse) -> float | None:
+    """What a call costs in dollars, or None for a model that runs on this machine and bills nothing."""
+    price = PRICES.get(extractor)
+    if price is None:
+        return None
+    return ((use.prompt - use.cached) * price.input + use.cached * price.cached_input
+            + use.completion * price.output) / 1_000_000
+
+
+def call_extractor(extract: typing.Callable[..., DocumentExtraction], ocr_text: str, has_boxes: bool,
+                   custom_instruction: str, on_usage: UsageSink = None) -> DocumentExtraction:
+    """Run an extractor, asking for its token counts only if it is one that can report them.
+
+    A local model reports none, and a stand-in extractor may take the three plain arguments and no more.
+    """
+    extra = {}
+    if on_usage is not None and "on_usage" in inspect.signature(extract).parameters:
+        extra["on_usage"] = on_usage
+    return extract(ocr_text, has_boxes=has_boxes, custom_instruction=custom_instruction, **extra)
 
 
 def unload_ollama() -> None:

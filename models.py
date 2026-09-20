@@ -12,6 +12,36 @@ class DetectedBox(BaseModel):
     text: str | None = None
 
 
+class TokenUse(BaseModel):
+    """What one extraction call consumed: the few numbers pricing needs, and the response verbatim.
+
+    ``cached`` is the part of ``prompt`` that was billed at a tenth; ``thinking`` is part of
+    ``completion``. ``raw`` is the provider's own payload -- its ``usage`` object as it arrived, with
+    the response fields that say which model and machine served the call -- for when the numbers look
+    wrong and the summary is the thing in doubt.
+    """
+
+    prompt: int = 0
+    cached: int = 0
+    completion: int = 0
+    thinking: int = 0
+    raw: dict | None = None
+
+
+class ModelRun(BaseModel):
+    """What one model call on one item took: which model, when it finished, and what it consumed.
+
+    The same record for reading a scan and for extracting from it. ``tokens`` and ``cost`` are absent
+    for a model that runs on this machine, which is what OCR is today and need not always be.
+    """
+
+    model: str
+    at: float                            # epoch seconds, when the call returned
+    seconds: float
+    tokens: TokenUse | None = None
+    cost: float | None = None
+
+
 class OcrResult(BaseModel):
     markdown: str
     boxes: list[DetectedBox] | None = None
@@ -164,6 +194,9 @@ class Sidecar(BaseModel):
     document_key: str | None = None
     ocr: OcrResult | None = None
     extraction: DocumentExtraction | None = None
+    #: what the two model calls behind this document took; absent for documents filed before this was kept
+    ocr_run: ModelRun | None = None
+    extraction_run: ModelRun | None = None
 
 
 class ScanBatch(BaseModel):
