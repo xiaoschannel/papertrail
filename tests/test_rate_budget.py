@@ -89,6 +89,17 @@ def test_being_refused_halves_the_pace_and_holds_every_thread_of_the_run():
     assert budget.wait_for() == pytest.approx(12, abs=1)
 
 
+def test_a_wait_worth_having_is_capped_and_a_longer_one_is_not_worth_having():
+    budget = RateBudget(slots=8, ceiling=200)
+
+    assert not budget.too_long_to_wait(30) and not budget.too_long_to_wait(None)
+    assert budget.too_long_to_wait(3600)              # an hour is a quota, not a busy minute
+
+    budget.rate_limited(retry_after=3600)
+
+    assert budget.wait_for() <= 300                   # held at the cap, for a caller that waits anyway
+
+
 def test_a_run_stops_rather_than_squeezing_the_last_of_the_limit():
     budget = RateBudget()
     budget.observe(_headers(requests_left=400, tokens_left=150_000))

@@ -23,6 +23,9 @@ from collections.abc import Mapping
 #: Aim for this much of the limit. The rest covers the calls in flight that no header has counted yet,
 #: anything else on the account, and a limit that refills continuously while headers are a snapshot.
 MARGIN = 0.7
+#: The longest a run will sit waiting to be let back in. A per-minute limit comes round well inside
+#: this; an hour-long refusal is a daily quota, and waiting it out is not something a run should do.
+MAX_HOLD = 300
 #: Where a run starts before any response has said what the limits are, and the most it will ever have
 #: in flight: what a desktop and one archive can sensibly have outstanding, not what a limit allows.
 START_SLOTS, MAX_SLOTS = 4, 32
@@ -89,14 +92,24 @@ class RateBudget:
             self._retarget(faster=False)
 
     def rate_limited(self, retry_after: float | None) -> None:
-        """Refused: hold every thread of the run, and halve what it keeps in flight."""
+        """Refused: hold every thread of the run, and halve what it keeps in flight.
+
+        A wait longer than ``MAX_HOLD`` is capped here, but the caller is the one who decides whether
+        such a wait is worth having at all -- see ``too_long_to_wait``.
+        """
         with self._lock:
-            self._hold_until = max(self._hold_until, time.monotonic() + (retry_after or 10.0))
+            wait = min(retry_after if retry_after is not None else 10.0, MAX_HOLD)
+            self._hold_until = max(self._hold_until, time.monotonic() + wait)
             self.slots = max(1, self.slots // 2)
             log.info("rate limited: %d call(s) at a time now", self.slots)
             self._lock.notify_all()
 
     # --- what a run may do about it -------------------------------------------------------------------
+    @staticmethod
+    def too_long_to_wait(retry_after: float | None) -> bool:
+        """Whether being asked to wait this long means the run should stop rather than hold."""
+        return retry_after is not None and retry_after > MAX_HOLD
+
     def wait_for(self) -> float:
         """Seconds to sleep before the next call: 0 while there is room, until the reset when there isn't."""
         now = time.monotonic()

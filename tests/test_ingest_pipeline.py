@@ -287,6 +287,29 @@ def test_a_run_refused_for_pacing_waits_and_tries_the_document_again(ingest_dir,
     assert attempts[-1] == pytest.approx(7, abs=1)                # it waited as long as it was told to
 
 
+def test_a_wait_longer_than_a_run_should_sit_through_ends_it_and_says_why(ingest_dir):
+    """A minute's limit comes round; a day's quota does not, and 500 documents must not queue for it."""
+    import httpx
+    from openai import RateLimitError
+
+    plan = ip.plan_parse(ingest_dir, reprocess=True, limit=0)
+    tried = []
+
+    def extract(ocr_text, has_boxes, custom_instruction):
+        tried.append(1)
+        raise RateLimitError("out of quota", body=None,
+                             response=httpx.Response(429, headers={"retry-after": "3600"},
+                                                     request=httpx.Request("POST", "https://x")))
+
+    progress = FakeProgress()
+    message = ip.run_parse(ingest_dir, plan, extract, "", progress, model="Fake LLM", shuffle=False)
+
+    assert len(tried) == 1                              # it stopped rather than trying the rest
+    assert progress.ticks == []                         # and counted nothing as failed
+    assert "60 minutes" in message and "run Parse again" in message
+    assert load_extractions(ingest_dir)["1:1"].name != ""      # every earlier extraction is untouched
+
+
 def test_what_each_call_took_is_kept_beside_its_result_and_in_the_log(ingest_dir):
     from data import EXTRACTION_RUNS, OCR_RUNS, load_model_runs
     import run_log

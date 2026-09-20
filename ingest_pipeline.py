@@ -483,6 +483,9 @@ def run_parse(output_path: Path, plan: ParsePlan, extract: ExtractFn, custom_ins
     ``workers`` documents are extracted at once. A model on this machine takes one, having one set of
     weights to work with; a hosted one takes as many as its rate limit leaves room for, which
     ``rate_budget`` reads off each response and every worker waits on together.
+
+    A refusal that asks for longer than a run should wait -- a day's quota rather than a minute's --
+    ends the run instead: the documents left are untouched, and running Parse again later takes them.
     """
     work = list(plan.documents)
     if shuffle:
@@ -491,9 +494,10 @@ def run_parse(output_path: Path, plan: ParsePlan, extract: ExtractFn, custom_ins
     extractions: dict[str, DocumentExtraction] = {}       # this run's results only
     counts = {"ran": 0, "failed": 0, "last_save": clock()}
     guard = threading.Lock()
+    stopped: list[str] = []               # why the run gave up, if it did
 
     def parse_one(doc_key) -> None:
-        if progress.cancelled:
+        if progress.cancelled or stopped:
             return
         ocr_text, has_boxes = plan.index.concat_ocr_with_boxes(doc_key, plan.ocr_results)
         used: list[TokenUse] = []
@@ -503,6 +507,11 @@ def run_parse(output_path: Path, plan: ParsePlan, extract: ExtractFn, custom_ins
             ok, error = True, ""
         except Cancelled:
             return                                # cancelled while queueing: not attempted, so not counted
+        except TooLongToWait as exc:
+            with guard:
+                stopped.append(str(exc))          # and every document still queued goes untouched
+            progress.say(str(exc))
+            return
         except Exception as exc:  # the previous extraction (if any) is kept
             result, ok, error = None, False, _short_error(exc)
         if ok:
@@ -533,7 +542,8 @@ def run_parse(output_path: Path, plan: ParsePlan, extract: ExtractFn, custom_ins
                 parse_one(doc_key)
     finally:
         merge_extractions(output_path, extractions)
-    return _outcome("Parsed", counts["ran"], counts["failed"], len(work), "document")
+    outcome = _outcome("Parsed", counts["ran"], counts["failed"], len(work), "document")
+    return f"{outcome} {stopped[0]}" if stopped else outcome
 
 
 #: How many times a document refused for pacing is offered again before it counts as failed.
@@ -542,6 +552,10 @@ RATE_LIMIT_TRIES = 3
 
 class Cancelled(Exception):
     """The run was cancelled while this document was waiting its turn."""
+
+
+class TooLongToWait(Exception):
+    """The model asked for a wait no run should sit through, so the run stops instead."""
 
 
 def _extract_when_allowed(extract: ExtractFn, ocr_text: str, has_boxes: bool, custom_instruction: str,
@@ -560,9 +574,15 @@ def _extract_when_allowed(extract: ExtractFn, ocr_text: str, has_boxes: bool, cu
             result = call_extractor(extract, ocr_text, has_boxes, custom_instruction, on_usage=used.append)
         except RateLimitError as exc:
             extraction.budget.release(ok=False)
+            asked = _retry_after(exc)
+            if extraction.budget.too_long_to_wait(asked):
+                raise TooLongToWait(
+                    f"The model asked for {round(asked / 60)} minutes before the next call, which is a "
+                    f"quota rather than a busy minute: stopping. The documents left are untouched; run "
+                    f"Parse again once it comes round.") from exc
             if attempt == RATE_LIMIT_TRIES - 1 or progress.cancelled:
                 raise
-            extraction.budget.rate_limited(_retry_after(exc))
+            extraction.budget.rate_limited(asked)
             progress.say(f"Rate limited: waiting, and going on with {extraction.budget.slots} at a time.")
         except Exception:
             extraction.budget.release(ok=False)
