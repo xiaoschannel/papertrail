@@ -25,6 +25,14 @@
   white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11.5px; max-height: 10rem; overflow: auto;
 }
 
+/* Every number behind a run's spend, folded away until something looks wrong. */
+.job-tokens { margin-top: 8px; font-size: 12.5px; color: var(--muted); }
+.job-tokens summary { cursor: pointer; }
+.job-tokens table { margin-top: 6px; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.job-tokens th { text-align: left; font-weight: 500; padding: 3px 16px 3px 0; white-space: nowrap; }
+.job-tokens thead th, .job-tokens td { padding: 3px 0 3px 16px; }
+.job-tokens tbody td { color: var(--text); }
+
 .job-indicator {
   margin: 18px 4px 0; padding: 8px 10px; border-radius: 8px; background: var(--accent-soft); color: var(--accent);
   font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 8px; font-variant-numeric: tabular-nums;

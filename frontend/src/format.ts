@@ -17,6 +17,12 @@ export function money(value: Maybe<number>, currency?: Maybe<string>): string {
 export const num = (v: Maybe<number>, digits = 0): string =>
   missing(v) ? '—' : v.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits })
 
+/** What a run or a batch cost, in cents: what a total is read for. Under a cent, the cents aren't it. */
+export const spend = (value: number): string => (value < 0.01 ? '<$0.01' : `$${value.toFixed(2)}`)
+
+/** What one call cost, where a hundredth of a cent is the difference between two models. */
+export const spendExactly = (value: number): string => `$${value.toFixed(value < 0.01 ? 4 : 2)}`
+
 /** "YYYY-MM-DD" as numbers. Splits on '-' rather than slicing fixed offsets, because a date
  *  input accepts years beyond 9999. Malformed parts come back as NaN. */
 export function isoDateParts(s: string): { year: number; month: number; day: number } {

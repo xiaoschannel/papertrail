@@ -60,5 +60,9 @@ p.dev-ok { margin: 0; font-size: 13px; }
 }
 .experiment-fields th.cited { border-left-color: var(--box-color); }
 .experiment-fields td { padding: 5px 8px; overflow-wrap: anywhere; }
-.experiment-fields tr.active { background: color-mix(in srgb, var(--box-color, var(--accent)) 14%, transparent); }
+.experiment-fields tr.active, .experiment-items tr.active {
+  background: color-mix(in srgb, var(--box-color, var(--accent)) 14%, transparent);
+}
 .experiment-items thead th { position: static; }
+/* What the run cost: its own price reads as the answer, the model it ran on is marked in the comparison. */
+.experiment-cost { margin: 10px 0 0; font-size: 13px; }
