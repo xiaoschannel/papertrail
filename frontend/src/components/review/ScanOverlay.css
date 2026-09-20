@@ -29,3 +29,6 @@
 
 /* boxes at the very top of the page put their label underneath instead of off the image */
 .field-box.label-below .field-box__label { bottom: auto; top: 100%; border-radius: 0 0 3px 3px; }
+
+/* Held key: the boxes step aside so the text underneath can be read. */
+.scan-pages.boxes-hidden .field-box { display: none; }

@@ -12,11 +12,12 @@ import {
   INPUT_SOURCES, ReviewForm, costIsInvalid, initialForm, parseCost, type FormState,
 } from '../components/review/ReviewForm.tsx'
 import { ScanOverlay } from '../components/review/ScanOverlay.tsx'
-import { useShortcuts } from '../components/review/useShortcuts.ts'
+import { useHeldKey, useShortcuts } from '../components/review/useShortcuts.ts'
 import '../components/review/review.css'
 
 const RECENT_KEPT = 10
 const QUICK_APPLY_KEYS = 3
+const HIDE_BOXES_KEY = 'b'
 
 const inputImageUrl = (filename: string) => `/api/media/input/${encodeURIComponent(filename)}`
 
@@ -235,6 +236,8 @@ export default function Review() {
     if (newest) undoDecision(newest)
   }
 
+  // Held, not toggled: you look under the boxes for as long as you hold B, and they are back on release.
+  const boxesHidden = useHeldKey(HIDE_BOXES_KEY)
   const quickNames = currentDoc?.smart_matches.filter((m) => m.quick_apply).slice(0, QUICK_APPLY_KEYS) ?? []
   useShortcuts({
     a: () => void submit('accepted'),
@@ -278,7 +281,8 @@ export default function Review() {
             Check each extracted document, then accept, mark or toss it.{' '}
             <span className="shortcut-legend">
               <kbd>A</kbd> accept <kbd>M</kbd> mark <kbd>T</kbd> toss <kbd>←</kbd><kbd>→</kbd> move{' '}
-              <kbd>1</kbd>–<kbd>3</kbd> quick match <kbd>Z</kbd> undo <kbd>Esc</kbd> leave a field
+              <kbd>1</kbd>–<kbd>3</kbd> quick match <kbd>Z</kbd> undo <kbd>B</kbd> hold to hide boxes{' '}
+              <kbd>Esc</kbd> leave a field
             </span>
           </p>
         </div>
@@ -317,6 +321,7 @@ export default function Review() {
                       <Card title="Scan" hint={currentDoc.pages.length > 1 ? `${currentDoc.pages.length} pages` : undefined}
                         className="review-col">
                         <ScanOverlay pages={currentDoc.pages} imageUrl={inputImageUrl} activeFields={activeFields}
+                          hideBoxes={boxesHidden}
                           onHoverField={(field) => setActiveFields(field ? [field] : [])} />
                       </Card>
 
