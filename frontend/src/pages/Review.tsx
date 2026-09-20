@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api } from '../api/client.ts'
 import { useConfig, useSaveConfig } from '../api/config.ts'
 import type { DecisionIn, Draft, ReviewQueue, Verdict } from '../api/types.ts'
+import { num } from '../format.ts'
 import { Card, Empty, ErrorState, Loading } from '../components/ui.tsx'
 import { ConfirmDialog } from '../components/ConfirmDialog.tsx'
 import { Markdown } from '../components/Markdown.tsx'
@@ -335,8 +336,8 @@ export default function Review() {
                             Toss <kbd>T</kbd>
                           </button>
                         </div>
-                        {recentList}
                         <CustomInstructions />
+                        {recentList}
                       </Card>
                     </div>
                   )}
@@ -377,8 +378,11 @@ export default function Review() {
   )
 }
 
-/** Parse's custom instructions, editable here too; saved when the box loses focus. Only this
- *  one setting is sent, so settings changed on other pages meanwhile are left alone. */
+/** Parse's custom instructions, editable here too; saved when the box loses focus. Only this one
+ *  setting is sent, so settings changed on other pages meanwhile are left alone.
+ *
+ *  Folded away, because they are read far less often than they are scrolled past. The summary carries
+ *  how much is in there, so what is in force is legible without opening it. */
 function CustomInstructions() {
   const config = useConfig()
   const [text, setText] = useState<string | null>(null)
@@ -390,15 +394,19 @@ function CustomInstructions() {
   if (!config.data) return null
   const saved = config.data.parse_custom_instruction
   const value = text ?? saved
+  // Folded, the summary is all there is to go on: how much is in there, or that there is nothing.
+  const body = value.trim()
+  const lines = body ? body.split('\n').length : 0
+  const state = save.isPending ? ' — saving…' : save.isError ? ' — not saved'
+    : body ? ` (${lines} line${lines === 1 ? '' : 's'}, ${num(body.length)} chars)` : ' — empty'
   return (
-    <div className="field custom-instructions">
-      <label htmlFor="rv-instructions">
-        Custom instructions for Parse (optional){save.isPending ? ' — saving…' : save.isError ? ' — not saved' : ''}
-      </label>
-      <textarea id="rv-instructions" rows={5} value={value} onChange={(e) => setText(e.target.value)}
+    <details className="custom-instructions">
+      <summary>Custom instructions for Parse{state}</summary>
+      <textarea id="rv-instructions" rows={12} value={value} aria-label="Custom instructions for Parse"
+        onChange={(e) => setText(e.target.value)}
         onBlur={() => {
           if (text !== null && text !== saved) save.mutate(text)
         }} />
-    </div>
+    </details>
   )
 }
