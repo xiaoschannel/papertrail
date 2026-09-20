@@ -20,7 +20,7 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from data import atomic_write_text
-from models import DetectedBox, DocumentExtraction, OcrResult, ocr_page_section
+from models import DetectedBox, DocumentExtraction, OcrResult, TokenUse, ocr_page_section
 
 #: Where runs live. The sandbox points this at its own folder.
 ROOT = Path(tempfile.gettempdir()) / "papertrail-experiment"
@@ -45,12 +45,13 @@ class OcrRecord(BaseModel):
 
 
 class ParseRecord(BaseModel):
-    """The last Parse run."""
+    """The last Parse run. ``tokens`` is absent for an extractor that doesn't report what it read."""
 
     extractor: str
     custom_instruction: str
     extraction: DocumentExtraction
     seconds: float
+    tokens: TokenUse | None = None
 
 
 @dataclass(frozen=True)

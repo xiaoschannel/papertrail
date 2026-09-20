@@ -27,16 +27,16 @@ from api.model_manager import models
 from api.schemas import (
     BatchSanityOut, BatchStatOut, BoxRect, DuplicateFilenameOut, ExperimentOcrIn, ExperimentOcrOut, ExperimentOut,
     ExperimentParseIn, ExperimentParseOut, ExperimentPromptIn, ExperimentPromptOut, ExperimentRunOut,
-    ExperimentTreatmentIn, FieldBoxOut, IndexAuditOut, IndexFileOut, InputComparisonOut, JobOut, SanityOut,
+    ExperimentTreatmentIn, FieldBoxOut, IndexAuditOut, IndexFileOut, InputComparisonOut, JobOut, PriceOut, SanityOut,
     SidecarMismatchOut,
 )
 from archive_audit import (
     batch_coverage, batch_statistics, check_archive_sidecars, count_duplicate_filenames, disk_vs_index_delta,
 )
 from data import scan_organized_filenames
-from extraction import build_extraction_prompt
+from extraction import PRICES, call_extractor, cost_of, extraction_messages
 from grounding import parse_grounding_output
-from models import iter_indexed_files, load_scan_index
+from models import TokenUse, iter_indexed_files, load_scan_index
 from scan_enhance import Enhancement, enhance
 from settings import IMAGE_EXTENSIONS, get_config, update_config
 
@@ -153,6 +153,7 @@ def experiment():
         with_boxes=cfg.extract_structured,
         custom_instruction=cfg.parse_custom_instruction,
         latest=latest.id if latest else None,
+        prices={name: PriceOut(**price.model_dump()) for name, price in PRICES.items() if name in extractors},
     )
 
 
@@ -198,7 +199,8 @@ def _run_out(run: runs.Run) -> ExperimentRunOut:
         sources = getattr(parse.extraction, "field_sources", {}) or {}
         parse_out = ExperimentParseOut(
             extractor=parse.extractor, custom_instruction=parse.custom_instruction,
-            extraction=parse.extraction, seconds=parse.seconds,
+            extraction=parse.extraction, seconds=parse.seconds, tokens=parse.tokens,
+            cost=cost_of(parse.extractor, parse.tokens) if parse.tokens else None,
             field_boxes=_boxes_out(rl.field_boxes(1, ocr.boxes, sources)))
     return ExperimentRunOut(id=run.id, filename=run.image.name, width=width, height=height,
                             ocr=ocr_out, parse=parse_out)
@@ -239,8 +241,10 @@ def prompt(run_id: str, body: ExperimentPromptIn):
     if ocr is None:
         raise HTTPException(status_code=409, detail="Run OCR first: the prompt is built from its text.")
     text, has_boxes = runs.extractor_input(ocr)
-    return ExperimentPromptOut(prompt=build_extraction_prompt(text, has_boxes, custom_instruction=body.custom_instruction),
-                               has_boxes=has_boxes)
+    # Shown as it is sent: two messages, since the break between them is the part a model can cache.
+    messages = extraction_messages(text, has_boxes, custom_instruction=body.custom_instruction)
+    shown = "\n\n".join(f"[{m['role']}]\n{m['content']}" for m in messages)
+    return ExperimentPromptOut(prompt=shown, has_boxes=has_boxes)
 
 
 @router.post("/experiment/{run_id}/ocr", response_model=JobOut)
@@ -307,12 +311,14 @@ def run_parse(run_id: str, body: ExperimentParseIn):
         progress.set_total(1)
         if local:
             models.acquire(f"extract:{body.extractor}", registry.unload_extractor(body.extractor))
+        used: list[TokenUse] = []
         started = time.perf_counter()
-        extraction = extract(text, has_boxes=has_boxes, custom_instruction=body.custom_instruction)
+        extraction = call_extractor(extract, text, has_boxes, body.custom_instruction, on_usage=used.append)
         seconds = time.perf_counter() - started
         progress.tick(item=run.image.name)
         runs.save_parse(run, runs.ParseRecord(extractor=body.extractor, custom_instruction=body.custom_instruction,
-                                              extraction=extraction, seconds=round(seconds, 2)))
+                                              extraction=extraction, seconds=round(seconds, 2),
+                                              tokens=used[0] if used else None))
         return f"Extracted {run.image.name} with {body.extractor}."
 
     with planning_a_job():

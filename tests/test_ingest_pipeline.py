@@ -2,6 +2,7 @@
 
 import json
 import shutil
+import time
 from pathlib import Path
 
 import pytest
@@ -12,7 +13,7 @@ from data import (
     load_decisions, load_document_groups, load_extractions, load_ocr_results, load_smart_match_cache, save_decisions,
     save_ocr_results,
 )
-from models import OcrResult, ReceiptResult, iter_indexed_files, load_scan_index
+from models import OcrResult, ReceiptResult, TokenUse, iter_indexed_files, load_scan_index
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
@@ -21,11 +22,16 @@ class FakeProgress:
     def __init__(self, cancel_after: int | None = None):
         self.total = None
         self.ticks: list[tuple[bool, str, str]] = []
+        self.runs: list = []
         self.cancel_after = cancel_after
 
     @property
     def cancelled(self) -> bool:
         return self.cancel_after is not None and len(self.ticks) >= self.cancel_after
+
+    @property
+    def job_id(self) -> str:
+        return "test-job"
 
     def set_total(self, total):
         self.total = total
@@ -35,6 +41,9 @@ class FakeProgress:
 
     def say(self, message):
         pass
+
+    def record(self, run):
+        self.runs.append(run)
 
 
 class FakeOcr:
@@ -178,7 +187,7 @@ def test_run_ocr_keeps_other_results_and_records_failures(ingest_dir, tmp_path):
     items = [("1:1", scans / "01102025132642_1.png"), ("1:2", scans / "01102025133000_2.png")]
     progress = FakeProgress()
 
-    ip.run_ocr(ingest_dir, items, provider, structured=True, progress=progress, shuffle=False)
+    ip.run_ocr(ingest_dir, items, provider, structured=True, progress=progress, model="Fake OCR", shuffle=False)
 
     results = load_ocr_results(ingest_dir)
     assert results["1:1"].markdown == "text of 01102025132642_1.png"
@@ -194,7 +203,7 @@ def test_run_ocr_without_grounding_runs_one_pass_and_stops_when_cancelled(ingest
     provider = FakeOcr()
     items = [(f"1:{i}", scans / fn) for i, fn in [(1, "01102025132642_1.png"), (2, "01102025133000_2.png")]]
     progress = FakeProgress(cancel_after=1)
-    ip.run_ocr(ingest_dir, items, provider, structured=False, progress=progress, shuffle=False)
+    ip.run_ocr(ingest_dir, items, provider, structured=False, progress=progress, model="Fake OCR", shuffle=False)
     assert provider.calls == [("01102025132642_1.png", False)]
 
 
@@ -220,12 +229,98 @@ def test_run_parse_keeps_other_extractions_and_previous_result_on_failure(ingest
         return _receipt("Edited")
 
     progress = FakeProgress()
-    ip.run_parse(ingest_dir, plan, extract, "Prefer Japanese names", progress, shuffle=False)
+    ip.run_parse(ingest_dir, plan, extract, "Prefer Japanese names", progress, model="Fake LLM", shuffle=False)
     extractions = load_extractions(ingest_dir)
     assert extractions["1:1"].name == "Edited"
     assert extractions["1:3"].name == "上海小笼包馆"            # failure keeps the old extraction
     assert "1:6" in extractions and "1:8" in extractions        # tossed documents' extractions survive
     assert sorted(progress.ticks) == [(False, "1:3", "ValueError: model returned junk"), (True, "1:1", "")]
+
+
+def test_a_hosted_run_extracts_several_documents_at_once(ingest_dir):
+    """Four documents in flight, with the results and counts landing intact however they interleave."""
+    import threading
+
+    plan = ip.plan_parse(ingest_dir, reprocess=True, limit=0)
+    at_once, peak = 0, 0
+    guard = threading.Lock()
+
+    def extract(ocr_text, has_boxes, custom_instruction):
+        nonlocal at_once, peak
+        with guard:
+            at_once += 1
+            peak = max(peak, at_once)
+        time.sleep(0.05)
+        with guard:
+            at_once -= 1
+        return _receipt("Parsed at once")
+
+    progress = FakeProgress()
+    ip.run_parse(ingest_dir, plan, extract, "", progress, model="Fake LLM", workers=4, shuffle=False)
+
+    assert peak > 1                                   # they really did overlap
+    assert len(progress.ticks) == len(plan.documents)
+    extractions = load_extractions(ingest_dir)
+    assert all(extractions[str(d)].name == "Parsed at once" for d in plan.documents)
+
+
+def test_a_run_refused_for_pacing_waits_and_tries_the_document_again(ingest_dir, monkeypatch):
+    import httpx
+    from openai import RateLimitError
+
+    plan = ip.plan_parse(ingest_dir, reprocess=True, limit=1)
+    attempts = []
+    monkeypatch.setattr(ip, "_sleep_while_running", lambda seconds, progress, **kw: attempts.append(seconds))
+
+    def extract(ocr_text, has_boxes, custom_instruction):
+        if len(attempts) < 2:                          # refused once, then allowed
+            raise RateLimitError("slow down", body=None,
+                                 response=httpx.Response(429, headers={"retry-after": "7"},
+                                                         request=httpx.Request("POST", "https://x")))
+        return _receipt("Parsed after waiting")
+
+    progress = FakeProgress()
+    ip.run_parse(ingest_dir, plan, extract, "", progress, model="Fake LLM", shuffle=False)
+
+    assert [ok for ok, _, _ in progress.ticks] == [True]          # the document was not failed
+    assert load_extractions(ingest_dir)[str(plan.documents[0])].name == "Parsed after waiting"
+    assert attempts[-1] == pytest.approx(7, abs=1)                # it waited as long as it was told to
+
+
+def test_what_each_call_took_is_kept_beside_its_result_and_in_the_log(ingest_dir):
+    from data import EXTRACTION_RUNS, OCR_RUNS, load_model_runs
+    import run_log
+
+    plan = ip.plan_parse(ingest_dir, reprocess=True, limit=0)
+    plan.documents = [d for d in plan.documents if str(d) == "1:1"]
+
+    def extract(ocr_text, has_boxes, custom_instruction, on_usage=None):
+        on_usage(TokenUse(prompt=2000, cached=1024, completion=400, thinking=250))
+        return _receipt("Priced")
+
+    ip.run_parse(ingest_dir, plan, extract, "", FakeProgress(), model="OpenAI - gpt-5.6-luna", shuffle=False)
+
+    [run] = load_model_runs(ingest_dir, EXTRACTION_RUNS).values()
+    assert run.model == "OpenAI - gpt-5.6-luna" and run.seconds >= 0 and run.at > 0
+    assert run.tokens.cached == 1024
+    assert run.cost == pytest.approx(0.000696, abs=1e-5)
+    assert load_model_runs(ingest_dir, OCR_RUNS) == {}          # this run read nothing
+
+    [row] = run_log.read(ingest_dir)
+    assert (row["kind"], row["job_id"], row["item"]) == ("parse", "test-job", "1:1")
+    assert row["cost"] == pytest.approx(0.000696, abs=1e-5)
+
+
+def test_a_local_model_records_its_time_and_no_money(ingest_dir, tmp_path):
+    from data import OCR_RUNS, load_model_runs
+
+    page = tmp_path / "page.png"
+    page.write_bytes(b"not really a png")
+    ip.run_ocr(ingest_dir, [("9:1", page)], FakeOcr(), False, FakeProgress(), model="DeepSeek OCR 2")
+
+    [run] = load_model_runs(ingest_dir, OCR_RUNS).values()
+    assert run.model == "DeepSeek OCR 2" and run.seconds >= 0
+    assert run.tokens is None and run.cost is None
 
 
 def test_run_parse_does_not_undo_what_changed_the_file_while_it_ran(ingest_dir):
@@ -244,7 +339,7 @@ def test_run_parse_does_not_undo_what_changed_the_file_while_it_ran(ingest_dir):
             clear_extractions_decisions_for_batch(ingest_dir, 2)   # File Index, on another batch, meanwhile
         return _receipt("Parsed")
 
-    ip.run_parse(ingest_dir, plan, extract, "", FakeProgress(), shuffle=False, save_every=0.0)
+    ip.run_parse(ingest_dir, plan, extract, "", FakeProgress(), model="Fake LLM", shuffle=False, save_every=0.0)
     after = load_extractions(ingest_dir)
     assert "2:1" not in after                                        # the regroup stuck
     assert sum(getattr(e, "name", None) == "Parsed" for e in after.values()) == 2   # and Parse's own results landed
@@ -255,7 +350,7 @@ def test_run_parse_saves_periodically(ingest_dir, monkeypatch):
     monkeypatch.setattr(ip, "merge_extractions", lambda path, produced: saves.append(len(produced)))
     plan = ip.plan_parse(ingest_dir, reprocess=True, limit=3)
     now = iter([0.0, 5.0, 20.0, 20.0, 40.0, 40.0])  # start, item 1, item 2 (+save), item 3 (+save)
-    ip.run_parse(ingest_dir, plan, lambda *a, **k: _receipt(), "", FakeProgress(), shuffle=False,
+    ip.run_parse(ingest_dir, plan, lambda *a, **k: _receipt(), "", FakeProgress(), model="Fake LLM", shuffle=False,
                  save_every=15.0, clock=lambda: next(now))
     assert len(saves) == 3  # after item 2, after item 3, and the final save
 
@@ -293,6 +388,26 @@ def test_run_archive_copies_finalizes_and_cleans_up(ingest_dir, tmp_path):
     assert load_scan_index(ingest_dir).batches[0].archived
     assert not any((ingest_dir / name).exists() for name in ip.CLEANUP_ARTIFACTS)
     assert load_smart_match_cache(ingest_dir)["1:7"]["confirmed"] == "Business Card - John Doe"
+
+
+def test_archiving_files_what_the_calls_behind_a_document_took(ingest_dir, tmp_path):
+    """The mid-ingest records are cleaned up with the rest, so they travel into the sidecars first."""
+    from data import EXTRACTION_RUNS, OCR_RUNS, merge_model_runs, read_sidecar
+    from models import ModelRun
+
+    merge_model_runs(ingest_dir, OCR_RUNS, {"1:1": ModelRun(model="DeepSeek OCR 2", at=1.0, seconds=31.5)})
+    merge_model_runs(ingest_dir, EXTRACTION_RUNS, {"1:1": ModelRun(
+        model="OpenAI - gpt-5.6-luna", at=2.0, seconds=1.25,
+        tokens=TokenUse(prompt=2000, cached=1024, completion=400, thinking=250), cost=0.000696)})
+
+    ip.run_archive(ingest_dir, _scans(tmp_path, ingest_dir), FakeProgress())
+
+    first_page = next(p for p in (ingest_dir / "2025" / "01").glob("*.png") if "13：26" in p.name)   # key 1:1
+    sidecar = read_sidecar(first_page)
+    assert sidecar.ocr_run.model == "DeepSeek OCR 2" and sidecar.ocr_run.seconds == 31.5
+    assert sidecar.ocr_run.cost is None                       # it read on this machine
+    assert sidecar.extraction_run.cost == pytest.approx(0.000696)
+    assert sidecar.extraction_run.tokens.cached == 1024
 
 
 def test_run_archive_does_not_finalize_when_a_file_fails_and_resumes_later(ingest_dir, tmp_path):
@@ -347,7 +462,8 @@ def test_a_run_where_everything_failed_does_not_read_as_success(ingest_dir, tmp_
         def run(self, path, structured=False):
             raise RuntimeError("no credentials")
 
-    message = ip.run_ocr(ingest_dir, items, AlwaysFails(), structured=False, progress=FakeProgress(), shuffle=False)
+    message = ip.run_ocr(ingest_dir, items, AlwaysFails(), structured=False, progress=FakeProgress(),
+                         model="Fake OCR", shuffle=False)
     assert message == "Every one of the 2 page(s) failed. Nothing usable was written."
 
 
@@ -356,5 +472,6 @@ def test_a_partly_failed_run_names_the_failures(ingest_dir, tmp_path):
     items = [("1:1", scans / "01102025132642_1.png"), ("1:2", scans / "01102025133000_2.png")]
     provider = FakeOcr(fail_on="01102025133000_2.png")
 
-    message = ip.run_ocr(ingest_dir, items, provider, structured=False, progress=FakeProgress(), shuffle=False)
+    message = ip.run_ocr(ingest_dir, items, provider, structured=False, progress=FakeProgress(),
+                         model="Fake OCR", shuffle=False)
     assert message == "OCR read 1 of 2 page(s). 1 failed."

@@ -13,6 +13,7 @@ from models import (
     DocumentGroups,
     DocumentIndex,
     DocumentKey,
+    ModelRun,
     OcrResult,
     OtherResult,
     ReceiptResult,
@@ -110,6 +111,31 @@ def merge_extractions(output_path: Path, produced: dict[str, DocumentExtraction]
         current = load_extractions(output_path)
         current.update(produced)
         save_extractions(output_path, current)
+
+
+#: Where the runs behind the mid-ingest results live, keyed exactly as the results they describe: pages
+#: for OCR, documents for extractions. Archive folds them into the sidecars and deletes them.
+OCR_RUNS, EXTRACTION_RUNS = "ocr_runs.json", "extraction_runs.json"
+
+_runs_lock = threading.Lock()
+
+
+def load_model_runs(output_path: Path, name: str) -> dict[str, ModelRun]:
+    path = output_path / name
+    if not path.exists():
+        return {}
+    return {k: ModelRun.model_validate(v) for k, v in json.loads(path.read_text(encoding="utf-8")).items()}
+
+
+def merge_model_runs(output_path: Path, name: str, produced: dict[str, ModelRun]) -> None:
+    """Write ``produced`` into the file as it is on disk now, leaving every other key alone."""
+    if not produced:
+        return
+    with _runs_lock:
+        current = load_model_runs(output_path, name)
+        current.update(produced)
+        atomic_write_text(output_path / name,
+                          json.dumps({k: v.model_dump() for k, v in current.items()}, indent=2, ensure_ascii=False))
 
 
 def load_decisions(output_path: Path) -> dict[str, ReviewDecision]:

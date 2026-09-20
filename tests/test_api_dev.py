@@ -9,7 +9,7 @@ from PIL import Image
 import experiment_runs
 from api import ingest_registry
 from api.jobs import runner
-from models import ReceiptResult
+from models import ReceiptResult, TokenUse
 from settings import get_config
 
 
@@ -118,6 +118,7 @@ def bench(monkeypatch, tmp_path, configured_archive):
     monkeypatch.setattr(ingest_registry, "ocr_providers", lambda: {"Fake OCR": FakeOcr(), "Plain OCR": PlainOcr()})
     monkeypatch.setattr(ingest_registry, "extractors", lambda: {"Fake LLM": fake_extract})
     monkeypatch.setattr(ingest_registry, "unload_extractor", lambda name: (lambda: None))
+    seen["extract"] = fake_extract
     return seen
 
 
@@ -220,6 +221,35 @@ def test_parse_sends_the_pipelines_input_and_the_preview_shows_its_prompt(api_cl
     assert parse["extraction"]["name"] == "Example Shop"
     assert [(b["index"], b["fields"]) for b in parse["field_boxes"]] == [(0, ["cost"])]
     assert get_config().parse_custom_instruction == "Prefer the Japanese name"
+
+
+def test_a_billed_model_reports_what_the_run_cost_and_a_local_one_only_its_tokens(api_client, bench, monkeypatch):
+    def billed_extract(text, has_boxes=False, custom_instruction="", on_usage=None):
+        on_usage(TokenUse(prompt=2000, cached=1024, completion=400, thinking=250,
+                          raw={"model": "gpt-5.6-luna-2026-01-01", "usage": {"prompt_tokens": 2000}}))
+        return ReceiptResult(document_type="receipt", language="ja", date="2026-01-01", time="10:00",
+                             name="Example Shop", currency="JPY", address="", cost=300.0)
+
+    monkeypatch.setattr(ingest_registry, "extractors",
+                        lambda: {"OpenAI - gpt-5.6-luna": billed_extract, "Fake LLM": bench["extract"]})
+    run = _upload(api_client)
+    _finish(api_client, api_client.post(f"/api/dev/experiment/{run['id']}/ocr", json={"model": "Fake OCR"}))
+
+    _finish(api_client, api_client.post(f"/api/dev/experiment/{run['id']}/parse",
+                                        json={"extractor": "OpenAI - gpt-5.6-luna"}))
+    parse = api_client.get(f"/api/dev/experiment/{run['id']}").json()["parse"]
+    assert {k: v for k, v in parse["tokens"].items() if k != "raw"} == {
+        "prompt": 2000, "cached": 1024, "completion": 400, "thinking": 250}
+    assert parse["tokens"]["raw"]["model"] == "gpt-5.6-luna-2026-01-01"    # the payload, as it arrived
+    assert parse["cost"] == pytest.approx(0.000696, abs=1e-6)   # the cached prompt billed at a tenth
+
+    # The bench hands the page what each billed model charges, and nothing for one that runs here.
+    prices = api_client.get("/api/dev/experiment").json()["prices"]
+    assert prices == {"OpenAI - gpt-5.6-luna": {"input": 0.20, "cached_input": 0.02, "output": 1.20}}
+
+    _finish(api_client, api_client.post(f"/api/dev/experiment/{run['id']}/parse", json={"extractor": "Fake LLM"}))
+    local = api_client.get(f"/api/dev/experiment/{run['id']}").json()["parse"]
+    assert local["tokens"] is None and local["cost"] is None
 
 
 def test_reading_again_drops_the_extraction_of_the_old_text(api_client, bench):

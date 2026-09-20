@@ -79,9 +79,19 @@ class FakeOcr:
         print("[sandbox] unloaded Fake OCR", flush=True)
 
 
-def fake_extract(ocr_text, has_boxes=False, custom_instruction=""):
-    from models import ReceiptResult, CorruptedResult
+def fake_extract(ocr_text, has_boxes=False, custom_instruction="", on_usage=None):
+    from models import ReceiptResult, CorruptedResult, TokenUse
     time.sleep(0.5)
+    if on_usage is not None:
+        # Roughly what a hosted model would report: four characters to a token, the fixed prompt cached.
+        prompt = 1100 + len(ocr_text) // 4
+        on_usage(TokenUse(prompt=prompt, cached=1024, completion=320, thinking=180,
+                          raw={"model": "fake-model-2026-01-01", "service_tier": "default",
+                               "system_fingerprint": "fp_sandbox",
+                               "usage": {"prompt_tokens": prompt, "completion_tokens": 320,
+                                         "total_tokens": prompt + 320,
+                                         "prompt_tokens_details": {"cached_tokens": 1024, "audio_tokens": 0},
+                                         "completion_tokens_details": {"reasoning_tokens": 180}}}))
     # Given boxes ("[P1-BOX-3] text"), cite them like a grounding extractor, so the scans get field boxes.
     cited = [(f"{m[1]}:{m[2]}", m[3]) for m in (re.match(r"\[P(\d+)-BOX-(\d+)\] (.*)", l) for l in ocr_text.splitlines()) if m]
     lines = [text for _, text in cited] if cited else \
@@ -110,7 +120,10 @@ import experiment_runs
 experiment_runs.ROOT = BOX / "experiment"
 from api import ingest_registry
 ingest_registry.ocr_providers = lambda: {"Fake OCR (sandbox)": FakeOcr()}
-ingest_registry.extractors = lambda: {"Fake LLM (sandbox)": fake_extract}
+# The hosted models' own names too, so the Experiment bench can price a run the way it would for real.
+from extraction import PRICES
+ingest_registry.extractors = lambda: {"Fake LLM (sandbox)": fake_extract,
+                                      **{name: fake_extract for name in PRICES}}
 ingest_registry.unload_extractor = lambda name: (lambda: print(f"[sandbox] unloaded {name}", flush=True))
 
 import uvicorn

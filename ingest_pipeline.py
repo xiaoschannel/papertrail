@@ -20,14 +20,19 @@ import hashlib
 import json
 import random
 import shutil
+import threading
 import time
 import traceback
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Protocol
 
+from openai import RateLimitError
+
+import run_log
 from data import (
     build_document_index,
     clear_extractions_decisions_for_batch,
@@ -35,24 +40,32 @@ from data import (
     load_decisions,
     load_document_groups,
     load_extractions,
+    load_model_runs,
     load_ocr_results,
     load_smart_match_cache,
     replace_groups_for_batch,
     save_decisions,
     merge_extractions,
+    merge_model_runs,
     save_ocr_results,
+    OCR_RUNS,
+    EXTRACTION_RUNS,
     save_scan_index,
     save_smart_match_cache,
     scan_organized_filenames,
     write_sidecar,
 )
 from document_grouping import build_display_state, rotate_file_upright, split_groups_at_tossed_boundaries
+import extraction
+from extraction import call_extractor, cost_of
 from grounding import parse_grounding_output
 from indexing_schemes import SCHEMES, parse_canon_filename
+from rate_budget import duration
 from models import (
     DocumentExtraction,
     DocumentIndex,
     DocumentKey,
+    ModelRun,
     OcrResult,
     OtherResult,
     ReceiptResult,
@@ -60,6 +73,7 @@ from models import (
     ScanBatch,
     ScanIndex,
     Sidecar,
+    TokenUse,
     batch_serial_key,
     filename_to_batch_serial,
     iter_indexed_files,
@@ -75,9 +89,12 @@ class Progress(Protocol):
 
     @property
     def cancelled(self) -> bool: ...
+    @property
+    def job_id(self) -> str: ...
     def set_total(self, total: int) -> None: ...
     def tick(self, ok: bool = True, item: str = "", error: str = "") -> None: ...
     def say(self, message: str) -> None: ...
+    def record(self, run: ModelRun) -> None: ...
 
 
 class OcrProvider(Protocol):
@@ -369,7 +386,7 @@ def plan_ocr(output_path: Path, input_path: Path, batch_id: int | None, reproces
 
 
 def run_ocr(output_path: Path, items: list[tuple[str, Path]], provider: OcrProvider, structured: bool,
-            progress: Progress, shuffle: bool = True) -> str:
+            progress: Progress, model: str, shuffle: bool = True) -> str:
     """OCR each page, saving after every image (so an interruption loses at most one page)."""
     work = list(items)
     if shuffle:
@@ -380,6 +397,7 @@ def run_ocr(output_path: Path, items: list[tuple[str, Path]], provider: OcrProvi
     for key, path in work:
         if progress.cancelled:
             break
+        started = time.perf_counter()
         try:
             markdown = provider.run(path, structured=False)
             boxes = parse_grounding_output(provider.run(path, structured=True)) if structured else None
@@ -391,8 +409,23 @@ def run_ocr(output_path: Path, items: list[tuple[str, Path]], provider: OcrProvi
         ran += 1
         failed += 0 if ok else 1
         save_ocr_results(output_path, results)
+        if ok:
+            _keep_run(output_path, OCR_RUNS, "ocr", key, progress,
+                      ModelRun(model=model, at=time.time(), seconds=round(time.perf_counter() - started, 3)))
         progress.tick(ok, item=key, error=error)
     return _outcome("OCR read", ran, failed, len(work), "page")
+
+
+def _keep_run(output_path: Path, store: str, kind: str, item: str, progress: Progress, run: ModelRun) -> None:
+    """Keep what one call took: on the job, beside the result it produced, and in the log of every call.
+
+    The provider's own payload goes to the job, where it answers "what exactly came back" while the run
+    is on screen. What is kept is the counts: an archive should hold what a call cost, not its envelope.
+    """
+    progress.record(run)
+    kept = run.model_copy(update={"tokens": run.tokens.model_copy(update={"raw": None})}) if run.tokens else run
+    merge_model_runs(output_path, store, {item: kept})
+    run_log.append(output_path, kind, progress.job_id, item, kept)
 
 
 # =====================================================================================
@@ -439,45 +472,127 @@ def plan_parse(output_path: Path, reprocess: bool, limit: int, held: frozenset[i
 
 
 def run_parse(output_path: Path, plan: ParsePlan, extract: ExtractFn, custom_instruction: str, progress: Progress,
-              shuffle: bool = True, save_every: float = 15.0, clock: Callable[[], float] = time.monotonic) -> str:
+              model: str, workers: int = 1, shuffle: bool = True, save_every: float = 15.0,
+              clock: Callable[[], float] = time.monotonic) -> str:
     """Extract each document, saving every ``save_every`` seconds and at the end (also on errors).
 
     A save writes only what THIS run extracted, merged into the file as it is at that moment. Other
     things change ``extractions.json`` while a long Parse runs — regrouping another batch clears that
     batch's extractions — and writing back a copy loaded when the run started would quietly undo them.
+
+    ``workers`` documents are extracted at once. A model on this machine takes one, having one set of
+    weights to work with; a hosted one takes as many as its rate limit leaves room for, which
+    ``rate_budget`` reads off each response and every worker waits on together.
     """
     work = list(plan.documents)
     if shuffle:
         random.shuffle(work)
     progress.set_total(len(work))
     extractions: dict[str, DocumentExtraction] = {}       # this run's results only
-    ran = failed = 0
-    last_save = clock()
+    counts = {"ran": 0, "failed": 0, "last_save": clock()}
+    guard = threading.Lock()
+
+    def parse_one(doc_key) -> None:
+        if progress.cancelled:
+            return
+        ocr_text, has_boxes = plan.index.concat_ocr_with_boxes(doc_key, plan.ocr_results)
+        used: list[TokenUse] = []
+        started = time.perf_counter()
+        try:
+            result = _extract_when_allowed(extract, ocr_text, has_boxes, custom_instruction, used, progress)
+            ok, error = True, ""
+        except Cancelled:
+            return                                # cancelled while queueing: not attempted, so not counted
+        except Exception as exc:  # the previous extraction (if any) is kept
+            result, ok, error = None, False, _short_error(exc)
+        if ok:
+            tokens = used[0] if used else None
+            _keep_run(output_path, EXTRACTION_RUNS, "parse", str(doc_key), progress,
+                      ModelRun(model=model, at=time.time(), seconds=round(time.perf_counter() - started, 3),
+                               tokens=tokens, cost=cost_of(model, tokens) if tokens else None))
+        with guard:
+            if result is not None:
+                extractions[str(doc_key)] = result
+            counts["ran"] += 1
+            counts["failed"] += 0 if ok else 1
+            due = clock() - counts["last_save"] > save_every
+            if due:
+                counts["last_save"] = clock()
+                produced = dict(extractions)
+        progress.tick(ok, item=str(doc_key), error=error)
+        if due:
+            merge_extractions(output_path, produced)
+
     try:
-        for doc_key in work:
-            if progress.cancelled:
-                break
-            ocr_text, has_boxes = plan.index.concat_ocr_with_boxes(doc_key, plan.ocr_results)
-            try:
-                extractions[str(doc_key)] = extract(ocr_text, has_boxes=has_boxes, custom_instruction=custom_instruction)
-                ok, error = True, ""
-            except Exception as exc:  # the previous extraction (if any) is kept
-                ok, error = False, _short_error(exc)
-            ran += 1
-            failed += 0 if ok else 1
-            progress.tick(ok, item=str(doc_key), error=error)
-            if clock() - last_save > save_every:
-                merge_extractions(output_path, extractions)
-                last_save = clock()
+        if workers > 1:
+            with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="parse") as pool:
+                for future in [pool.submit(parse_one, doc_key) for doc_key in work]:
+                    future.result()
+        else:
+            for doc_key in work:
+                parse_one(doc_key)
     finally:
         merge_extractions(output_path, extractions)
-    return _outcome("Parsed", ran, failed, len(work), "document")
+    return _outcome("Parsed", counts["ran"], counts["failed"], len(work), "document")
+
+
+#: How many times a document refused for pacing is offered again before it counts as failed.
+RATE_LIMIT_TRIES = 3
+
+
+class Cancelled(Exception):
+    """The run was cancelled while this document was waiting its turn."""
+
+
+def _extract_when_allowed(extract: ExtractFn, ocr_text: str, has_boxes: bool, custom_instruction: str,
+                          used: list[TokenUse], progress: Progress) -> DocumentExtraction:
+    """Extract, taking a place among the calls in flight and waiting for room in the rate limit.
+
+    Being refused is pacing, not a bad document, so the document comes round again rather than failing
+    with the rest. Every worker shares one budget, so a refusal narrows the whole run at once.
+    """
+    for attempt in range(RATE_LIMIT_TRIES):
+        _sleep_while_running(extraction.budget.wait_for(), progress)
+        while not extraction.budget.acquire():
+            if progress.cancelled:
+                raise Cancelled
+        try:
+            result = call_extractor(extract, ocr_text, has_boxes, custom_instruction, on_usage=used.append)
+        except RateLimitError as exc:
+            extraction.budget.release(ok=False)
+            if attempt == RATE_LIMIT_TRIES - 1 or progress.cancelled:
+                raise
+            extraction.budget.rate_limited(_retry_after(exc))
+            progress.say(f"Rate limited: waiting, and going on with {extraction.budget.slots} at a time.")
+        except Exception:
+            extraction.budget.release(ok=False)
+            raise
+        else:
+            extraction.budget.release(ok=True)
+            return result
+    raise AssertionError("unreachable")
+
+
+def _retry_after(exc: RateLimitError) -> float | None:
+    headers = getattr(getattr(exc, "response", None), "headers", {}) or {}
+    return duration(headers.get("retry-after-ms")) or duration(headers.get("retry-after", "") + "s")
+
+
+#: A run holding off for the rate limit still has to answer Cancel, so it waits in slices this long.
+WAIT_SLICE = 0.5
+
+
+def _sleep_while_running(seconds: float, progress: Progress) -> None:
+    """Wait, in slices, so Cancel is answered while a run is holding off for the rate limit."""
+    while seconds > 0 and not progress.cancelled:
+        time.sleep(min(WAIT_SLICE, seconds))
+        seconds -= WAIT_SLICE
 
 
 # =====================================================================================
 # Archive
 # =====================================================================================
-CLEANUP_ARTIFACTS = ("ocr.json", "extractions.json", "decisions.json")
+CLEANUP_ARTIFACTS = ("ocr.json", "extractions.json", "decisions.json", OCR_RUNS, EXTRACTION_RUNS)
 
 
 @dataclass
@@ -581,6 +696,8 @@ def run_archive(output_path: Path, input_path: Path, progress: Progress) -> str:
     assert plan.index is not None
     ocr = {k: r for k, r in load_ocr_results(output_path).items() if r.succeeded}
     extractions = load_extractions(output_path)
+    ocr_runs = load_model_runs(output_path, OCR_RUNS)
+    extraction_runs = load_model_runs(output_path, EXTRACTION_RUNS)
     progress.set_total(len(plan.moves))
 
     copied = 0
@@ -609,6 +726,8 @@ def run_archive(output_path: Path, input_path: Path, progress: Progress) -> str:
                 document_key=str(doc) if doc.is_multi_page else None,
                 ocr=ocr.get(move.key),
                 extraction=extractions.get(str(doc)),
+                ocr_run=ocr_runs.get(move.key),
+                extraction_run=extraction_runs.get(str(doc)),
             ))
             copied += 1
             progress.tick(True, item=move.filename)
