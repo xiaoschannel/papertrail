@@ -80,7 +80,10 @@
 
 .review-page .review-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 14px 0; }
 
-.review-page .custom-instructions { margin-top: 4px; }
+/* Above the decisions, since they shape what is being decided on, and folded away until wanted. */
+.review-page .custom-instructions { margin: 0 0 12px; font-size: 13px; }
+.review-page .custom-instructions summary { cursor: pointer; color: var(--muted); }
+.review-page .custom-instructions textarea { margin-top: 8px; min-height: 16rem; }
 
 .recent-decisions { display: grid; gap: 6px; margin: 0 0 14px; }
 .verdict-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; }
