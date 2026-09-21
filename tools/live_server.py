@@ -22,6 +22,29 @@ NO_WINDOW = 0x08000000   # CREATE_NO_WINDOW: the task runs in the user's session
 LIVE_API, LIVE_WEB = 8000, 5173
 
 
+def run(servers: dict[str, list[str]], root: Path, logs: Path) -> None:
+    """Start every server, wait until one of them stops, then stop the rest.
+
+    The commands are an argument so a test can hand it two harmless ones and check the survivor really is
+    stopped — what keeps the task from looking healthy while half the app is down.
+    """
+    running: dict[str, subprocess.Popen] = {}
+    for name, command in servers.items():
+        log = open(logs / f"{name}.log", "ab")
+        log.write(f"\n--- started {time.strftime('%Y-%m-%d %H:%M:%S')} ---\n".encode())
+        log.flush()
+        running[name] = subprocess.Popen(command, cwd=root, stdin=subprocess.DEVNULL, stdout=log,
+                                         stderr=subprocess.STDOUT, creationflags=NO_WINDOW)
+    try:
+        while all(process.poll() is None for process in running.values()):
+            time.sleep(0.2)
+    finally:
+        for process in running.values():
+            if process.poll() is None:
+                # The whole tree: npm starts Vite through cmd, and stopping npm alone leaves Vite serving.
+                subprocess.run(["taskkill", "/T", "/F", "/PID", str(process.pid)], capture_output=True)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkout", required=True, type=Path, help="the main checkout to serve")
@@ -30,30 +53,12 @@ def main() -> int:
     logs.mkdir(exist_ok=True)
 
     npm = shutil.which("npm")
-    servers = {
-        "api": [str(root / ".venv" / "Scripts" / "python.exe"), "-m", "uvicorn", "api.main:app",
-                "--host", "127.0.0.1", "--port", str(LIVE_API)],
-        "web": [npm or "npm", "--prefix", "frontend", "run", "dev"],
-    }
-    running: dict[str, subprocess.Popen] = {}
-    for name, command in servers.items():
-        log = open(logs / f"{name}.log", "ab")
-        log.write(f"\n--- started {time.strftime('%Y-%m-%d %H:%M:%S')} ---\n".encode())
-        log.flush()
-        if npm is None and name == "web":
-            log.write(b"npm is not on the PATH the task sees; install Node.js for all users\n")
-            log.close()
-            break
-        running[name] = subprocess.Popen(command, cwd=root, stdin=subprocess.DEVNULL, stdout=log,
-                                         stderr=subprocess.STDOUT, creationflags=NO_WINDOW)
-    try:
-        while len(running) == len(servers) and all(p.poll() is None for p in running.values()):
-            time.sleep(2)
-    finally:
-        for process in running.values():
-            if process.poll() is None:
-                # The whole tree: npm starts Vite through cmd, and stopping npm alone leaves Vite serving.
-                subprocess.run(["taskkill", "/T", "/F", "/PID", str(process.pid)], capture_output=True)
+    if npm is None:
+        (logs / "web.log").write_bytes(b"npm is not on the PATH the task sees; install Node.js for all users\n")
+        return 1
+    run({"api": [str(root / ".venv" / "Scripts" / "python.exe"), "-m", "uvicorn", "api.main:app",
+                 "--host", "127.0.0.1", "--port", str(LIVE_API)],
+         "web": [npm, "--prefix", "frontend", "run", "dev"]}, root, logs)
     return 1
 
 
