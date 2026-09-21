@@ -60,7 +60,7 @@ def main() -> int:
     print(f"  sandbox web  http://127.0.0.1:{ports.sandbox_web}")
     print(f"Wrote .claude/launch.json: {', '.join(c['name'] for c in configurations)}")
     if not (REPO / "frontend" / "node_modules").is_dir():
-        print("frontend/node_modules is missing; install it once: npm --prefix frontend install")
+        print("frontend/node_modules is missing; install it once: npm install, run in frontend/")
     return 0
 
 
