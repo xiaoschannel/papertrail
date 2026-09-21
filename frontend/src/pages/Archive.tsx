@@ -60,7 +60,10 @@ export default function Archive() {
               <thead><tr><th>Page</th><th>Scan</th><th>Destination</th></tr></thead>
               <tbody>
                 {s.moves.map((m) => (
-                  <tr key={m.key}><td>{m.key}</td><td>{m.filename}</td><td>{m.destination}</td></tr>
+                  <tr key={m.key}>
+                    <td>{m.key}{m.note && <> <span className="page-badge">{m.note}</span></>}</td>
+                    <td>{m.filename}</td><td>{m.destination}</td>
+                  </tr>
                 ))}
               </tbody>
             </table>

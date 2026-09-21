@@ -1,0 +1,76 @@
+/* The Slice page's grid editor: a sheet of taped-together receipts with a grid laid over it. */
+.grid-editor { padding: 16px; }
+.grid-editor__panel {
+  width: min(84rem, calc(100vw - 32px)); max-height: calc(100vh - 32px); display: flex; flex-direction: column; gap: 10px;
+  padding: 16px 18px; border-radius: 12px; background: var(--panel); border: 1px solid var(--border);
+  box-shadow: 0 20px 50px rgb(0 0 0 / .35); box-sizing: border-box;
+}
+.grid-editor__head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; }
+.grid-editor__head h2 { margin: 0; }
+.grid-editor__head .ingest-note { flex-basis: 100%; margin: 0; }
+.grid-editor__size { display: flex; gap: 14px; font-size: 13px; }
+.grid-editor__size label { display: inline-flex; align-items: center; gap: 6px; }
+.grid-editor__size input {
+  width: 4rem; background: var(--panel); color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 3px 6px; font: inherit;
+}
+
+.grid-editor__body { flex: 1; min-height: 0; display: flex; gap: 14px; }
+.grid-editor__sheet {
+  flex: 1; min-width: 0; min-height: 0; display: grid; place-items: center; overflow: auto;
+  background: var(--panel-2); border-radius: 8px; padding: 12px;
+}
+/* The surface is exactly the image, so the overlay's percentages are the sheet's 0-1000 scale / 10. */
+.grid-editor__surface { position: relative; display: inline-block; line-height: 0; touch-action: none; user-select: none; }
+.grid-editor__surface img { max-width: 100%; max-height: calc(100vh - 16rem); display: block; background: #fff; }
+.grid-editor__shade { position: absolute; inset: 0; background: rgb(0 0 0 / .45); pointer-events: none; }
+
+.grid-editor__cell {
+  all: unset; position: absolute; box-sizing: border-box; cursor: pointer; display: grid; place-items: center;
+  line-height: 1; font-size: 13px; font-weight: 650;
+}
+.grid-editor__cell span {
+  padding: 3px 7px; border-radius: 999px; background: var(--accent); color: #fff; box-shadow: 0 1px 3px rgb(0 0 0 / .3);
+}
+.grid-editor__cell:not(.on) {
+  background: repeating-linear-gradient(45deg, rgb(0 0 0 / .38) 0 6px, rgb(0 0 0 / .18) 6px 12px);
+}
+.grid-editor__cell:not(.on) span.grid-editor__empty { background: rgb(0 0 0 / .6); font-weight: 500; }
+.grid-editor__cell:hover { outline: 2px solid var(--accent); outline-offset: -2px; }
+.grid-editor__cell:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* A line is drawn 2px wide but can be grabbed over 14px. */
+.grid-editor__line { position: absolute; z-index: 1; }
+.grid-editor__line::after { content: ''; position: absolute; background: var(--accent); box-shadow: 0 0 0 1px rgb(255 255 255 / .8); }
+.grid-editor__line--row { height: 14px; margin-top: -7px; cursor: row-resize; }
+.grid-editor__line--row::after { left: 0; right: 0; top: 6px; height: 2px; }
+.grid-editor__line--col { width: 14px; margin-left: -7px; cursor: col-resize; }
+.grid-editor__line--col::after { top: 0; bottom: 0; left: 6px; width: 2px; }
+.grid-editor__edge { z-index: 2; }
+.grid-editor__edge::after { background: #f59e0b; }
+.grid-editor__line:focus-visible { outline: none; }
+.grid-editor__line:focus-visible::after, .grid-editor__line:hover::after { box-shadow: 0 0 0 3px rgb(59 125 221 / .45); }
+
+.grid-editor__crops { width: 11.5rem; flex: none; overflow: auto; }
+.grid-editor__crops h3 { font-size: 13px; margin: 0 0 8px; }
+.grid-editor__crops ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.grid-editor__crops li { display: grid; gap: 3px; font-size: 11.5px; color: var(--muted); }
+.grid-editor__crop {
+  max-width: 100%; box-sizing: border-box;
+  background-color: #fff; background-repeat: no-repeat; border: 1px solid var(--border); border-radius: 4px;
+}
+
+.grid-editor__actions { margin-top: 0; align-items: center; flex-wrap: wrap; }
+.grid-editor__actions > span { margin: 0 auto 0 0; }
+
+/* On a phone the sheet takes the height, and the crops become a strip under it that scrolls sideways. */
+@media (max-width: 700px) {
+  .grid-editor { padding: 8px; }
+  .grid-editor__panel { width: calc(100vw - 16px); padding: 12px; max-height: calc(100vh - 16px); }
+  .grid-editor__body { flex-direction: column; }
+  .grid-editor__sheet { padding: 6px; }
+  .grid-editor__surface img { max-height: calc(100vh - 26rem); }
+  .grid-editor__crops { width: auto; min-width: 0; flex: none; overflow: visible; }
+  .grid-editor__crops ol { grid-auto-flow: column; grid-auto-columns: max-content; overflow-x: auto; padding-bottom: 4px; }
+  .grid-editor__crop { width: auto !important; height: 5.5rem; }
+}
