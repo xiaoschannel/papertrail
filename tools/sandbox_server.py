@@ -8,7 +8,9 @@ own slot otherwise (dev_ports.py) — so every checkout's sandbox and the live a
     npm --prefix frontend run dev:sandbox
 
 Then open http://127.0.0.1:5174 (in a worktree, the port tools/worktree_setup.py printed) and walk
-File Index -> OCR -> Parse -> Review -> Archive. Everything lives under <repo>/.sandbox (gitignored).
+File Index -> Slice -> Group -> OCR -> Parse -> Review -> Archive. Pages 16 and 17 are sheets of meal
+tickets to slice: 16 is a 3 x 3 grid that ran out after seven; 17, five in a 2 x 3 grid, was scanned
+sideways and has to be turned upright first. Slicing 16 after 17 moves 17's crops. Everything lives under <repo>/.sandbox (gitignored).
 A restart keeps whatever is there, so you don't lose a half-finished batch when the server picks up new
 code; pass --fresh to start from nothing.
 """
@@ -76,13 +78,43 @@ for i in range(9, 15):
 receipt("03012026100215_15.png", "COFFEE STAND FOO", "2026/02/24 09:12", 380)
 
 
+def ticket_sheet(name, rows, cols, tickets, rotate=None):
+    """A sheet of small meal tickets taped on in a grid, the last cells left empty: for the Slice page.
+
+    Each ticket's crop (named as slicing names it) gets its own text, so OCR reads a sliced ticket.
+    """
+    cell_w, cell_h = 300, 380
+    img = Image.new("RGB", (cols * cell_w + 60, rows * cell_h + 60), "#f4f1ea")
+    d = ImageDraw.Draw(img)
+    small = ImageFont.truetype(r"C:\Windows\Fonts\meiryo.ttc", 26)
+    for i, (shop, when, total) in enumerate(tickets):
+        r, c = divmod(i, cols)
+        x, y = 30 + c * cell_w, 30 + r * cell_h
+        d.rectangle([x + 18, y + 18, x + cell_w - 18, y + cell_h - 18], fill="white", outline="#999", width=2)
+        for dy, text in ((40, "食券"), (100, shop), (180, when), (260, f"合計 ¥{total}")):
+            d.text((x + 36, y + dy), text, fill="black", font=small)
+        TEXT[f"{Path(name).stem}.r{r + 1}c{c + 1}{Path(name).suffix}"] = [
+            ((80, 40, 900, 140), shop), ((80, 400, 900, 500), when), ((80, 650, 900, 750), f"合計 ¥{total}")]
+    TEXT[name] = [((40, 20, 900, 60), "(a sheet of meal tickets)")]
+    if not (REUSING and (scans / name).exists()):
+        (img.transpose(rotate) if rotate else img).save(scans / name)
+
+
+ticket_sheet("03012026100216_16.png", 3, 3, [
+    ("Ramen Testya", f"2026/02/2{d} 12:0{d}", 850 + 50 * (d % 3)) for d in range(1, 8)])
+ticket_sheet("03012026100217_17.png", 2, 3, [
+    ("Soba Sampleya", f"2026/02/1{d} 11:3{d}", 700 + 100 * (d % 2)) for d in range(1, 6)],
+    rotate=Image.Transpose.ROTATE_90)
+
+
 class FakeOcr:
     grounding = True
 
     def run(self, path, structured=False):
         time.sleep(0.6)
         # the workshop hands OCR a treated copy ("<name>.enhanced.png"): answer for the original
-        lines = TEXT.get(path.name) or TEXT.get(path.name.replace(".enhanced", ""), [])
+        name = path.name.replace(".enhanced", "")
+        lines = TEXT.get(name) or TEXT.get(re.sub(r"\.\d+-\d+-\d+-\d+(?=\.[a-z]+$)", "", name), [])   # a crop's box
         if structured:
             return "\n".join(f"<|ref|>{t}<|/ref|><|det|>[[{x1}, {y1}, {x2}, {y2}]]<|/det|>" for (x1, y1, x2, y2), t in lines)
         return "\n".join(t for _, t in lines)
