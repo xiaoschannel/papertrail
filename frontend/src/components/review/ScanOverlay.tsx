@@ -47,10 +47,13 @@ function turned(r: BoxRect, turn: Turn): BoxRect {
  * The Workshop shows a treated copy: `turn` says how that copy is turned from the file the boxes were
  * measured on, and `originalUrl` + `showOriginal` swap in the untreated file (both images stay loaded,
  * so the swap is instant).
+ *
+ * `hideBoxes` lifts the boxes off the scan for a moment — a box drawn over the text it cites is in the
+ * way of reading it. They are hidden in CSS, so nothing is torn down and put back on the way through.
  */
 export function ScanOverlay({
   pages, imageUrl, activeFields, onHoverField, turn = '', originalUrl, showOriginal = false,
-  missing = 'is not in the input folder',
+  hideBoxes = false, missing = 'is not in the input folder',
 }: {
   pages: ReviewPage[]
   imageUrl: (filename: string) => string
@@ -59,6 +62,8 @@ export function ScanOverlay({
   turn?: Turn
   originalUrl?: ((filename: string) => string) | undefined
   showOriginal?: boolean
+  /** Hide the boxes while this is true, leaving the scan itself alone. */
+  hideBoxes?: boolean
   /** What to say about a page whose scan isn't on disk. */
   missing?: string
 }) {
@@ -66,7 +71,7 @@ export function ScanOverlay({
   const original = showOriginal && originalUrl !== undefined
   const boxTurn: Turn = original ? '' : turn
   return (
-    <div className="scan-pages">
+    <div className={`scan-pages${hideBoxes ? ' boxes-hidden' : ''}`}>
       {pages.map((page, i) => (
         <figure key={page.file_key} className="scan-page">
           {page.image_available && page.filename ? (

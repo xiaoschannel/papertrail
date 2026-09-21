@@ -1,3 +1,4 @@
+from collections import Counter
 from pathlib import Path
 
 import numpy as np
@@ -22,6 +23,11 @@ def levenshtein_similarity(a: str, b: str) -> float:
     return Levenshtein.normalized_similarity(a, b)
 
 
+def fold_for_match(s: str) -> str:
+    """Smart match reads capitalization as noise: the OCR styles the same shop name differently run to run."""
+    return s.casefold()
+
+
 def normalize_phone_for_match(s: str) -> str:
     return "".join(c for c in s if c.isdigit())
 
@@ -31,7 +37,11 @@ def phone_matchable(s: str) -> bool:
 
 
 def _row_scores(query_name: str, query_phone: str, row: SmartMatchHistoryRow) -> tuple[float, float]:
-    name_score = levenshtein_similarity(query_name, row.extracted) if query_name else 0.0
+    name_score = (
+        levenshtein_similarity(fold_for_match(query_name), fold_for_match(row.extracted))
+        if query_name
+        else 0.0
+    )
     if (
         phone_matchable(query_phone)
         and phone_matchable(row.extracted_phone)
@@ -54,23 +64,28 @@ def get_smart_match_candidates(
         return []
     best_name: dict[str, float] = {}
     best_phone: dict[str, float] = {}
+    spellings: dict[str, Counter[str]] = {}
     for row in history:
         ns, ps = _row_scores(query_name, query_phone, row)
-        c = row.confirmed
+        # One candidate per name, however each past entry happened to be capitalized.
+        c = fold_for_match(row.confirmed)
         if c not in best_name or ns > best_name[c]:
             best_name[c] = ns
         if c not in best_phone or ps > best_phone[c]:
             best_phone[c] = ps
+        spellings.setdefault(c, Counter())[row.confirmed] += 1
     out: list[SmartMatchCandidate] = []
-    for confirmed in best_name:
-        name_score = best_name[confirmed]
-        phone_score = best_phone.get(confirmed, 0.0)
+    for folded in best_name:
+        name_score = best_name[folded]
+        phone_score = best_phone.get(folded, 0.0)
         included = name_score >= SMART_MATCH_THRESHOLD or phone_score >= PHONE_BOOST_MIN
         if not included:
             continue
         phone_contrib = phone_score if phone_score >= PHONE_BOOST_MIN else 0.0
         combined_score = name_score + PHONE_WEIGHT * phone_contrib
         quick_apply = max(name_score, phone_score) >= QUICK_APPLY_THRESHOLD
+        # The spelling that was confirmed most often is the one worth offering back.
+        confirmed = spellings[folded].most_common(1)[0][0]
         out.append(
             SmartMatchCandidate(
                 confirmed_name=confirmed,
