@@ -29,7 +29,9 @@ pip install -r requirements.txt
 ---
 The web app also needs [Node.js](https://nodejs.org/) 22 or newer:
 ```
-npm --prefix frontend install
+cd frontend
+npm install
+cd ..
 ```
 ---
 The hosted extractors need an API key. Copy `.env.example` to `.env` and put yours in it; the file is
@@ -52,7 +54,9 @@ Each git worktree runs its own sandbox beside the main checkout's, on ports of i
 once, with the main checkout's Python:
 ```
 <main checkout>\.venv\Scripts\python tools\worktree_setup.py
-npm --prefix frontend install
+cd frontend
+npm install
+cd ..
 ```
 It claims the worktree a numbered slot — slot *n* serves its sandbox on API `8001+n` and web `5174+n` — and
 prints the URL. The slot is kept for as long as the worktree exists, so the ports stay put across restarts;
@@ -71,7 +75,7 @@ the same name. How slots are chosen is in `dev_ports.py`.
 The live app — the main checkout's API on 8000 and web app on 5173 — runs as the Windows scheduled task
 `papertrail-live` rather than in a terminal, so it stays up however terminals and editors come and go.
 
-Set it up once per machine, after the venv and `npm --prefix frontend install` above:
+Set it up once per machine, after the venv and the frontend's `npm install` above:
 ```
 .venv\Scripts\python tools\deploy.py install        register the task
 .venv\Scripts\python tools\deploy.py autostart on   start live whenever you log in (off by default)
