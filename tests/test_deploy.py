@@ -218,7 +218,7 @@ def test_an_app_that_never_answers_reports_the_end_of_its_logs(tmp_path, monkeyp
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="the launcher is what a Windows scheduled task runs: "
-                    "it uses Windows-only process flags and taskkill, so it is tested on the Windows CI job")
+                    "it uses Windows-only process flags and job objects, so it is tested on the Windows CI job")
 def test_one_server_stopping_stops_the_other(tmp_path):
     """Otherwise the task looks healthy while half the app is down."""
     node = shutil.which("node")
