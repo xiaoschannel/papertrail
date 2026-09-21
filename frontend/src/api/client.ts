@@ -168,6 +168,15 @@ export const api = {
   },
 
   dev: {
+    // the one-off Turn Archive migration
+    turnArchive: () => unwrap(client.GET('/api/dev/turn-archive')),
+    scanTurnArchive: () => unwrap(client.POST('/api/dev/turn-archive/scan')),
+    turnArchived: (body: { rel_path: string; top_points: TopPoints }) =>
+      unwrap(client.POST('/api/dev/turn-archive/turn', { body })),
+    undoTurnArchived: (body: { rel_path: string }) => unwrap(client.POST('/api/dev/turn-archive/undo', { body })),
+    turnArchiveThumb: (relPath: string, version: number) =>
+      `/api/dev/turn-archive/thumb/${relPath.split('/').map(encodeURIComponent).join('/')}?width=360&v=${version}`,
+    archivedUrl: (relPath: string) => `/api/media/archived/${relPath.split('/').map(encodeURIComponent).join('/')}`,
     sanity: () => unwrap(client.GET('/api/dev/sanity')),
     indexAudit: () => unwrap(client.GET('/api/dev/index-audit')),
     experiment: () => unwrap(client.GET('/api/dev/experiment')),

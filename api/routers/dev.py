@@ -1,4 +1,4 @@
-"""The Dev pages: Sanity Check, Index Audit and the Experiment bench.
+"""The Dev pages: Sanity Check, Index Audit, the Experiment bench, and the one-off Turn Archive migration.
 
 Sanity Check and Index Audit are read-only views of ``archive_audit``. Experiment runs one uploaded
 image through OCR and Parse as background jobs — they load the same models as ingest — and keeps what
@@ -17,18 +17,21 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, UploadFile
 
+import orientation_migration as turn_archive
+
 import experiment_runs as runs
 import review_logic as rl
 from api import ingest_registry as registry
 from api.deps import get_output_path
-from api.guards import planning_a_job
+from api import cache
+from api.guards import no_job_running, planning_a_job
 from api.jobs import NOTHING_HELD, Claim, runner
 from api.model_manager import models
 from api.schemas import (
     BatchSanityOut, BatchStatOut, DuplicateFilenameOut, ExperimentOcrIn, ExperimentOcrOut, ExperimentOut,
     ExperimentParseIn, ExperimentParseOut, ExperimentPromptIn, ExperimentPromptOut, ExperimentRunOut,
     ExperimentTreatmentIn, FieldBoxOut, IndexAuditOut, IndexFileOut, InputComparisonOut, JobOut, PriceOut, SanityOut,
-    SidecarMismatchOut,
+    SidecarMismatchOut, TurnArchiveFoundOut, TurnArchiveIn, TurnArchiveOut, UndoTurnArchiveIn,
 )
 from archive_audit import (
     batch_coverage, batch_statistics, check_archive_sidecars, count_duplicate_filenames, disk_vs_index_delta,
@@ -47,6 +50,71 @@ router = APIRouter(prefix="/api/dev", tags=["dev"])
 def _input_folder() -> Path | None:
     configured = get_config().input_image_path
     return Path(configured) if configured and Path(configured).is_dir() else None
+
+
+# --- Turn Archive (one-off migration) ----------------------------------------------------------------
+def _turn_archive_state(output_path: Path) -> TurnArchiveOut:
+    scan = turn_archive.scan_state()
+    return TurnArchiveOut(running=scan.running, done=scan.done, total=scan.total, unreadable=scan.unreadable,
+                          error=scan.error, turned=turn_archive.turned(output_path),
+                          found=[TurnArchiveFoundOut(rel_path=f.rel_path, top_points=f.top_points,
+                                                     confidence=f.confidence) for f in scan.found])
+
+
+@router.get("/turn-archive", response_model=TurnArchiveOut)
+def turn_archive_state(output_path: Path = Depends(get_output_path)):
+    """Archived scans that look sideways or upside down, as far as the look through the archive has got."""
+    return _turn_archive_state(output_path)
+
+
+@router.post("/turn-archive/scan", response_model=TurnArchiveOut)
+def turn_archive_scan(output_path: Path = Depends(get_output_path)):
+    """Look through every archived scan again, in the background."""
+    turn_archive.start_scan(output_path)
+    return _turn_archive_state(output_path)
+
+
+@router.post("/turn-archive/turn", response_model=TurnArchiveOut)
+def turn_archive_turn(body: TurnArchiveIn, output_path: Path = Depends(get_output_path)):
+    """Turn one archived scan upright (and its OCR boxes), keeping a backup to undo it."""
+    try:
+        with no_job_running("turn archived scans"):
+            turn_archive.turn(output_path, body.rel_path, body.top_points)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc.args[0])) from exc
+    cache.clear()
+    return _turn_archive_state(output_path)
+
+
+@router.post("/turn-archive/undo", response_model=TurnArchiveOut)
+def turn_archive_undo(body: UndoTurnArchiveIn, output_path: Path = Depends(get_output_path)):
+    """Put a turned archived scan and its sidecar back as they were."""
+    try:
+        with no_job_running("put back archived scans"):
+            turn_archive.undo(output_path, body.rel_path)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc.args[0])) from exc
+    cache.clear()
+    return _turn_archive_state(output_path)
+
+
+@router.get("/turn-archive/thumb/{rel_path:path}", response_class=Response)
+def turn_archive_thumb(rel_path: str, width: int = Query(360, ge=16, le=1600),
+                       output_path: Path = Depends(get_output_path)):
+    """An archived scan scaled down, for the page's tiles (the archive serves only full size)."""
+    from PIL import Image
+
+    try:
+        path = turn_archive._archived(output_path, rel_path)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="not found") from exc
+    with Image.open(path) as img:
+        img.draft("RGB", (width, width * 4))
+        img = img.convert("RGB")
+        img.thumbnail((width, width * 4))
+        buffer = io.BytesIO()
+        img.save(buffer, "JPEG", quality=85)
+    return Response(buffer.getvalue(), media_type="image/jpeg", headers={"Cache-Control": "no-cache"})
 
 
 # --- Sanity Check ---------------------------------------------------------------------------------------

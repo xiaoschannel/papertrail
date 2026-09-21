@@ -94,3 +94,17 @@
 .scan-viewer__check { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); }
 .scan-viewer__actions { display: inline-flex; gap: 8px; margin-left: auto; }
 .scan-viewer__suggest .error-banner, .scan-viewer__suggest .ingest-note { flex-basis: 100%; margin: 0; }
+
+/* --- the one-off Turn Archive migration page -------------------------------------------------------- */
+.turn-archive-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(21rem, 1fr)); gap: 12px; }
+.turn-archive-tile { margin: 0; border: 1px solid var(--border); border-radius: 8px; padding: 8px; background: var(--panel); }
+.turn-archive-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.turn-archive-pair a, .turn-archive-upright {
+  display: grid; place-items: center; height: 12rem; overflow: hidden; background: #fff; border-radius: 6px;
+}
+.turn-archive-pair img { max-width: 100%; max-height: 11.5rem; object-fit: contain; }  /* rem: a % height means nothing here */
+/* the upright preview turns a thumbnail inside a square-ish frame, so a quarter turn still fits */
+.turn-archive-upright img { max-width: 11.5rem; max-height: 11.5rem; }
+.turn-archive-tile figcaption { display: grid; gap: 6px; margin-top: 8px; font-size: 12.5px; }
+.turn-archive-path { color: var(--muted); word-break: break-all; }
+.turn-archive-actions { display: flex; gap: 8px; justify-content: flex-end; }

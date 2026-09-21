@@ -30,6 +30,8 @@ export type GroupingPage = Schemas['GroupingPageOut']
 export type TopPoints = Schemas['RotateIn']['top_points']
 /** The pages whose scan looks sideways or upside down; each `top_points` names the arrow that turns it upright. */
 export type TurnedPages = Schemas['TurnedPagesOut']
+/** The one-off Turn Archive migration's state. */
+export type TurnArchive = Schemas['TurnArchiveOut']
 export type Slicing = Schemas['SlicingOut']
 export type SlicingSheet = Schemas['SlicingSheetOut']
 export type SheetGrid = Schemas['SheetGrid']

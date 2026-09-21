@@ -517,6 +517,33 @@ class TurnedPagesOut(_Model):
     pages: list[TurnedPageOut]
 
 
+class TurnArchiveFoundOut(_Model):
+    rel_path: str
+    top_points: Literal["left", "right", "down"]
+    confidence: float
+
+
+class TurnArchiveOut(_Model):
+    """The one-off Turn Archive migration: how far the look through the archive has got, what looks
+    turned, and what has been turned (and can still be put back)."""
+    running: bool
+    done: int
+    total: int
+    unreadable: int
+    error: str | None
+    found: list[TurnArchiveFoundOut]
+    turned: list[str]
+
+
+class TurnArchiveIn(_Model):
+    rel_path: str
+    top_points: Literal["left", "right", "down"]
+
+
+class UndoTurnArchiveIn(_Model):
+    rel_path: str
+
+
 class RotateIn(_Model):
     key: str
     top_points: Literal["left", "right", "down"]
