@@ -24,7 +24,7 @@ from api.guards import no_job_running, planning_a_job
 from api.jobs import Claim, runner
 from api.model_manager import models
 from api.schemas import (
-    BoxRect, ContextScanOut, DecisionOut, FieldBoxOut, FormDefaultsOut, HintOut, HintsResponse, JobOut,
+    ContextScanOut, DecisionOut, FieldBoxOut, FormDefaultsOut, HintOut, HintsResponse, JobOut,
     MarkedDocumentOut, RereadOut, ReviewDocument, ReviewPage, SmartMatch, WorkshopContextOut, WorkshopDecisionIn,
     WorkshopHintsIn, WorkshopOut, WorkshopReprocessIn,
 )
@@ -72,9 +72,7 @@ def _review_document(output_path: Path, document: workshop.MarkedDocument,
             else rl.all_boxes(page_boxes)
         pages.append(ReviewPage(
             file_key=path.name, filename=path.name, image_available=path.is_file(),
-            boxes=[FieldBoxOut(index=b.index, fields=list(b.fields), text=b.text,
-                               rects=[BoxRect(x1=r[0], y1=r[1], x2=r[2], y2=r[3]) for r in b.rects])
-                   for b in drawn],
+            boxes=FieldBoxOut.all_of(drawn),
         ))
 
     history = build_smart_match_history(store.extractions(output_path), load_decisions(output_path),

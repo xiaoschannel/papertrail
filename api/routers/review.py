@@ -11,7 +11,7 @@ from api import ingest_store as store
 from api.deps import get_output_path
 from api.guards import no_job_running
 from api.schemas import (
-    BoxRect, DecisionIn, DecisionOut, DraftIn, FieldBoxOut, FormDefaultsOut, HintOut, HintsRequest,
+    DecisionIn, DecisionOut, DraftIn, FieldBoxOut, FormDefaultsOut, HintOut, HintsRequest,
     HintsResponse, QueueItem, ReviewDocument, ReviewPage, ReviewQueue, ReviewSummary, SmartMatch, VerdictCount,
 )
 from data import build_document_index, build_smart_match_history, load_decisions, save_decisions
@@ -122,9 +122,7 @@ def document_endpoint(key: str = Query(...), output_path: Path = Depends(get_out
             file_key=file_key,
             filename=filename,
             image_available=bool(input_dir and filename and (input_dir / filename).is_file()),
-            boxes=[FieldBoxOut(index=b.index, fields=list(b.fields), text=b.text,
-                               rects=[BoxRect(x1=r[0], y1=r[1], x2=r[2], y2=r[3]) for r in b.rects])
-                   for b in boxes],
+            boxes=FieldBoxOut.all_of(boxes),
         ))
 
     defaults = rl.form_defaults(extraction)
