@@ -34,6 +34,11 @@ npm install
 cd ..
 ```
 ---
+Slice and Group check for scans that are sideways or upside down with a small model (PaddleClas's text image
+orientation classifier, 6.8 MB, run on the CPU). It is downloaded the first time they run and kept in
+`~/.cache/papertrail`.
+
+---
 The hosted extractors need an API key. Copy `.env.example` to `.env` and put yours in it; the file is
 gitignored, and `env.py` says which one is read when you have several checkouts.
 
@@ -106,6 +111,9 @@ Scan your documents into a folder, and follow this process:
 2. **Slice** — Cut a sheet of receipts too small to scan alone (tape them onto a sheet in a grid) into one page
    per receipt. The sheet is kept, tossed. Turn it upright first: the crops are cut the way it faces.
 3. **Group** — Link pages that belong to one document, and toss pages that don't belong in the archive.
+
+   Slice and Group both point out scans that look sideways or upside down, and show each one turned upright
+   to confirm before it is saved.
 4. **OCR** — Batch OCR across all scanned images.
 5. **Parse** — Parse OCR results into file metadata.
 6. **Review** — Review parsed metadata and manually correct if needed. Mark bad documents for re-processing.

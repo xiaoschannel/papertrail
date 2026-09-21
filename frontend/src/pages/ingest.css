@@ -58,6 +58,9 @@
 .page-tile__zoom img { max-width: 100%; max-height: 100%; object-fit: contain; margin: 0 auto; }
 .scan-viewer figure { margin: 0; max-width: min(69rem, 92vw); display: grid; gap: 8px; }
 .scan-viewer img { max-width: 100%; max-height: 82vh; object-fit: contain; border-radius: 6px; background: #fff; }
+/* a scan previewed turned: the box has the turned shape, and the scan is laid across it from its middle */
+.scan-viewer__turned { position: relative; justify-self: center; }
+.scan-viewer__turned img { position: absolute; left: 50%; top: 50%; border-radius: 0; }
 .scan-viewer figcaption {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   color: var(--text); background: var(--panel); border: 1px solid var(--border);
@@ -75,3 +78,19 @@
   background: var(--accent-soft); color: var(--accent); font-weight: 600;
 }
 .slice-warnings { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+
+/* --- turned scans: the notice, the lit arrow on a tile, and turning one in the scan viewer ---------- */
+.suggestion-notice {
+  display: flex; align-items: center; gap: 10px; margin: 4px 0 10px; padding: 8px 12px; font-size: 13px;
+  border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 8px; background: var(--panel-2);
+}
+.page-tile__tools .page-tile__suggested { border-color: var(--accent); color: var(--accent); background: var(--panel-2); font-weight: 700; }
+.scan-viewer__suggest {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px;
+  color: var(--text); background: var(--panel); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 12px; font-size: 12.5px;
+}
+.scan-viewer__suggestion { color: var(--accent); font-weight: 600; }
+.scan-viewer__check { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); }
+.scan-viewer__actions { display: inline-flex; gap: 8px; margin-left: auto; }
+.scan-viewer__suggest .error-banner, .scan-viewer__suggest .ingest-note { flex-basis: 100%; margin: 0; }

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { api, inputThumbUrl } from '../api/client.ts'
@@ -6,7 +6,8 @@ import type { SheetGrid, SlicePlan, Slicing, SlicingSheet, TopPoints } from '../
 import { ConfirmDialog } from '../components/ConfirmDialog.tsx'
 import { GridEditor } from '../components/GridEditor.tsx'
 import { useBatchHolder } from '../components/jobs.tsx'
-import { BatchSelect, Pager, RotateButtons, ScanViewer, keyRange } from '../components/scans.tsx'
+import { BatchSelect, Pager, RotateButtons, keyRange } from '../components/scans.tsx'
+import { PageViewer, TurnNotice, useTurnedPages, type Viewing } from '../components/turns.tsx'
 import { Card, Empty, ErrorState, Loading } from '../components/ui.tsx'
 import { useGridColumnCount } from '../components/useGridColumnCount.ts'
 import './ingest.css'
@@ -64,7 +65,7 @@ function Sheets({ data, batchId, onBatch }: { data: Slicing; batchId: number; on
   const queryClient = useQueryClient()
   const holder = useBatchHolder(batchId)
   const [editing, setEditing] = useState<SlicingSheet | null>(null)
-  const [zoomed, setZoomed] = useState<SlicingSheet | null>(null)
+  const [viewing, setViewing] = useState<Viewing | null>(null)
   const [confirming, setConfirming] = useState<Pending | null>(null)
   const [done, setDone] = useState('')
   const [page, setPage] = useState(0)
@@ -107,6 +108,9 @@ function Sheets({ data, batchId, onBatch }: { data: Slicing; batchId: number; on
   const editError = holder ? `Waiting for ${holder.title}: it is using batch ${batchId}.`
     : (plan.error ?? apply.error)?.message ?? null
   const sliced = data.sheets.filter((s) => s.grid)
+  const sheetsByKey = useMemo(() => new Map(data.sheets.map((s) => [s.key, s])), [data])
+  // A sheet is turned before it is cut: its crops come out the way it faces.
+  const turned = useTurnedPages(batchId, sheetsByKey)
 
   return (
     <Card title="Sheets" className="card--full"
@@ -120,6 +124,8 @@ function Sheets({ data, batchId, onBatch }: { data: Slicing; batchId: number; on
         </div>
       )}
       {rotate.error && <div className="error-banner" role="alert">{rotate.error.message}</div>}
+      <TurnNotice query={turned.query} turns={turned.turns}
+        onReview={() => setViewing({ keys: data.sheets.map((s) => s.key).filter((k) => turned.turns.has(k)), at: 0, review: true })} />
       {pager}
       <div className="page-grid" ref={grid}>
         {data.sheets.slice(start, start + perPage).map((sheet) => {
@@ -132,6 +138,7 @@ function Sheets({ data, batchId, onBatch }: { data: Slicing; batchId: number; on
                 <div className="page-tile__tools">
                   <RotateButtons disabled={rotate.isPending || holder !== null || !sheet.image_available || cut || sheet.sliced}
                     {...(cut || sheet.sliced ? { title: 'Unslice the sheet to rotate it' } : {})}
+                    suggested={turned.turns.get(sheet.key)}
                     onRotate={(top) => rotate.mutate({ key: sheet.key, top })} />
                   <button className={cut ? '' : 'primary'} disabled={busy || refusal !== null && !cut && !sheet.sliced}
                     title={refusal ?? (cut ? 'Change how this sheet is cut' : 'Cut this sheet into one page per receipt')}
@@ -142,7 +149,7 @@ function Sheets({ data, batchId, onBatch }: { data: Slicing; batchId: number; on
                 <div className="page-tile__scan">
                   {sheet.image_available
                     ? (
-                      <button className="page-tile__zoom" onClick={() => setZoomed(sheet)} title="Show this scan full size">
+                      <button className="page-tile__zoom" onClick={() => setViewing({ keys: [sheet.key], at: 0, review: false })} title="Show this scan full size">
                         <img src={inputThumbUrl(sheet.filename, sheet.image_version)} alt={`Scan ${sheet.key}`} loading="lazy" />
                       </button>
                     )
@@ -165,8 +172,9 @@ function Sheets({ data, batchId, onBatch }: { data: Slicing; batchId: number; on
           : 'No sheets sliced in this batch.')}
       </p>
 
-      {zoomed && <ScanViewer label={zoomed.key} filename={zoomed.filename} version={zoomed.image_version}
-        onClose={() => setZoomed(null)} />}
+      {viewing && <PageViewer viewing={viewing} pages={sheetsByKey} turns={turned.turns}
+        locked={holder === null ? null : `Waiting for ${holder.title}: it is using batch ${batchId}.`}
+        onSetAside={turned.setAside} onMove={setViewing} onClose={() => setViewing(null)} />}
       {editing && (
         <GridEditor sheetKey={editing.key} filename={editing.filename} version={editing.image_version}
           initial={editing.grid}
