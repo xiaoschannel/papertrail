@@ -145,8 +145,18 @@ def test_edits_to_tracked_files_still_block_a_deploy(checkout):
 
 
 def test_the_task_can_be_asked_to_start_live_at_logon():
-    root = ET.fromstring(deploy.task_xml(Path("pythonw.exe"), Path("live_server.py"), Path("C:\main"),
+    root = ET.fromstring(deploy.task_xml(Path("pythonw.exe"), Path("live_server.py"), Path(r"C:\main"),
                                          at_logon=True).split("\n", 1)[1])
     trigger = root.find("t:Triggers/t:LogonTrigger", NS)
     assert trigger is not None and trigger.find("t:Enabled", NS).text == "true"
     assert trigger.find("t:Delay", NS).text == "PT30S"      # out of the way of logging in
+
+
+def test_npm_installs_from_the_frontend_folder(tmp_path, monkeypatch):
+    """`npm --prefix frontend install` reads package.json from the working directory and fails there."""
+    calls = []
+    monkeypatch.setattr(deploy.subprocess, "run", lambda command, **kw: calls.append((command, kw)) or None)
+    deploy.run_followups(tmp_path, ["npm"])
+    command, keywords = calls[0]
+    assert command[-1] == "install" and "--prefix" not in command
+    assert keywords["cwd"] == tmp_path / "frontend"
