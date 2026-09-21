@@ -58,6 +58,7 @@ export const api = {
   receipt: (file: string) => unwrap(client.GET('/api/receipt', { params: { query: { file } } })),
   /** What reading and extracting this document took, when it was filed after Papertrail kept that. */
   receiptRuns: (file: string) => unwrap(client.GET('/api/receipt/runs', { params: { query: { file } } })),
+  receiptPages: (file: string) => unwrap(client.GET('/api/receipt/pages', { params: { query: { file } } })),
   /** Every archived document (original filename, name, date, type), for Receipt Detail's picker. */
   documents: () => unwrap(client.GET('/api/documents')),
   /** Correct an archived document: the server re-files its pages and rewrites their sidecars. */

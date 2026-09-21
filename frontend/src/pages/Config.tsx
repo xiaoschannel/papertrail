@@ -171,7 +171,7 @@ const SHORTCUT_GROUPS: { title: string; actions: [keyof Shortcuts, string][] }[]
     ['quick_1', 'First quick match'], ['quick_2', 'Second quick match'], ['quick_3', 'Third quick match'],
   ] },
   { title: 'Scans', actions: [
-    ['hide_boxes', 'Hold to hide boxes (Review, Workshop, Experiment)'],
+    ['hide_boxes', 'Hold to hide boxes (Review, Workshop, Experiment, Receipt Detail)'],
     ['hold_original', 'Hold to see the original (Workshop, Experiment)'],
   ] },
   { title: "Dialogs, and File Index's scan viewer", actions: [['confirm', 'Confirm'], ['cancel', 'Cancel or close']] },

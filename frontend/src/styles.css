@@ -228,6 +228,8 @@ table.fixed td, table.fixed th { overflow: hidden; text-overflow: ellipsis; whit
   width: 100%; max-width: var(--scan-col); height: auto; display: block;
   border-radius: 6px; background: #fff;
 }
+/* With its boxes drawn, the scan still fills the column: the column's width is the zoom. */
+.detail-scan { --scan-width: 100%; }
 
 /* --- RULE 4: long text scrolls in place ---------------------------------- */
 .textdump {
@@ -334,6 +336,7 @@ button.danger-outline { border-color: var(--neg); color: var(--neg); }
   width: min(27.5rem, calc(100vw - 2rem)); padding: 18px 20px; border-radius: 12px;
   background: var(--panel); border: 1px solid var(--border); box-shadow: 0 20px 50px rgb(0 0 0 / .35);
 }
+.modal:focus { outline: none; }   /* focused as it opens, to hold focus without pressing a button */
 .modal h2 { margin-bottom: 8px; }
 .modal__body { font-size: 13.5px; color: var(--text); overflow-wrap: anywhere; }
 .modal__actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }

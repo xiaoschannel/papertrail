@@ -37,7 +37,7 @@ class Shortcuts(BaseModel):
     quick_1: str = "1"
     quick_2: str = "2"
     quick_3: str = "3"
-    # Every scan with boxes on it: Review, the Marked Workshop and Experiment
+    # Every scan with boxes on it: Review, the Marked Workshop, Experiment and Receipt Detail
     hide_boxes: str = "b"
     # The Marked Workshop and Experiment
     hold_original: str = "r"
