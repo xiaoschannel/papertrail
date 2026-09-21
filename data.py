@@ -422,14 +422,19 @@ def _iter_year_month_dirs(output_path: Path):
             yield month_dir
 
 
+def _filed_scan_name(page: Path) -> str:
+    """The scan a page in tossed/ or marked/ was filed from: its sidecar's name for it (a crop's includes its
+    slices/ folder, which the file in tossed/ doesn't), or the file's own name without a sidecar."""
+    sidecar = read_sidecar(page)
+    return sidecar.original_filename if sidecar and sidecar.original_filename else page.name
+
+
 def scan_organized_filenames(output_path: Path) -> set[str]:
     organized: set[str] = set()
-    tossed_dir = output_path / "tossed"
-    if tossed_dir.exists():
-        organized.update(p.name for p in tossed_dir.iterdir() if p.is_file() and p.suffix.lower() != ".json")
-    marked_dir = output_path / "marked"
-    if marked_dir.exists():
-        organized.update(p.name for p in marked_dir.iterdir() if p.is_file() and p.suffix.lower() != ".json")
+    for folder in (output_path / "tossed", output_path / "marked"):
+        if folder.exists():
+            organized.update(_filed_scan_name(p) for p in folder.iterdir()
+                             if p.is_file() and p.suffix.lower() != ".json")
     for month_dir in _iter_year_month_dirs(output_path):
         for sidecar_path in month_dir.glob("*.json"):
             sidecar = Sidecar.model_validate_json(sidecar_path.read_text(encoding="utf-8"))

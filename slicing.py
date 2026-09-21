@@ -90,7 +90,7 @@ def validate_grid(grid: SheetGrid) -> None:
             raise SliceRefused(f"The {what} lines have to lie inside the frame, in order, apart from each other.")
     if not grid.cells:
         raise SliceRefused("Mark at least one cell as holding a receipt, or unslice the sheet.")
-    if len(set(grid.cells)) != len(grid.cells):
+    if len({tuple(cell) for cell in grid.cells}) != len(grid.cells):
         raise SliceRefused("A cell is listed twice.")
     if any(not (1 <= r <= grid.rows and 1 <= c <= grid.cols) for r, c in grid.cells):
         raise SliceRefused("A filled cell lies outside the grid.")
@@ -100,7 +100,7 @@ def validate_grid(grid: SheetGrid) -> None:
 
 def filled_cells(grid: SheetGrid) -> list[tuple[int, int]]:
     """The filled cells in reading order: row by row, left to right."""
-    return sorted(grid.cells)
+    return sorted((r, c) for r, c in grid.cells)
 
 
 def cell_box(grid: SheetGrid, row: int, col: int) -> Box:
@@ -218,8 +218,17 @@ def _batch(output_path: Path, batch_id: int) -> tuple[ScanIndex, ScanBatch]:
     return index, batch
 
 
-def _in_multi_page_group(output_path: Path, key: str) -> bool:
-    return any(len(group) > 1 and key in group for group in load_document_groups(output_path).groups)
+def why_not(batch: ScanBatch, sheet: int, decisions: dict[str, ReviewDecision], groups: list[list[str]]) -> str | None:
+    """Why this page can't be sliced, or None if it can."""
+    key = batch_serial_key(batch.batch_id, sheet)
+    decision = decisions.get(key)
+    if sheet in batch.slices:
+        return f"{key} is a crop; only a scanned sheet can be sliced."
+    if decision is not None and decision.verdict == "tossed" and not decision.sliced:
+        return f"{key} was tossed; recover it before slicing it."
+    if any(len(group) > 1 and key in group for group in groups):
+        return f"{key} is linked into a multi-page document; unlink it before slicing it."
+    return None
 
 
 def plan_slices(output_path: Path, batch_id: int, sheet: int, grid: SheetGrid | None) -> SlicePlan:
@@ -234,10 +243,9 @@ def plan_slices(output_path: Path, batch_id: int, sheet: int, grid: SheetGrid | 
     decision = decisions.get(key)
     if grid is not None:
         validate_grid(grid)
-        if decision is not None and decision.verdict == "tossed" and not decision.sliced:
-            raise SliceRefused(f"{key} was tossed; recover it before slicing it.")
-        if _in_multi_page_group(output_path, key):
-            raise SliceRefused(f"{key} is linked into a multi-page document; unlink it before slicing it.")
+        refusal = why_not(batch, sheet, decisions, load_document_groups(output_path).groups)
+        if refusal:
+            raise SliceRefused(refusal)
     elif sheet not in batch.grids and not (decision and decision.sliced):
         raise SliceRefused(f"{key} isn't sliced.")
 

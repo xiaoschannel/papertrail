@@ -158,7 +158,7 @@ def test_emptying_a_cell_only_touches_the_crops_after_it(ingest_dir, scans):
     full = grid([(1, 1), (1, 2), (2, 1), (2, 2)], rows=[500], cols=[500])
     slice_(ingest_dir, scans, 2, full)                           # 1:9 .. 1:12
     give_results(ingest_dir, 9, 10, 11, 12)
-    plan = slice_(ingest_dir, scans, 2, THREE.model_copy(update={"cells": [(1, 1), (2, 1), (2, 2)]}))
+    plan = slice_(ingest_dir, scans, 2, grid([(1, 1), (2, 1), (2, 2)], rows=[500], cols=[500]))
 
     assert plan.kept == {9} and plan.moved == [(11, 10), (12, 11)]
     assert has_results(ingest_dir, 9) and not any(has_results(ingest_dir, s) for s in (10, 11, 12))
@@ -308,7 +308,7 @@ def test_a_grid_without_its_toss_is_reported(ingest_dir, scans):
     assert sl.mismatches(batch(ingest_dir), decisions) == ["1:2 is sliced but not tossed as sliced"]
 
 
-def test_the_crops_are_pages_ocr_reads_like_any_other(ingest_dir, scans):
+def test_the_crops_are_pages_ocr_reads_like_any_other_and_the_sheet_is_not(ingest_dir, scans):
     import ingest_pipeline as ip
 
     slice_(ingest_dir, scans, 2, THREE)
@@ -316,3 +316,44 @@ def test_the_crops_are_pages_ocr_reads_like_any_other(ingest_dir, scans):
     assert plan.items == [(f"1:{s}", scans / "slices" / f"01102025133000_2.{cell}.png")
                           for s, cell in ((9, "r1c1.0-0-500-500"), (10, "r1c2.500-0-1000-500"),
                                           (11, "r2c1.0-500-500-1000"))]
+    everything = ip.plan_ocr(ingest_dir, scans, None, reprocess=True, limit=0)
+    assert "1:2" not in [k for k, _ in everything.items] and "1:6" in [k for k, _ in everything.items]
+
+
+# --- archive ---------------------------------------------------------------------------------------------
+def test_archive_files_crops_with_where_they_came_from_and_the_sheet_under_tossed(ingest_dir, scans):
+    import ingest_pipeline as ip
+    from data import read_sidecar
+
+    slice_(ingest_dir, scans, 2, THREE)                          # 1:9, 1:10, 1:11
+    decisions = load_decisions(ingest_dir)
+    for serial, name in ((9, "Ramen Ichiban"), (10, "Ramen Ichiban")):
+        decisions[f"1:{serial}"] = ReviewDecision(verdict="accepted", document_type="receipt", name=name,
+                                                  date="2025-01-10", time="12:00", cost=900.0, currency="JPY")
+    decisions["1:11"] = ReviewDecision(verdict="tossed", document_type="corrupted", name="", date="", time="")
+    save_decisions(ingest_dir, decisions)
+
+    plan = ip.plan_archive(ingest_dir)
+    moves = {m.key: m.destination for m in plan.moves}
+    notes = {m.key: m.note for m in plan.moves}
+    assert (notes["1:2"], notes["1:10"], notes["1:1"]) == ("sliced sheet", "crop of 1:2", "")
+    assert moves["1:2"] == "tossed/01102025133000_2.png"            # the sheet, kept
+    assert moves["1:11"] == "tossed/01102025133000_2.r2c1.0-500-500-1000.png"     # not tossed/slices/...
+    ip.run_archive(ingest_dir, scans, _Progress())
+
+    crop = read_sidecar(ingest_dir / moves["1:10"])
+    assert (crop.slice_of, crop.slice_cell, crop.slice_box) == ("1:2", [1, 2], Box(x1=500, y1=0, x2=1000, y2=500))
+    assert crop.original_filename == "slices/01102025133000_2.r1c2.500-0-1000-500.png" and crop.serial == 10
+    sheet = read_sidecar(ingest_dir / moves["1:2"])
+    assert sheet.review.sliced and sheet.slice_of is None
+    assert read_sidecar(ingest_dir / moves["1:11"]).slice_of == "1:2"
+
+
+class _Progress:
+    cancelled = False
+    job_id = "test"
+
+    def set_total(self, total): ...
+    def tick(self, ok=True, item="", error=""): assert ok, error
+    def say(self, message): ...
+    def record(self, run): ...

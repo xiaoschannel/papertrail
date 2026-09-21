@@ -308,15 +308,16 @@ def same_batch(output_path: Path, input_path: Path | None, document: MarkedDocum
     scans = []
     for serial in sorted(batch.files):
         filename = batch.files[serial]
-        current = filename in here
-        if (output_path / MARKED / filename).is_file():
-            sidecar = read_sidecar(output_path / MARKED / filename)
+        filed = Path(filename).name     # a crop is "slices/<name>" in the batch, "<name>" in tossed/ and marked/
+        current = filed in here
+        if (output_path / MARKED / filed).is_file():
+            sidecar = read_sidecar(output_path / MARKED / filed)
             review = sidecar.review if sidecar else None
             scans.append(ContextScan(
                 filename=filename, verdict="marked", current=current,
                 name=review.name if review else "", date=review.date if review else "",
                 time=review.time if review else "", cost=review.cost if review else 0.0, currency=review.currency if review else "",
-                image=_archived_url(f"{MARKED}/{filename}")))
+                image=_archived_url(f"{MARKED}/{filed}")))
         elif filename in accepted:
             sidecar, rel_path = accepted[filename]
             review = sidecar.review
@@ -324,9 +325,9 @@ def same_batch(output_path: Path, input_path: Path | None, document: MarkedDocum
                 filename=filename, verdict="accepted", current=current, name=review.name, date=review.date,
                 time=review.time, cost=review.cost, currency=review.currency,
                 image=_archived_url(rel_path) if rel_path else None, receipt=sidecar.document_key or filename))
-        elif filename in tossed:
+        elif filed in tossed:
             scans.append(ContextScan(filename=filename, verdict="tossed", current=current,
-                                     image=_archived_url(f"tossed/{filename}")))
+                                     image=_archived_url(f"tossed/{filed}")))
         else:
             available = input_path is not None and (input_path / filename).is_file()
             scans.append(ContextScan(filename=filename, verdict="", current=current,

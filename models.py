@@ -5,6 +5,10 @@ from pydantic import BaseModel, Field, TypeAdapter
 
 T = TypeVar("T")
 
+#: A grid cell, [row, col] from 1. A list rather than a tuple: the web app's generated client widens tuples
+#: in responses, so a tuple here would give the same model two unrelated TypeScript types.
+Cell = Annotated[list[int], Field(min_length=2, max_length=2)]
+
 
 class DetectedBox(BaseModel):
     ref_type: str
@@ -209,7 +213,7 @@ class Sidecar(BaseModel):
     extraction_run: ModelRun | None = None
     #: a crop: the sheet it was cut from ("batch:serial"), its grid cell and the cell's box on the sheet
     slice_of: str | None = None
-    slice_cell: tuple[int, int] | None = None
+    slice_cell: Cell | None = None
     slice_box: "Box | None" = None
 
 
@@ -237,7 +241,7 @@ class SheetGrid(BaseModel):
     frame: Box
     row_lines: list[int] = []
     col_lines: list[int] = []
-    cells: list[tuple[int, int]]
+    cells: list[Cell]
 
     @property
     def rows(self) -> int:

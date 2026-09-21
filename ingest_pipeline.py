@@ -61,6 +61,7 @@ from data import (
 )
 from document_grouping import build_display_state, rotate_file_upright, split_groups_at_tossed_boundaries
 import extraction
+import slicing
 from extraction import call_extractor, cost_of
 from grounding import parse_grounding_output
 from indexing_schemes import SCHEMES, parse_canon_filename
@@ -218,6 +219,11 @@ class GroupingPage:
     serial: int
     filename: str
     tossed: bool
+    #: the sheet this page was cut from ("batch:serial") and its cell, for a crop
+    crop_of: str | None = None
+    cell: list[int] | None = None
+    #: a sheet cut into crops (tossed, and only unslicing brings it back)
+    sliced: bool = False
 
 
 @dataclass
@@ -270,8 +276,14 @@ def grouping_state(output_path: Path, batch_id: int) -> GroupingState:
     tossed = _tossed_keys(output_path, keys, load_decisions(output_path))
     saved = _saved_batch_groups(output_path, batch, keys)
     display_keys, _, links = build_display_state(keys, saved, tossed)
-    pages = [GroupingPage(key=k, serial=s, filename=batch.files[s], tossed=k in tossed)
-             for k, s in zip(keys, sorted(batch.files))]
+    decisions = load_decisions(output_path)
+    pages = []
+    for k, s in zip(keys, sorted(batch.files)):
+        of = batch.slices.get(s)
+        pages.append(GroupingPage(
+            key=k, serial=s, filename=batch.files[s], tossed=k in tossed,
+            crop_of=batch_serial_key(batch.batch_id, of.sheet) if of else None, cell=[of.row, of.col] if of else None,
+            sliced=bool(decisions.get(k) and decisions[k].sliced)))
     return GroupingState(batch=batch, pages=pages, display_keys=display_keys, active_links=links,
                          saved_groups=_active_saved_groups(saved, keys, tossed))
 
@@ -285,11 +297,14 @@ def save_grouping(output_path: Path, batch_id: int, groups: list[list[str]]) -> 
     keys = _batch_keys(batch)
     tossed = _tossed_keys(output_path, keys, load_decisions(output_path))
     active = set(keys) - tossed
+    crops = {batch_serial_key(batch_id, s) for s in batch.slices}
     seen: set[str] = set()
     for group in groups:
         for key in group:
             if key not in active:
                 raise ValueError(f"{key} is not an active page of batch {batch_id}")
+            if len(group) > 1 and key in crops:
+                raise ValueError(f"{key} is a crop of a sliced sheet; a crop is a document of its own")
             if key in seen:
                 raise ValueError(f"{key} appears in more than one group")
             seen.add(key)
@@ -314,6 +329,8 @@ def set_page_tossed(output_path: Path, key: str, tossed: bool) -> None:
         raise KeyError(f"no page {key}")
     doc_key = str(build_document_index(output_path, set(keys)).key_to_doc_key(key))
     decisions = load_decisions(output_path)
+    if doc_key in decisions and decisions[doc_key].sliced:
+        raise ValueError(f"{key} is a sliced sheet; unslice it on the Slice page instead.")
     if tossed:
         decisions[doc_key] = ReviewDecision(verdict="tossed", document_type="corrupted", name="", date="", time="",
                                             cost=0.0, currency="")
@@ -333,6 +350,11 @@ def rotate_page_image(output_path: Path, input_path: Path, key: str, top_points:
     filename = batch.files.get(parsed[1])
     if filename is None:
         raise KeyError(f"no page {key}")
+    if parsed[1] in batch.slices:
+        raise ValueError(f"{key} is a crop; it is turned the way its sheet is. Unslice the sheet to rotate it.")
+    decision = load_decisions(output_path).get(key)
+    if parsed[1] in batch.grids or (decision is not None and decision.sliced):
+        raise ValueError(f"{key} is sliced; unslice it before rotating it, since its crops are cut upright.")
     rotate_file_upright(input_path / filename, top_points)
 
 
@@ -359,13 +381,15 @@ def plan_ocr(output_path: Path, input_path: Path, batch_id: int | None, reproces
              held: frozenset[int] = frozenset()) -> OcrPlan:
     """Pages to OCR in scope (all unarchived batches, or one). Without ``reprocess`` only pages
     without a successful result; ``limit`` > 0 caps the run. Pages in ``held`` batches (another job is
-    working on them) are left out and counted as waiting."""
+    working on them) are left out and counted as waiting. A sliced sheet is never read: its crops are."""
     index = _load_index(output_path)
     if index is None:
         return OcrPlan(0, 0, 0, 0, [])
     scoped = [(b, s, fn) for b, s, fn in iter_indexed_files(index, include_archived=False)
               if batch_id is None or b == batch_id]
     results = load_ocr_results(output_path)
+    sheets = {k for k, d in load_decisions(output_path).items() if d.sliced}
+    scoped = [(b, s, fn) for b, s, fn in scoped if batch_serial_key(b, s) not in sheets]
     items: list[tuple[str, Path]] = []
     processed = failed = missing = waiting = 0
     for b, s, fn in scoped:
@@ -640,6 +664,7 @@ class ArchiveMove:
     key: str
     filename: str
     destination: str
+    note: str = ""
 
 
 @dataclass
@@ -693,8 +718,11 @@ def plan_archive(output_path: Path) -> ArchivePlan:
 
     blocker = None
     all_complete = bool(unarchived) and len(complete) == len(unarchived)
+    slice_problems = [p for b in unarchived for p in slicing.mismatches(b, all_decisions)]
     if not unarchived:
         blocker = "No new files to organize."
+    elif slice_problems:   # an interrupted slice: saving or unslicing the sheet repairs it
+        blocker = f"Fix the sliced sheets on the Slice page first: {'; '.join(slice_problems)}."
     elif not all_complete:
         blocker = "Review all files before archiving."
 
@@ -708,8 +736,17 @@ def plan_archive(output_path: Path) -> ArchivePlan:
             for doc_key in docs:
                 for key in pages_of(doc_key):
                     if key in key_to_filename and key_to_filename[key] not in organized:
-                        destinations[key] = f"{folder}/{key_to_filename[key]}"
-        moves = [ArchiveMove(key=k, filename=key_to_filename[k], destination=d)
+                        # a crop's name includes its slices/ folder; the scan's own name is enough here
+                        destinations[key] = f"{folder}/{Path(key_to_filename[key]).name}"
+        crop_of = {batch_serial_key(b.batch_id, s): batch_serial_key(b.batch_id, of.sheet)
+                   for b in unarchived for s, of in b.slices.items()}
+
+        def note(key: str) -> str:
+            if key in crop_of:
+                return f"crop of {crop_of[key]}"
+            return "sliced sheet" if key in all_decisions and all_decisions[key].sliced else ""
+
+        moves = [ArchiveMove(key=k, filename=key_to_filename[k], destination=d, note=note(k))
                  for k, d in sorted(destinations.items(), key=lambda kv: (parse_batch_serial_key(kv[0]) or (0, 0), kv[0]))]
 
     return ArchivePlan(
@@ -738,6 +775,8 @@ def run_archive(output_path: Path, input_path: Path, progress: Progress) -> str:
     extractions = load_extractions(output_path)
     ocr_runs = load_model_runs(output_path, OCR_RUNS)
     extraction_runs = load_model_runs(output_path, EXTRACTION_RUNS)
+    crops = {(b.batch_id, c.serial): (batch_serial_key(b.batch_id, c.of.sheet), [c.of.row, c.of.col], c.box)
+             for b in load_scan_index(output_path).batches if not b.archived for c in slicing.current_crops(b)}
     progress.set_total(len(plan.moves))
 
     copied = 0
@@ -758,6 +797,7 @@ def run_archive(output_path: Path, input_path: Path, progress: Progress) -> str:
             placed = True
             doc = plan.index.key_to_doc_key(move.key)
             parsed = parse_batch_serial_key(move.key)
+            of = crops.get(parsed) if parsed else None
             write_sidecar(target, Sidecar(
                 original_filename=move.filename,
                 batch_id=parsed[0] if parsed else None,
@@ -768,6 +808,9 @@ def run_archive(output_path: Path, input_path: Path, progress: Progress) -> str:
                 extraction=extractions.get(str(doc)),
                 ocr_run=ocr_runs.get(move.key),
                 extraction_run=extraction_runs.get(str(doc)),
+                slice_of=of[0] if of else None,
+                slice_cell=of[1] if of else None,
+                slice_box=of[2] if of else None,
             ))
             copied += 1
             progress.tick(True, item=move.filename)
