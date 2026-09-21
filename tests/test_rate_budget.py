@@ -97,7 +97,9 @@ def test_a_wait_worth_having_is_capped_and_a_longer_one_is_not_worth_having():
 
     budget.rate_limited(retry_after=3600)
 
-    assert budget.wait_for() <= 300                   # held at the cap, for a caller that waits anyway
+    # held at the cap, for a caller that waits anyway; approx, since (now + 300) - now can come out a hair over
+    # 300 in floating point when the clock doesn't tick between the two reads (Windows' ticks every ~15 ms)
+    assert budget.wait_for() == pytest.approx(300, abs=0.5)
 
 
 def test_a_run_stops_rather_than_squeezing_the_last_of_the_limit():
