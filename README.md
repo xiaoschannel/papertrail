@@ -66,6 +66,34 @@ The setup also writes `.claude/launch.json`, the dev servers Claude Code starts.
 its slot (`sandbox-api-1`, `sandbox-web-1`), so starting one never stands in for another checkout's server of
 the same name. How slots are chosen is in `dev_ports.py`.
 
+## Deploying live
+
+The live app — the main checkout's API on 8000 and web app on 5173 — runs as the Windows scheduled task
+`papertrail-live` rather than in a terminal, so it stays up however terminals and editors come and go.
+
+Set it up once per machine, after the venv and `npm --prefix frontend install` above:
+```
+.venv\Scripts\python tools\deploy.py install        register the task
+.venv\Scripts\python tools\deploy.py autostart on   start live whenever you log in (off by default)
+.venv\Scripts\python tools\deploy.py                start it now
+```
+`autostart off` undoes the second one; without it, a reboot leaves live down until someone starts it. The
+commands work from any checkout, and always act on the main checkout.
+
+After a PR merges, that same `tools\deploy.py` puts the main checkout on the latest `main`, installs what
+changed in `requirements.txt` or the frontend's packages, restarts live, and waits until the web app answers
+through its API proxy.
+
+It won't restart while a job (OCR, Parse, Archive) is running on live, since that would kill it — it names
+the job and stops; `--even-with-job` overrides. And it leaves the main checkout alone if it holds work:
+uncommitted changes to tracked files, a branch not merged into `main`, or commits `origin` doesn't have.
+Either way nothing is stopped, so a refused deploy costs no uptime.
+
+`tools\deploy.py status` shows what live runs, whether it starts at logon, and how far behind it is;
+`restart` restarts it as it is, and `stop` takes it down until someone starts it again — killing the servers
+by hand instead leaves the task believing it still runs them. Live's output goes to `.live\api.log` and
+`.live\web.log` in the main checkout.
+
 # Workflow
 Scan your documents into a folder, and follow this process:
 

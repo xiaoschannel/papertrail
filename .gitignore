@@ -13,6 +13,8 @@ frontend/src/api/schema.d.ts
 .sandbox/
 # a worktree's claimed dev ports (tools/worktree_setup.py)
 .dev-ports.json
+# the live app's logs (tools/live_server.py)
+.live/
 
 # local tooling, whatever created it
 .venv/
