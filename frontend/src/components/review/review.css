@@ -10,7 +10,7 @@
 }
 
 .review-page .review-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
-.review-page .shortcut-legend { white-space: nowrap; }
+.review-page .shortcut-legend > span { white-space: nowrap; }
 
 .review-page .review-progress {
   display: flex; height: 26px; border-radius: 6px; overflow: hidden; margin-bottom: 12px;

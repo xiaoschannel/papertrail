@@ -15,6 +15,8 @@ def test_options_lists_models_engines_and_schemes(api_client, monkeypatch):
     assert "Canon ImageFormula" in body["indexing_schemes"]
     assert body["dashboard_rank_by"] == ["Total Spend", "Visit Count"]
     assert 0 < body["embedding_threshold_step"] < 0.05
+    assert {" ", "Enter", "Escape", "ArrowLeft"} <= set(body["shortcut_named_keys"])
+    assert "Tab" not in body["shortcut_named_keys"]
 
 
 def test_path_check(api_client, tmp_path, configured_archive):

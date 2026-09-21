@@ -768,6 +768,8 @@ class ConfigOptions(_Model):
     indexing_schemes: list[str]
     dashboard_rank_by: list[str]
     embedding_threshold_step: float
+    #: What a shortcut can be besides one character (" " is Space), for the Config page's key recorder.
+    shortcut_named_keys: list[str]
 
 
 class PathCheck(_Model):

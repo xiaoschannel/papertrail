@@ -80,3 +80,68 @@ def test_only_pages_on_this_machine_are_served(api_client):
     # the web app itself, through the dev server on another local port
     assert api_client.get("/api/health", headers={"origin": "http://localhost:5173",
                                                   "sec-fetch-site": "same-origin"}).status_code == 200
+
+
+
+def test_shortcuts_default_to_the_left_hand(api_client):
+    assert api_client.get("/api/config").json()["shortcuts"] == {
+        "accept": "a", "mark": "s", "toss": "d", "prev": "x", "next": "c", "undo": "z",
+        "quick_1": "1", "quick_2": "2", "quick_3": "3", "hide_boxes": "b", "hold_original": "r", "confirm": "e", "cancel": "q"}
+
+
+def test_shortcuts_are_saved_as_a_section(api_client):
+    keys = api_client.get("/api/config").json()["shortcuts"]
+    chosen = {**keys, "accept": "W", "prev": "ArrowLeft", "confirm": "Enter", "cancel": "a", "hold_original": " ",
+              "quick_1": "4", "quick_2": "f"}
+    assert api_client.patch("/api/config", json={"shortcuts": chosen}).status_code == 200
+    body = api_client.get("/api/config").json()
+    # a character is stored lower-cased, as the pages match keys; named keys as they are named
+    assert body["shortcuts"] == {**chosen, "accept": "w"}
+    # and the rest of the config is untouched
+    assert body["normalize_engine"] == "string"
+
+
+def test_shortcuts_reject_what_a_page_could_not_tell_apart(api_client):
+    keys = api_client.get("/api/config").json()["shortcuts"]
+    for bad in ({"mark": "a"}, {"cancel": "e"}, {"toss": "1"}, {"quick_3": "r"}, {"hold_original": "a"}, {"prev": ""}, {"next": "cc"}, {"undo": "Tab"},
+                {"hide_boxes": "Shift"}, {"confirm": "enter"}, {"hold_original": "b"}):
+        assert api_client.patch("/api/config", json={"shortcuts": {**keys, **bad}}).status_code == 422, bad
+    assert api_client.get("/api/config").json()["shortcuts"] == keys
+
+
+def test_a_config_file_naming_only_some_shortcuts_keeps_the_defaults_for_the_rest(tmp_path, monkeypatch):
+    import json
+
+    import settings
+
+    monkeypatch.setattr(settings, "CONFIG_PATH", tmp_path / "config.json")
+    (tmp_path / "config.json").write_text(json.dumps({"shortcuts": {"accept": "f"}}), encoding="utf-8")
+    keys = settings.get_config().shortcuts
+    assert (keys.accept, keys.mark, keys.cancel) == ("f", "s", "q")
+
+
+def test_a_patch_changes_only_the_shortcuts_it_sends_and_judges_clashes_against_the_saved_ones(api_client):
+    assert api_client.patch("/api/config", json={"shortcuts": {"accept": "w"}}).status_code == 200
+    assert api_client.patch("/api/config", json={"shortcuts": {"mark": "k"}}).status_code == 200
+    keys = api_client.get("/api/config").json()["shortcuts"]
+    assert (keys["accept"], keys["mark"], keys["toss"]) == ("w", "k", "d")
+    # A is free now that accept is on W; D is still toss's
+    assert api_client.patch("/api/config", json={"shortcuts": {"mark": "a"}}).status_code == 200
+    clash = api_client.patch("/api/config", json={"shortcuts": {"mark": "d"}})
+    assert clash.status_code == 422 and "toss" in str(clash.json())
+    assert api_client.patch("/api/config", json={"shortcuts": {"not_an_action": "y"}}).status_code == 422
+    assert api_client.get("/api/config").json()["shortcuts"]["mark"] == "a"
+
+
+def test_a_saved_shortcuts_section_that_no_longer_validates_falls_back_to_its_defaults(tmp_path, monkeypatch):
+    import json
+
+    import settings
+
+    monkeypatch.setattr(settings, "CONFIG_PATH", tmp_path / "config.json")
+    (tmp_path / "config.json").write_text(json.dumps({
+        "dashboard_rank_by": "Visit Count", "shortcuts": {"accept": "s", "mark": "s"}}), encoding="utf-8")
+    cfg = settings.get_config()
+    # the rest of the config still reads, and the page that fixes the section can load
+    assert cfg.dashboard_rank_by == "Visit Count"
+    assert (cfg.shortcuts.accept, cfg.shortcuts.mark) == ("a", "s")

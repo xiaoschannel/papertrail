@@ -1,5 +1,7 @@
-import { useEffect, useId, useRef } from 'react'
+import { useId } from 'react'
+import { useShortcutKeys } from '../api/config.ts'
 import type { Enhancement } from '../api/types.ts'
+import { keyLabel, useHeldKey } from './useShortcuts.ts'
 
 /**
  * Making a scan readable before OCR reads it again: which way is up, and a treatment with its sliders.
@@ -90,47 +92,20 @@ export function Slider({ label, value, min, max, step, onChange }: {
   )
 }
 
-/** "Hold to see the original": the button, and the O key while no text field has focus. */
-export function CompareButton({ treated, onHold }: { treated: boolean; onHold: (down: boolean) => void }) {
-  useHeldKey('o', onHold, treated)
-  return (
-    <div className="start-bar workshop-compare">
-      <button disabled={!treated}
-        onPointerDown={() => onHold(true)} onPointerUp={() => onHold(false)}
-        onPointerLeave={() => onHold(false)} onPointerCancel={() => onHold(false)}>
-        Hold to see the original
-      </button>
-      <span className="config-hint">{treated ? 'or hold O' : 'nothing is treated yet'}</span>
-    </div>
-  )
+/** Whether the Hold original shortcut (R unless changed in Config) is held while something is treated. */
+export function useHoldOriginal(treated: boolean): boolean {
+  const key = useShortcutKeys()?.hold_original
+  return useHeldKey(key ?? '', treated && key !== undefined)
 }
 
-/** Holding `key` (outside a text field) turns `on` while it is down. */
-function useHeldKey(key: string, set: (down: boolean) => void, enabled: boolean) {
-  const latest = useRef(set)
-  useEffect(() => {
-    latest.current = set
-  })
-  useEffect(() => {
-    if (!enabled) return undefined
-    const typing = (event: KeyboardEvent) =>
-      event.target instanceof HTMLElement && event.target.closest('input, textarea, select, [contenteditable="true"]')
-    const down = (event: KeyboardEvent) => {
-      if (event.key.toLowerCase() !== key || event.ctrlKey || event.metaKey || event.altKey || typing(event)) return
-      latest.current(true)
-    }
-    const up = (event: KeyboardEvent) => {
-      if (event.key.toLowerCase() === key) latest.current(false)
-    }
-    const release = () => latest.current(false)
-    window.addEventListener('keydown', down)
-    window.addEventListener('keyup', up)
-    window.addEventListener('blur', release)      // a key released in another window never sends keyup here
-    return () => {
-      window.removeEventListener('keydown', down)
-      window.removeEventListener('keyup', up)
-      window.removeEventListener('blur', release)
-      latest.current(false)
-    }
-  }, [key, enabled])
+/** The keys that look past what is drawn on a treated scan: the original under it, the scan under the boxes. */
+export function CompareKeys({ treated }: { treated: boolean }) {
+  const keys = useShortcutKeys()
+  if (!keys) return null
+  return (
+    <p className="config-hint workshop-compare">
+      {treated ? <>Hold <kbd>{keyLabel(keys.hold_original)}</kbd> to see the original</> : 'Nothing is treated yet'}
+      {' · '}hold <kbd>{keyLabel(keys.hide_boxes)}</kbd> to hide the boxes
+    </p>
+  )
 }

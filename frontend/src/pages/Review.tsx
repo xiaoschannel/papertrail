@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api } from '../api/client.ts'
-import { useConfig, useSaveConfig } from '../api/config.ts'
+import { useConfig, useSaveConfig, useShortcutKeys } from '../api/config.ts'
 import type { DecisionIn, Draft, ReviewQueue, Verdict } from '../api/types.ts'
 import { num } from '../format.ts'
 import { Card, Empty, ErrorState, Loading } from '../components/ui.tsx'
@@ -11,13 +11,11 @@ import { ReviewProgress } from '../components/review/ReviewProgress.tsx'
 import {
   INPUT_SOURCES, ReviewForm, costIsInvalid, initialForm, parseCost, type FormState,
 } from '../components/review/ReviewForm.tsx'
-import { ScanOverlay } from '../components/review/ScanOverlay.tsx'
-import { useHeldKey, useShortcuts } from '../components/review/useShortcuts.ts'
+import { ScanOverlay, useBoxesHidden } from '../components/review/ScanOverlay.tsx'
+import { keyLabel, useShortcuts } from '../components/useShortcuts.ts'
 import '../components/review/review.css'
 
 const RECENT_KEPT = 10
-const QUICK_APPLY_KEYS = 3
-const HIDE_BOXES_KEY = 'b'
 
 const inputImageUrl = (filename: string) => `/api/media/input/${encodeURIComponent(filename)}`
 
@@ -236,18 +234,19 @@ export default function Review() {
     if (newest) undoDecision(newest)
   }
 
-  // Held, not toggled: you look under the boxes for as long as you hold B, and they are back on release.
-  const boxesHidden = useHeldKey(HIDE_BOXES_KEY)
-  const quickNames = currentDoc?.smart_matches.filter((m) => m.quick_apply).slice(0, QUICK_APPLY_KEYS) ?? []
-  useShortcuts({
-    a: () => void submit('accepted'),
-    m: () => void submit('marked'),
-    t: () => void submit('tossed'),
-    ArrowLeft: () => move(-1),
-    ArrowRight: () => move(1),
-    z: undoLast,
-    ...Object.fromEntries(quickNames.map((m, i) => [String(i + 1), () => patchForm({ name: m.name })])),
-  })
+  // Chosen on the Config page; until the config has loaded there are no shortcuts to go by.
+  const keys = useShortcutKeys()
+  // Held, not toggled: you look under the boxes for as long as you hold the key, and they are back on release.
+  const boxesHidden = useBoxesHidden()
+  useShortcuts(keys ? {
+    [keys.accept]: () => void submit('accepted'),
+    [keys.mark]: () => void submit('marked'),
+    [keys.toss]: () => void submit('tossed'),
+    [keys.prev]: () => move(-1),
+    [keys.next]: () => move(1),
+    [keys.undo]: undoLast,
+  } : {}, Boolean(keys), keys ? [keys.prev, keys.next] : [])
+  const kbd = (key: string | undefined) => key && <kbd>{keyLabel(key)}</kbd>
 
   const summary = queue.data?.summary
   const decidedCount = summary ? summary.verdicts.reduce((n, v) => n + v.count, 0) : 0
@@ -264,7 +263,7 @@ export default function Review() {
               {entry.label && <strong>{entry.label}</strong>} <span className="config-hint">{entry.made.key}</span>
             </span>
             <button disabled={undo.isPending} onClick={() => undoDecision(entry)}>
-              Undo{i === 0 && <> <kbd>Z</kbd></>}
+              Undo{i === 0 && keys && <> {kbd(keys.undo)}</>}
             </button>
           </div>
         ))}
@@ -279,11 +278,17 @@ export default function Review() {
           <h1>Review</h1>
           <p className="page-sub">
             Check each extracted document, then accept, mark or toss it.{' '}
-            <span className="shortcut-legend">
-              <kbd>A</kbd> accept <kbd>M</kbd> mark <kbd>T</kbd> toss <kbd>←</kbd><kbd>→</kbd> move{' '}
-              <kbd>1</kbd>–<kbd>3</kbd> quick match <kbd>Z</kbd> undo <kbd>B</kbd> hold to hide boxes{' '}
-              <kbd>Esc</kbd> leave a field
-            </span>
+            {keys && (
+              // Each key stays with what it does; the line breaks between them.
+              <span className="shortcut-legend">
+                <span>{kbd(keys.accept)} accept</span> <span>{kbd(keys.mark)} mark</span>{' '}
+                <span>{kbd(keys.toss)} toss</span>{' '}
+                <span>{kbd(keys.prev)}{kbd(keys.next)} move</span>{' '}
+                <span>{kbd(keys.quick_1)}{kbd(keys.quick_2)}{kbd(keys.quick_3)} quick match</span> <span>{kbd(keys.undo)} undo</span>{' '}
+                <span>{kbd(keys.hide_boxes)} hold to hide boxes</span>{' '}
+                <span>{kbd(keys.confirm)} {kbd(keys.cancel)} confirm or cancel a dialog</span>
+              </span>
+            )}
           </p>
         </div>
         {decidedCount > 0 && (
@@ -303,8 +308,8 @@ export default function Review() {
             {items.length === 0 ? <><Empty>All items reviewed!</Empty>{recentList}</> : (
               <>
                 <div className="review-nav">
-                  <button disabled={position === 0} onClick={() => move(-1)}>← Prev</button>
-                  <button disabled={position >= items.length - 1} onClick={() => move(1)}>Next →</button>
+                  <button disabled={position === 0} onClick={() => move(-1)}>← Prev {kbd(keys?.prev)}</button>
+                  <button disabled={position >= items.length - 1} onClick={() => move(1)}>Next → {kbd(keys?.next)}</button>
                   <span><strong>{position + 1} / {items.length}</strong> — {key}</span>
                 </div>
 
@@ -332,13 +337,13 @@ export default function Review() {
                           onActivate={(input) => setActiveFields(input ? INPUT_SOURCES[input] ?? [] : [])} />
                         <div className="review-actions">
                           <button className="primary" disabled={decide.isPending} onClick={() => void submit('accepted')}>
-                            Accept <kbd>A</kbd>
+                            Accept {kbd(keys?.accept)}
                           </button>
                           <button className="warn" disabled={decide.isPending} onClick={() => void submit('marked')}>
-                            Mark <kbd>M</kbd>
+                            Mark {kbd(keys?.mark)}
                           </button>
                           <button disabled={decide.isPending} onClick={() => void submit('tossed')}>
-                            Toss <kbd>T</kbd>
+                            Toss {kbd(keys?.toss)}
                           </button>
                         </div>
                         <CustomInstructions />

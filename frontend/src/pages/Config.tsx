@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api/client.ts'
-import type { AppConfig, ConfigOptions } from '../api/types.ts'
+import type { AppConfig, ConfigOptions, Shortcuts } from '../api/types.ts'
 import { Card, ErrorState, Loading } from '../components/ui.tsx'
+import { keyLabel, keyOf } from '../components/useShortcuts.ts'
 import './config.css'
 
 
@@ -23,11 +24,14 @@ function ConfigForm({ saved, options }: { saved: AppConfig; options: ConfigOptio
   const draft: AppConfig = { ...saved, ...edits }
   const set = <K extends keyof AppConfig>(key: K, value: AppConfig[K]) => setEdits({ ...edits, [key]: value })
 
-  // Only the fields actually edited here are sent, so a running job's own config writes survive.
+  // Only the fields actually edited here are sent, so a running job's own config writes survive. A section
+  // (the shortcuts) is a fresh object on every edit, so it is compared by what it holds.
+  const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
   const patch = Object.fromEntries(
-    (Object.keys(edits) as (keyof AppConfig)[]).filter((k) => edits[k] !== saved[k]).map((k) => [k, edits[k]]),
+    (Object.keys(edits) as (keyof AppConfig)[]).filter((k) => !same(edits[k], saved[k])).map((k) => [k, edits[k]]),
   ) as Partial<AppConfig>
   const changed = Object.keys(patch)
+  const clashes = shortcutClashes(draft.shortcuts)
 
   const save = useMutation({
     mutationFn: () => api.patchConfig(patch),
@@ -115,6 +119,26 @@ function ConfigForm({ saved, options }: { saved: AppConfig; options: ConfigOptio
         </div>
       </Card>
 
+      <Card title="Shortcuts" hint="click a key, then press the new one">
+        {SHORTCUT_GROUPS.map(({ title, actions }) => (
+          <div key={title} className="config-keys">
+            <h3>{title}</h3>
+            <div className="config-grid">
+              {actions.map(([action, label]) => (
+                <ShortcutField key={action} label={label} value={draft.shortcuts[action]}
+                  clash={clashes.has(action)} named={options.shortcut_named_keys}
+                  onChange={(v) => set('shortcuts', { ...draft.shortcuts, [action]: v })} />
+              ))}
+            </div>
+          </div>
+        ))}
+        {clashes.size > 0 && (
+          <p className="config-hint neg">
+            Two actions on one page can't share a key.
+          </p>
+        )}
+      </Card>
+
       <Card title="Remembered state" hint="written by the pages themselves">
         <div className="config-grid">
           <div className="field"><label>Calendar period</label><input type="text" value={draft.calendar_period} disabled /></div>
@@ -124,7 +148,8 @@ function ConfigForm({ saved, options }: { saved: AppConfig; options: ConfigOptio
 
       {save.error && <div className="error-banner" role="alert">{save.error.message}</div>}
       <div className="config-save">
-        <button className="primary" disabled={!changed.length || save.isPending} onClick={() => save.mutate()}>
+        <button className="primary" disabled={!changed.length || clashes.size > 0 || save.isPending}
+          onClick={() => save.mutate()}>
           {save.isPending ? 'Saving…' : 'Save changes'}
         </button>
         <button disabled={!changed.length || save.isPending} onClick={() => setEdits({})}>Discard</button>
@@ -132,6 +157,65 @@ function ConfigForm({ saved, options }: { saved: AppConfig; options: ConfigOptio
           {changed.length ? `${changed.length} unsaved change${changed.length === 1 ? '' : 's'}` : 'Saved.'}
         </span>
       </div>
+    </div>
+  )
+}
+
+/** Where each key works, as the Config page lists them. */
+const SHORTCUT_GROUPS: { title: string; actions: [keyof Shortcuts, string][] }[] = [
+  { title: 'Review and Workshop', actions: [
+    ['accept', 'Accept'], ['mark', 'Mark (Review)'], ['toss', 'Toss'], ['prev', 'Previous document'],
+    ['next', 'Next document'], ['undo', 'Undo the last decision (Review)'],
+  ] },
+  { title: 'Quick matches (Review and Workshop)', actions: [
+    ['quick_1', 'First quick match'], ['quick_2', 'Second quick match'], ['quick_3', 'Third quick match'],
+  ] },
+  { title: 'Scans', actions: [
+    ['hide_boxes', 'Hold to hide boxes (Review, Workshop, Experiment)'],
+    ['hold_original', 'Hold to see the original (Workshop, Experiment)'],
+  ] },
+  { title: "Dialogs, and File Index's scan viewer", actions: [['confirm', 'Confirm'], ['cancel', 'Cancel or close']] },
+]
+
+/** Actions live on one page at once, so they can't share a key (`Shortcuts.GROUPS` in settings.py). */
+const QUICK: (keyof Shortcuts)[] = ['quick_1', 'quick_2', 'quick_3']
+const LIVE_TOGETHER: (keyof Shortcuts)[][] = [
+  ['accept', 'mark', 'toss', 'prev', 'next', 'undo', 'hide_boxes', ...QUICK],
+  ['accept', 'toss', 'prev', 'next', 'hold_original', 'hide_boxes', ...QUICK], ['confirm', 'cancel'],
+]
+
+/** The actions the server would refuse (the same rules as `Shortcuts` in settings.py). */
+function shortcutClashes(keys: Shortcuts): Set<keyof Shortcuts> {
+  const bad = new Set<keyof Shortcuts>()
+  for (const group of LIVE_TOGETHER) {
+    for (const action of group) {
+      const key = keys[action]
+      if (group.some((other) => other !== action && keys[other] === key)) bad.add(action)
+    }
+  }
+  return bad
+}
+
+/** One key, recorded rather than typed: focus the box and press the key (Tab still moves on). Only a
+ *  character or one of the server's `named` keys is taken, so the box can't hold what couldn't be saved. */
+function ShortcutField({ label, value, clash, named, onChange }: {
+  label: string
+  value: string
+  clash: boolean
+  named: string[]
+  onChange: (value: string) => void
+}) {
+  return (
+    <div className="field">
+      <label>{label}</label>
+      <input type="text" readOnly className={`config-key${clash ? ' neg' : ''}`} value={keyLabel(value)}
+        aria-invalid={clash} aria-label={`${label} key`}
+        onKeyDown={(e) => {
+          if (e.key === 'Tab' || e.ctrlKey || e.metaKey || e.altKey) return
+          e.preventDefault()
+          const key = keyOf(e)
+          if ((key.length === 1 && key.trim()) || named.includes(key)) onChange(key)
+        }} />
     </div>
   )
 }

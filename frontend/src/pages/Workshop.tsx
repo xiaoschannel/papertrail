@@ -3,18 +3,19 @@ import { Link } from 'react-router-dom'
 import { useDebounced } from '../components/useDebounced.ts'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, workshopScanUrl } from '../api/client.ts'
-import type { ContextScan, Enhancement, Job, ReviewDocument } from '../api/types.ts'
+import type { ContextScan, Enhancement, Job, MarkedDocument, ReviewDocument } from '../api/types.ts'
 import { DocumentCard } from '../components/DocumentCard.tsx'
 import { JobPanel, useJobGate, useTrackJob } from '../components/jobs.tsx'
 import { Markdown } from '../components/Markdown.tsx'
 import {
   INPUT_SOURCES, ReviewForm, initialForm, parseCost, type FormState,
 } from '../components/review/ReviewForm.tsx'
-import { ScanOverlay, type Turn } from '../components/review/ScanOverlay.tsx'
-import { CompareButton, DEFAULT_ENHANCEMENT, TreatmentControls, isTreated } from '../components/ScanTreatment.tsx'
+import { ScanOverlay, useBoxesHidden, type Turn } from '../components/review/ScanOverlay.tsx'
+import { CompareKeys, DEFAULT_ENHANCEMENT, TreatmentControls, isTreated, useHoldOriginal } from '../components/ScanTreatment.tsx'
 import { useGridColumnCount } from '../components/useGridColumnCount.ts'
+import { keyLabel, useShortcuts } from '../components/useShortcuts.ts'
 import { afterArchiveEdit } from '../api/invalidate.ts'
-import { useSaveConfig } from '../api/config.ts'
+import { useSaveConfig, useShortcutKeys } from '../api/config.ts'
 import { money } from '../format.ts'
 import { Card, Empty, ErrorState, Loading } from '../components/ui.tsx'
 import '../components/review/review.css'
@@ -58,16 +59,26 @@ export default function Workshop() {
     mutationFn: (documentKey: string) => api.workshop.discardReread(documentKey),
     onSuccess: (body) => queryClient.setQueryData(['curate', 'workshop', key], body),
   })
-
-  if (workshop.isPending) return <Loading what="marked documents" />
-  if (workshop.error) return <ErrorState error={workshop.error} />
-  const { documents, ocr_models: ocrModels, extractors } = workshop.data
-  const position = documents.findIndex((d) => d.key === document?.key)
-
+  // Review's keys for moving (Config's Shortcuts); Accept and Toss have theirs in the Decision card.
+  const keys = useShortcutKeys()
+  // While the next document loads there is no answer, but moving must go on (a held or quick second
+  // press): from the last list, counting from where we are headed rather than what is on screen. A key
+  // that has left the list (decided elsewhere) is not where we are: the server showed another instead.
+  const lastDocuments = useRef<MarkedDocument[]>([])
+  if (workshop.data) lastDocuments.current = workshop.data.documents
+  const documents = workshop.data?.documents ?? lastDocuments.current
+  const here = key !== null && documents.some((d) => d.key === key) ? key : document?.key
+  const position = documents.findIndex((d) => d.key === here)
   const move = (step: number) => {
     const next = documents[position + step]
     if (next) setKey(next.key)
   }
+  useShortcuts(keys ? { [keys.prev]: () => move(-1), [keys.next]: () => move(1) } : {},
+    Boolean(keys && documents.length), keys ? [keys.prev, keys.next] : [])
+
+  if (workshop.isPending) return <Loading what="marked documents" />
+  if (workshop.error) return <ErrorState error={workshop.error} />
+  const { ocr_models: ocrModels, extractors } = workshop.data
 
   return (
     <div className="curate-page workshop-page review-page">
@@ -77,8 +88,12 @@ export default function Workshop() {
       {documents.length === 0 || !document || !form ? <Empty>Nothing is marked. Review is where documents get marked.</Empty> : (
         <>
           <div className="review-nav">
-            <button disabled={position <= 0} onClick={() => move(-1)}>← Prev</button>
-            <button disabled={position < 0 || position >= documents.length - 1} onClick={() => move(1)}>Next →</button>
+            <button disabled={position <= 0} onClick={() => move(-1)}>
+              ← Prev{keys && <> <kbd>{keyLabel(keys.prev)}</kbd></>}
+            </button>
+            <button disabled={position < 0 || position >= documents.length - 1} onClick={() => move(1)}>
+              Next →{keys && <> <kbd>{keyLabel(keys.next)}</kbd></>}
+            </button>
             <span><strong>{position + 1} / {documents.length}</strong> — {document.key}</span>
             {documents[position]?.comment && <span className="config-hint">“{documents[position].comment}”</span>}
           </div>
@@ -154,12 +169,13 @@ function Scan({
 }) {
   const [models, setModels] = useState({ ocr: ocrModel, extractor })
   const saveConfig = useSaveConfig()     // the Workshop's own choices, remembered as soon as they're picked
-  const [comparing, setComparing] = useState(false)
+  const boxesHidden = useBoxesHidden()
   const running = job?.status === 'running'
   // Dragging a slider shouldn't ask the server for a full-size render per step.
   const settled = useDebounced(enhancement, 250)
   const hasScans = document.pages.some((page) => page.image_available)
   const treated = isTreated(enhancement)
+  const comparing = useHoldOriginal(treated)
   // Stored boxes were measured on the file, so they turn with the preview. A reread's were measured on the
   // pages turned as it read them: they line up only while the preview is turned the same way.
   const boxesFit = rereadTurn === null || (settled.top_points === rereadTurn && !(comparing && treated))
@@ -182,10 +198,10 @@ function Scan({
           imageUrl={(filename) => workshopScanUrl(filename, settled)}
           originalUrl={(filename) => workshopScanUrl(filename, DEFAULT_ENHANCEMENT)}
           showOriginal={comparing && treated} turn={rereadTurn === null ? settled.top_points : ''}
-          missing="is not in marked/" />
+          hideBoxes={boxesHidden} missing="is not in marked/" />
       )}
 
-      <CompareButton treated={treated} onHold={setComparing} />
+      <CompareKeys treated={treated} />
       <TreatmentControls value={enhancement} onChange={(patch) => onChange({ ...enhancement, ...patch })} />
 
       <div className="curate-grid">
@@ -255,6 +271,14 @@ function Decision({ document, form, onChange, activeFields, onActivate, onDecide
       comment: form.comment,
     }),
   })
+  const accept = () => {
+    if (!decide.isPending) decide.mutate('accepted', { onSuccess: onDecided })
+  }
+  const toss = () => {
+    if (!decide.isPending) decide.mutate('tossed', { onSuccess: onDecided })
+  }
+  const keys = useShortcutKeys()
+  useShortcuts(keys ? { [keys.accept]: accept, [keys.toss]: toss } : {}, Boolean(keys))
 
   return (
     <Card title="Decision" className="review-col decision"
@@ -263,11 +287,11 @@ function Decision({ document, form, onChange, activeFields, onActivate, onDecide
         hints={hints.data} activeFields={activeFields} onActivate={onActivate} />
       {decide.error && <div className="error-banner" role="alert">{decide.error.message}</div>}
       <div className="review-actions">
-        <button className="primary" disabled={decide.isPending} onClick={() => decide.mutate('accepted', { onSuccess: onDecided })}>
-          Accept into the archive
+        <button className="primary" disabled={decide.isPending} onClick={accept}>
+          Accept into the archive{keys && <> <kbd>{keyLabel(keys.accept)}</kbd></>}
         </button>
-        <button className="danger-outline" disabled={decide.isPending} onClick={() => decide.mutate('tossed', { onSuccess: onDecided })}>
-          Toss
+        <button className="danger-outline" disabled={decide.isPending} onClick={toss}>
+          Toss{keys && <> <kbd>{keyLabel(keys.toss)}</kbd></>}
         </button>
       </div>
     </Card>

@@ -1,5 +1,7 @@
+import { useShortcutKeys } from '../../api/config.ts'
 import type { BoxRect, FieldBox, ReviewPage, TopPoints } from '../../api/types.ts'
 import { Empty } from '../ui.tsx'
+import { useHeldKey } from '../useShortcuts.ts'
 import './ScanOverlay.css'
 
 /** Colors per extracted field; other fields get DEFAULT_FIELD_COLOR. */
@@ -105,4 +107,10 @@ export function ScanOverlay({
       ))}
     </div>
   )
+}
+
+/** Whether the Hide boxes shortcut (B unless changed in Config) is held: pass it as `hideBoxes`. */
+export function useBoxesHidden(): boolean {
+  const key = useShortcutKeys()?.hide_boxes
+  return useHeldKey(key ?? '', key !== undefined)
 }

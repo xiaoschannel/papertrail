@@ -21,3 +21,12 @@
   position: sticky; bottom: 0; display: flex; align-items: center; gap: 10px; margin-top: 16px;
   padding: 12px 0; background: linear-gradient(to top, var(--bg) 72%, transparent);
 }
+
+/* Shortcuts, a heading per place they work in. A key is a keycap-sized box, red when it clashes. */
+.config-keys + .config-keys { margin-top: 16px; }
+.config-keys h3 { margin: 0 0 8px; font-size: 12.5px; color: var(--muted); font-weight: 600; }
+.config-page .field input.config-key {
+  width: 4.5rem; text-align: center; cursor: pointer; caret-color: transparent;
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+}
+.config-page .field input.config-key.neg, .config-page .field input.config-key.neg:focus { border-color: var(--neg); }
