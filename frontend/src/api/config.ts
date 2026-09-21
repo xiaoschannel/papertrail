@@ -9,6 +9,11 @@ export function useConfig() {
   return useQuery({ queryKey: CONFIG_KEY, queryFn: api.config })
 }
 
+/** The app's shortcut keys (Config's Shortcuts). Undefined until the config has loaded: no keys till then. */
+export function useShortcutKeys() {
+  return useConfig().data?.shortcuts
+}
+
 /**
  * Save a few settings. Only the given fields are sent (PATCH), so a page remembering its own view
  * can't revert a model another page just chose, and the fresh config replaces the cached one. Pages whose

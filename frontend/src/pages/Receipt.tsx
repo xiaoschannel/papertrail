@@ -2,8 +2,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, mediaUrl } from '../api/client.ts'
+import { useShortcutKeys } from '../api/config.ts'
 import type { DocumentType, VizRecord } from '../api/types.ts'
 import { costIsInvalid, parseCost } from '../components/review/ReviewForm.tsx'
+import { ScanOverlay, useBoxesHidden } from '../components/review/ScanOverlay.tsx'
+import { keyLabel } from '../components/useShortcuts.ts'
 import { money, num, spendExactly } from '../format.ts'
 import { Card, Empty, ErrorState, Loading, Tile } from '../components/ui.tsx'
 
@@ -73,13 +76,8 @@ export default function Receipt() {
         {/* scan | details. The scan column's width sets the zoom; the scan itself
             is never cropped or scrolled. */}
         <div className="detail-layout">
-          <Card title="Scan" hint={pages.length > 1 ? `${pages.length} pages` : undefined}>
-            <div className="scan-full">
-              {pages.length === 0 && <Empty>No image on disk.</Empty>}
-              {pages.map((p, i) => (
-                <img key={p} src={mediaUrl(p)} alt={`${r.name || r.filename} — page ${i + 1}`} />
-              ))}
-            </div>
+          <Card title="Scan" hint={<ScanHint pages={pages.length} />}>
+            <ReceiptScan file={r.filename} paths={pages} alt={r.name || r.filename} />
           </Card>
 
           <div className="stack">
@@ -253,6 +251,46 @@ function EditForm({ record, onDone }: { record: VizRecord; onDone: () => void })
  * Any archived document by its original filename, name or date: type to narrow the list. Charts, the
  * calendar and merchant pages lead only to dated receipts; this reaches the rest too.
  */
+/** How many pages, and the key that lifts the boxes off them. */
+function ScanHint({ pages }: { pages: number }) {
+  const hide = useShortcutKeys()?.hide_boxes
+  return (
+    <>
+      {pages > 1 && `${pages} pages · `}
+      {hide && <>hold <kbd>{keyLabel(hide)}</kbd> to hide the boxes</>}
+    </>
+  )
+}
+
+/**
+ * The scans with the OCR boxes drawn on them, as Review and the Workshop draw them; hold the Hide boxes
+ * key (B unless changed in Config) to read under them. Until the boxes arrive, the plain scans.
+ */
+function ReceiptScan({ file, paths, alt }: { file: string; paths: string[]; alt: string }) {
+  // Keyed by the pages' paths too: an edit re-files them, and the boxes then come from the new place.
+  const drawn = useQuery({
+    queryKey: ['receipt', file, 'pages', ...paths],
+    queryFn: () => api.receiptPages(file),
+  })
+  const [activeFields, setActiveFields] = useState<string[]>([])
+  const boxesHidden = useBoxesHidden()
+  if (paths.length === 0) return <Empty>No image on disk.</Empty>
+  if (!drawn.data) {
+    return (
+      <div className="scan-full">
+        {paths.map((p, i) => <img key={p} src={mediaUrl(p)} alt={`${alt} — page ${i + 1}`} />)}
+      </div>
+    )
+  }
+  return (
+    <div className="detail-scan">
+      <ScanOverlay pages={drawn.data} imageUrl={(path) => mediaUrl(path) ?? ''} activeFields={activeFields}
+        onHoverField={(field) => setActiveFields(field ? [field] : [])} hideBoxes={boxesHidden}
+        missing="is not in the archive" />
+    </div>
+  )
+}
+
 function DocumentPicker({ file, onPick }: { file: string; onPick: (file: string) => void }) {
   const documents = useQuery({ queryKey: ['documents'], queryFn: api.documents })
   const [typed, setTyped] = useState<string | null>(null)

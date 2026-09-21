@@ -1,5 +1,7 @@
 import { useRef } from 'react'
+import { useShortcutKeys } from '../../api/config.ts'
 import type { DocumentType, HintsResponse, ReviewDocument } from '../../api/types.ts'
+import { keyLabel, useShortcuts } from '../useShortcuts.ts'
 import { fieldColor } from './ScanOverlay.tsx'
 
 /** The form's editable values (cost stays a string while typing). */
@@ -78,6 +80,12 @@ export function ReviewForm({ doc, form, onChange, hints, activeFields, onActivat
   const beforeJpy = useRef('')   // what the currency box held before JPY was pressed
   const receipt = form.document_type === 'receipt'
   const quick = doc.smart_matches.filter((m) => m.quick_apply)
+  // The first three have keys (Config's Shortcuts), here rather than on the page, so Review and the
+  // Workshop, which share this form, both have them.
+  const keys = useShortcutKeys()
+  const quickKeys = keys ? [keys.quick_1, keys.quick_2, keys.quick_3] : []
+  useShortcuts(Object.fromEntries(quick.slice(0, quickKeys.length)
+    .map((m, i) => [quickKeys[i], () => onChange({ name: m.name })])), Boolean(keys))
   const bestNameScore = Math.max(0, ...doc.smart_matches.map((m) => m.name_score))
 
   /** Props linking an input to its boxes on the scan: highlight both on hover or focus. */
@@ -100,7 +108,7 @@ export function ReviewForm({ doc, form, onChange, hints, activeFields, onActivat
         <div className="quick-apply">
           {quick.map((m, i) => (
             <button key={m.name} onClick={() => onChange({ name: m.name })} title="Use this previously confirmed name">
-              {i < 3 && <kbd>{i + 1}</kbd>} {m.label}
+              {quickKeys[i] && <kbd>{keyLabel(quickKeys[i])}</kbd>} {m.label}
             </button>
           ))}
         </div>

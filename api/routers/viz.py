@@ -10,12 +10,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 import analytics
 import receipt_edit
+import review_logic as rl
 from api import cache
 from api.deps import get_output_path
 from api.guards import no_job_running
 from api.schemas import (
-    BrandTotals, DateRange, DocumentListItem, DocumentRunsOut, MerchantProfile, MonthlySpend, MonthlyVolume,
-    NameTotals, ReceiptEditIn, VizItem, VizRecord,
+    BrandTotals, DateRange, DocumentListItem, DocumentRunsOut, FieldBoxOut, MerchantProfile, MonthlySpend,
+    MonthlyVolume, NameTotals, ReceiptEditIn, ReviewPage, VizItem, VizRecord,
 )
 from api.serialization import df_records, to_jsonable
 from data import read_sidecar
@@ -249,6 +250,28 @@ def receipt_runs(file: str = Query(...), output_path: Path = Depends(get_output_
     if sidecar is None:
         raise HTTPException(status_code=404, detail="document not found")
     return DocumentRunsOut(ocr=sidecar.ocr_run, extraction=sidecar.extraction_run)
+
+
+@router.get("/receipt/pages", response_model=list[ReviewPage])
+def receipt_pages(file: str = Query(...), output_path: Path = Depends(get_output_path)):
+    """The document's scans with their boxes, as Review and the Workshop draw them: the boxes the fields
+    cite (from the extraction on the first page's sidecar), or every box read when nothing is cited.
+    `filename` is the page's path in the archive, which is what /api/media/archived serves."""
+    df = cache.viz_records(output_path)
+    match = df[df["filename"] == file] if not df.empty else df
+    if match.empty:
+        raise HTTPException(status_code=404, detail="document not found")
+    paths = list(match.iloc[0]["paths"])
+    sidecars = [read_sidecar(output_path / rel) for rel in paths]
+    extraction = sidecars[0].extraction if sidecars and sidecars[0] else None
+    field_sources = getattr(extraction, "field_sources", {}) or {}
+    pages = []
+    for page_number, (rel, sidecar) in enumerate(zip(paths, sidecars), start=1):
+        found = (sidecar.ocr.boxes if sidecar and sidecar.ocr else None) or []
+        drawn = rl.field_boxes(page_number, found, field_sources) if field_sources else rl.all_boxes(found)
+        pages.append(ReviewPage(file_key=rel, filename=rel, image_available=(output_path / rel).is_file(),
+                                boxes=FieldBoxOut.all_of(drawn)))
+    return pages
 
 
 @router.patch("/receipt", response_model=VizRecord)

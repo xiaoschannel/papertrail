@@ -180,6 +180,45 @@ def test_receipt_lookup_and_404(api_client):
     assert api_client.get("/api/receipt", params={"file": "nope"}).status_code == 404
 
 
+
+def _record_with_a_box(api_client, archive):
+    from data import read_sidecar
+    for record in api_client.get("/api/viz/records").json():
+        sidecar = read_sidecar(archive / record["paths"][0])
+        if sidecar and sidecar.ocr and sidecar.ocr.boxes:
+            return record
+    raise AssertionError("the fixture archive has a page with an OCR box")
+
+
+def test_receipt_pages_draw_every_box_read_when_no_field_cites_one(api_client, configured_archive):
+    record = _record_with_a_box(api_client, configured_archive)
+    pages = api_client.get("/api/receipt/pages", params={"file": record["filename"]}).json()
+    assert [p["filename"] for p in pages] == record["paths"]
+    assert pages[0]["image_available"] is True
+    [box] = pages[0]["boxes"]
+    assert box["fields"] == [] and box["rects"] == [{"x1": 80, "y1": 40, "x2": 880, "y2": 104}]
+    # every page of a two-page document comes back, in order
+    two = api_client.get("/api/receipt/pages", params={"file": "5:106-107"}).json()
+    assert len(two) == 2 and all(p["boxes"] == [] for p in two)
+    assert api_client.get("/api/receipt/pages", params={"file": "nope"}).status_code == 404
+
+
+def test_receipt_pages_draw_only_the_boxes_the_fields_cite(api_client, configured_archive):
+    from api import cache
+    from data import read_sidecar, write_sidecar
+
+    record = _record_with_a_box(api_client, configured_archive)
+    page = configured_archive / record["paths"][0]
+    sidecar = read_sidecar(page)
+    sidecar.ocr.boxes.append(sidecar.ocr.boxes[0].model_copy())    # a second box, cited by nothing
+    sidecar.extraction.field_sources = {"name": ["1:0"]}
+    write_sidecar(page, sidecar)
+    cache.clear()
+
+    [drawn] = api_client.get("/api/receipt/pages", params={"file": record["filename"]}).json()[0]["boxes"]
+    assert (drawn["index"], drawn["fields"]) == (0, ["name"])
+
+
 # --- editing an archived document -----------------------------------------------------------
 def _first_record(api_client):
     return api_client.get("/api/viz/records").json()[0]

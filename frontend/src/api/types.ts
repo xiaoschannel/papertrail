@@ -8,6 +8,7 @@ export type VizRecord = Schemas['VizRecord']
 export type MerchantTotals = Schemas['BrandTotals'] | Schemas['NameTotals']
 
 export type AppConfig = Schemas['AppConfig']
+export type Shortcuts = Schemas['Shortcuts']
 export type ReviewQueue = Schemas['ReviewQueue']
 export type ReviewSummary = Schemas['ReviewSummary']
 export type ReviewDocument = Schemas['ReviewDocument']

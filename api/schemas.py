@@ -12,11 +12,14 @@ validation in the API tests instead of silently drifting from the generated type
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from models import DocumentExtraction, ModelRun, TokenUse
+
+if TYPE_CHECKING:
+    from review_logic import FieldBox
 
 
 class _Model(BaseModel):
@@ -261,6 +264,12 @@ class FieldBoxOut(_Model):
     fields: list[str]
     rects: list[BoxRect]
     text: str | None
+
+    @classmethod
+    def all_of(cls, boxes: list[FieldBox]) -> list[FieldBoxOut]:
+        """review_logic's boxes, as every page that draws them sends them."""
+        return [cls(index=b.index, fields=list(b.fields), text=b.text,
+                    rects=[BoxRect(x1=r[0], y1=r[1], x2=r[2], y2=r[3]) for r in b.rects]) for b in boxes]
 
 
 class ReviewPage(_Model):
@@ -759,6 +768,8 @@ class ConfigOptions(_Model):
     indexing_schemes: list[str]
     dashboard_rank_by: list[str]
     embedding_threshold_step: float
+    #: What a shortcut can be besides one character (" " is Space), for the Config page's key recorder.
+    shortcut_named_keys: list[str]
 
 
 class PathCheck(_Model):

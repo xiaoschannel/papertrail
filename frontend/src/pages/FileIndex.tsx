@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, inputThumbUrl, inputUrl } from '../api/client.ts'
-import { useSaveConfig } from '../api/config.ts'
+import { useSaveConfig, useShortcutKeys } from '../api/config.ts'
 import type { Grouping, GroupingPage, IndexStatus, TopPoints } from '../api/types.ts'
 import { ConfirmDialog } from '../components/ConfirmDialog.tsx'
 import { useBatchHolder, useEverythingHolder } from '../components/jobs.tsx'
 import { Card, Empty, ErrorState, Loading, Tile } from '../components/ui.tsx'
 import { useGridColumnCount } from '../components/useGridColumnCount.ts'
+import { keyLabel, keyOf } from '../components/useShortcuts.ts'
 import './ingest.css'
 
 export default function FileIndex() {
@@ -407,15 +408,18 @@ function PageTile({ page, group, link, busy, rotateLocked, tossLocked, onRotate,
 }
 
 
-/** The full scan, for deciding whether a page continues the previous document or is upright. */
+/** The full scan, for deciding whether a page continues the previous document or is upright. The
+ *  dialogs' Cancel shortcut closes it. */
 function ScanViewer({ page, onClose }: { page: GroupingPage; onClose: () => void }) {
+  const close = useShortcutKeys()?.cancel
   useEffect(() => {
+    if (!close) return undefined
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
+      if (keyOf(event) === close && !event.ctrlKey && !event.metaKey && !event.altKey) onClose()
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [onClose])
+  }, [close, onClose])
 
   return (
     <div className="modal-backdrop scan-viewer" data-modal-open onClick={onClose} role="dialog" aria-modal="true">
@@ -423,7 +427,7 @@ function ScanViewer({ page, onClose }: { page: GroupingPage; onClose: () => void
         <img src={inputUrl(page.filename)} alt={`Scan ${page.key}`} />
         <figcaption>
           <strong>{page.key}</strong> {page.filename}
-          <button onClick={onClose}>Close <kbd>Esc</kbd></button>
+          <button onClick={onClose}>Close{close && <> <kbd>{keyLabel(close)}</kbd></>}</button>
         </figcaption>
       </figure>
     </div>

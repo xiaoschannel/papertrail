@@ -25,7 +25,7 @@ from api.guards import planning_a_job
 from api.jobs import NOTHING_HELD, Claim, runner
 from api.model_manager import models
 from api.schemas import (
-    BatchSanityOut, BatchStatOut, BoxRect, DuplicateFilenameOut, ExperimentOcrIn, ExperimentOcrOut, ExperimentOut,
+    BatchSanityOut, BatchStatOut, DuplicateFilenameOut, ExperimentOcrIn, ExperimentOcrOut, ExperimentOut,
     ExperimentParseIn, ExperimentParseOut, ExperimentPromptIn, ExperimentPromptOut, ExperimentRunOut,
     ExperimentTreatmentIn, FieldBoxOut, IndexAuditOut, IndexFileOut, InputComparisonOut, JobOut, PriceOut, SanityOut,
     SidecarMismatchOut,
@@ -131,11 +131,6 @@ def _enhancement(body: ExperimentTreatmentIn) -> Enhancement:
     return Enhancement(**body.model_dump(include=set(ExperimentTreatmentIn.model_fields)))
 
 
-def _boxes_out(boxes: list[rl.FieldBox]) -> list[FieldBoxOut]:
-    return [FieldBoxOut(index=b.index, fields=list(b.fields), text=b.text,
-                        rects=[BoxRect(x1=r[0], y1=r[1], x2=r[2], y2=r[3]) for r in b.rects]) for b in boxes]
-
-
 @router.get("/experiment", response_model=ExperimentOut)
 def experiment():
     providers = registry.ocr_providers()
@@ -192,7 +187,7 @@ def _run_out(run: runs.Run) -> ExperimentRunOut:
         ocr_out = ExperimentOcrOut(
             model=ocr.model, read_at=ocr.read_at, with_boxes=ocr.with_boxes, treatment=ExperimentTreatmentIn(**ocr.treatment),
             markdown=ocr.markdown, structured_raw=ocr.structured_raw,
-            boxes=_boxes_out(rl.all_boxes(ocr.boxes)),
+            boxes=FieldBoxOut.all_of(rl.all_boxes(ocr.boxes)),
             seconds=ocr.seconds, structured_seconds=ocr.structured_seconds)
     parse_out = None
     if ocr and parse:
@@ -201,7 +196,7 @@ def _run_out(run: runs.Run) -> ExperimentRunOut:
             extractor=parse.extractor, custom_instruction=parse.custom_instruction,
             extraction=parse.extraction, seconds=parse.seconds, tokens=parse.tokens,
             cost=cost_of(parse.extractor, parse.tokens) if parse.tokens else None,
-            field_boxes=_boxes_out(rl.field_boxes(1, ocr.boxes, sources)))
+            field_boxes=FieldBoxOut.all_of(rl.field_boxes(1, ocr.boxes, sources)))
     return ExperimentRunOut(id=run.id, filename=run.image.name, width=width, height=height,
                             ocr=ocr_out, parse=parse_out)
 

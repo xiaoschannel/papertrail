@@ -6,8 +6,8 @@ import { useConfig, useSaveConfig } from '../api/config.ts'
 import type { ExperimentOptions, ExperimentRun, ExperimentTreatment, FieldBox } from '../api/types.ts'
 import { JobPanel, useJobGate, useTrackJob } from '../components/jobs.tsx'
 import { Markdown } from '../components/Markdown.tsx'
-import { ScanOverlay, fieldColor } from '../components/review/ScanOverlay.tsx'
-import { CompareButton, DEFAULT_ENHANCEMENT, Slider, TreatmentControls, isTreated } from '../components/ScanTreatment.tsx'
+import { ScanOverlay, fieldColor, useBoxesHidden } from '../components/review/ScanOverlay.tsx'
+import { CompareKeys, DEFAULT_ENHANCEMENT, Slider, TreatmentControls, isTreated, useHoldOriginal } from '../components/ScanTreatment.tsx'
 import { useDebounced } from '../components/useDebounced.ts'
 import { money, num, spend, spendExactly } from '../format.ts'
 import { Card, Empty, ErrorState, Loading } from '../components/ui.tsx'
@@ -105,7 +105,7 @@ function Bench({ run, options }: { run: ExperimentRun; options: ExperimentOption
   // The controls start from what OCR last read, so "read it again" means the same thing twice.
   const [treatment, setTreatment] = useState<ExperimentTreatment>(run.ocr?.treatment ?? DEFAULT_TREATMENT)
   const [view, setView] = useState<View>(run.parse ? 'fields' : run.ocr?.with_boxes ? 'boxes' : 'preview')
-  const [comparing, setComparing] = useState(false)
+  const comparing = useHoldOriginal(view === 'preview' && treated(treatment))
   const [activeFields, setActiveFields] = useState<readonly string[]>([])
   const [ocrModel, setOcrModel] = useState(options.ocr_model)
   const [withBoxes, setWithBoxes] = useState(options.with_boxes)
@@ -169,7 +169,7 @@ function Bench({ run, options }: { run: ExperimentRun; options: ExperimentOption
     <div className="experiment-layout">
       <ImageColumn run={run} view={view} onView={setView} treatment={treatment} comparing={comparing}
         activeFields={activeFields} onHoverField={(field) => setActiveFields(field ? [field] : [])}>
-        {view === 'preview' && <CompareButton treated={treated(treatment)} onHold={setComparing} />}
+        {view === 'preview' && <CompareKeys treated={treated(treatment)} />}
         <TreatmentControls value={treatment} onChange={changeTreatment} />
         <div className="field">
           <label>Denoise</label>
@@ -266,6 +266,7 @@ function ImageColumn({ run, view, onView, treatment, comparing, activeFields, on
 }) {
   // Dragging a slider shouldn't ask the server for a full-size render per step.
   const settled = useDebounced(treatment, 250)
+  const boxesHidden = useBoxesHidden()
   const { ocr, parse } = run
   // Until the first reading arrives (a moment after its job ends) there is only the preview to show.
   const seen = ocr ? experimentSeenUrl(run.id, String(ocr.read_at)) : experimentScanUrl(run.id, settled)
@@ -288,7 +289,7 @@ function ImageColumn({ run, view, onView, treatment, comparing, activeFields, on
       <ScanOverlay pages={[page]} activeFields={activeFields} onHoverField={onHoverField}
         imageUrl={() => (view === 'preview' ? experimentScanUrl(run.id, settled) : seen)}
         originalUrl={view === 'preview' ? () => experimentScanUrl(run.id, DEFAULT_TREATMENT) : undefined}
-        showOriginal={view === 'preview' && comparing && treated(treatment)} />
+        showOriginal={view === 'preview' && comparing && treated(treatment)} hideBoxes={boxesHidden} />
       {children}
     </Card>
   )
