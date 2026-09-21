@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from models import DocumentExtraction, ModelRun, TokenUse
+from models import DocumentExtraction, ModelRun, SheetGrid, TokenUse
 
 if TYPE_CHECKING:
     from review_logic import FieldBox
@@ -288,6 +288,7 @@ class DecisionOut(_Model):
     cost: float
     currency: str
     comment: str
+    toss_reason: Literal["sliced"] | None = None
 
 
 class ReviewDocument(_Model):
@@ -416,6 +417,9 @@ class GroupingPageOut(_Model):
     tossed: bool
     image_available: bool
     image_version: int
+    crop_of: str | None = None          # a crop: the sheet it was cut from
+    cell: list[int] | None = None        # ... and its [row, col]
+    sliced: bool = False                 # a sheet cut into crops: tossed until it is unsliced
 
 
 class GroupingOut(_Model):
@@ -439,6 +443,63 @@ class SaveGroupingOut(_Model):
 
 class PageIn(_Model):
     key: str
+
+
+# --- ingest: slicing sheets of small receipts ------------------------------------------
+class SliceCropOut(_Model):
+    key: str
+    serial: int
+    filename: str
+    row: int
+    col: int
+    image_available: bool
+    image_version: int
+
+
+class SlicingSheetOut(_Model):
+    key: str
+    serial: int
+    filename: str
+    image_available: bool
+    image_version: int
+    grid: SheetGrid | None
+    crops: list[SliceCropOut]
+    sliced: bool                 # tossed as sliced (a grid without it, or it without a grid, is a problem)
+    refusal: str | None          # why it can't be sliced now
+
+
+class SlicingOut(_Model):
+    blocker: str | None
+    batches: list[BatchOut]
+    batch_id: int | None
+    sheets: list[SlicingSheetOut]
+    problems: list[str]          # sheets an interrupted slice left inconsistent; saving or unslicing repairs
+
+
+class SlicePlanIn(_Model):
+    key: str
+    grid: SheetGrid | None       # None: unslice
+
+
+class ApplySliceIn(SlicePlanIn):
+    token: str
+
+
+class SliceMoveOut(_Model):
+    old_key: str
+    new_key: str
+
+
+class SlicePlanOut(_Model):
+    key: str
+    new_keys: list[str]          # the sheet's crops after the change
+    moved: list[SliceMoveOut]    # crops of other sheets (or this one) that get another serial
+    dropped_keys: list[str]      # pages whose OCR, extraction and decision are deleted
+    ocr: int
+    extractions: int
+    decisions: int
+    replaces_decision: bool      # the sheet had a review decision, which the sliced toss replaces
+    token: str
 
 
 class RotateIn(_Model):
@@ -495,6 +556,7 @@ class ArchiveMoveOut(_Model):
     key: str
     filename: str
     destination: str
+    note: str = ""        # "sliced sheet", or "crop of 1:2"
 
 
 class ArchiveStatus(_Model):

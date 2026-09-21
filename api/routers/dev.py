@@ -38,6 +38,7 @@ from extraction import PRICES, call_extractor, cost_of, extraction_messages
 from grounding import parse_grounding_output
 from models import TokenUse, iter_indexed_files, load_scan_index
 from scan_enhance import Enhancement, enhance
+from slicing import SLICES_DIR
 from settings import IMAGE_EXTENSIONS, get_config, update_config
 
 router = APIRouter(prefix="/api/dev", tags=["dev"])
@@ -103,6 +104,10 @@ def index_audit(output_path: Path = Depends(get_output_path)):
     input_path = _input_folder()
     if input_path is not None:
         on_disk = {f.name for f in input_path.iterdir() if f.is_file() and f.suffix.lower() in IMAGE_EXTENSIONS}
+        crops = input_path / SLICES_DIR   # sliced sheets' crops, indexed as "slices/<name>"
+        if crops.is_dir():
+            on_disk |= {f"{SLICES_DIR}/{f.name}" for f in crops.iterdir()
+                        if f.is_file() and f.suffix.lower() in IMAGE_EXTENSIONS}
         indexed_not_on_disk, on_disk_not_indexed = disk_vs_index_delta(on_disk, set(batch_ids_by_name))
         comparison = InputComparisonOut(on_disk=len(on_disk), indexed_not_on_disk=len(indexed_not_on_disk),
                                         on_disk_not_indexed=sorted(on_disk_not_indexed))

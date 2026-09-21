@@ -6,6 +6,8 @@ import TimeCapsule from './pages/TimeCapsule.tsx'
 import Receipt from './pages/Receipt.tsx'
 import Review from './pages/Review.tsx'
 import FileIndex from './pages/FileIndex.tsx'
+import Slice from './pages/Slice.tsx'
+import Group from './pages/Group.tsx'
 import Ocr from './pages/Ocr.tsx'
 import Parse from './pages/Parse.tsx'
 import Archive from './pages/Archive.tsx'
@@ -26,6 +28,8 @@ const NAV = [
     group: 'Ingest',
     items: [
       { to: '/file-index', label: 'File Index' },
+      { to: '/slice', label: 'Slice' },
+      { to: '/group', label: 'Group' },
       { to: '/ocr', label: 'OCR' },
       { to: '/parse', label: 'Parse' },
       { to: '/review', label: 'Review' },
@@ -103,6 +107,8 @@ export default function App() {
           <Route path="/timecapsule" element={<TimeCapsule />} />
           <Route path="/receipt" element={<Receipt />} />
           <Route path="/file-index" element={<FileIndex />} />
+          <Route path="/slice" element={<Slice />} />
+          <Route path="/group" element={<Group />} />
           <Route path="/ocr" element={<Ocr />} />
           <Route path="/parse" element={<Parse />} />
           <Route path="/review" element={<Review />} />

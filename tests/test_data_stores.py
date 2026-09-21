@@ -1,6 +1,9 @@
 """Persistence round-trips and archive-state derivations in data.py."""
 
 import json
+import shutil
+
+import pytest
 
 import data
 
@@ -15,6 +18,64 @@ def test_ocr_roundtrip(ingest_dir, tmp_path):
     out.mkdir()
     data.save_ocr_results(out, ocr)
     assert _dump(data.load_ocr_results(out)) == _dump(ocr)
+
+
+def test_ocr_results_live_one_file_per_batch(ingest_dir):
+    ocr = data.load_ocr_results(ingest_dir)
+    ocr["2:1"] = ocr["1:1"]
+    data.save_ocr_results(ingest_dir, ocr)
+    assert sorted(p.name for p in (ingest_dir / "ocr").iterdir()) == ["1.json", "2.json"]
+    assert list(data.load_ocr_batch(ingest_dir, 2)) == ["2:1"]
+    assert "2:1" not in data.load_ocr_batch(ingest_dir, 1)
+
+    del ocr["2:1"]
+    data.save_ocr_results(ingest_dir, ocr)        # a batch left out loses its file
+    assert not (ingest_dir / "ocr" / "2.json").exists()
+
+
+def test_a_batch_file_only_takes_its_own_batch(ingest_dir):
+    with pytest.raises(ValueError):
+        data.save_ocr_batch(ingest_dir, 1, {"2:1": data.load_ocr_results(ingest_dir)["1:1"]})
+    data.save_ocr_batch(ingest_dir, 1, {})         # emptied: the file goes
+    assert not (ingest_dir / "ocr" / "1.json").exists()
+    assert data.load_ocr_results(ingest_dir) == {}
+
+
+def _legacy(ingest_dir):
+    """The fixture as it was before OCR results were split by batch: one ocr.json, two batches."""
+    ocr = json.loads((ingest_dir / "ocr" / "1.json").read_text(encoding="utf-8"))
+    ocr["2:1"] = ocr["1:1"]
+    shutil.rmtree(ingest_dir / "ocr")
+    (ingest_dir / "ocr.json").write_text(json.dumps(ocr, ensure_ascii=False), encoding="utf-8")
+    return ocr
+
+
+def test_a_legacy_ocr_json_is_split_by_batch_and_kept_as_a_backup(ingest_dir):
+    legacy = _legacy(ingest_dir)
+    results = data.load_ocr_results(ingest_dir)
+
+    assert {k: v.model_dump() for k, v in results.items()} == {
+        k: data.OcrResult.model_validate(v).model_dump() for k, v in legacy.items()}
+    assert not (ingest_dir / "ocr.json").exists()
+    assert json.loads((ingest_dir / "ocr.json.migrated").read_text(encoding="utf-8")) == legacy
+    assert list(data.load_ocr_batch(ingest_dir, 2)) == ["2:1"]
+
+
+def test_an_interrupted_migration_writes_the_batches_still_missing(ingest_dir):
+    legacy = _legacy(ingest_dir)
+    only_one = {k: v for k, v in legacy.items() if k.startswith("1:")}
+    (ingest_dir / "ocr").mkdir()
+    (ingest_dir / "ocr" / "1.json").write_text(json.dumps(only_one, ensure_ascii=False), encoding="utf-8")
+
+    assert set(data.load_ocr_results(ingest_dir)) == set(legacy)
+
+
+def test_an_ocr_json_that_turns_up_again_cant_overwrite_newer_results(ingest_dir):
+    data.save_ocr_batch(ingest_dir, 1, {"1:1": data.OcrResult(markdown="read again since")})
+    (ingest_dir / "ocr.json").write_text(json.dumps({"1:1": {"markdown": "old"}, "3:1": {"markdown": "new batch"}}),
+                                         encoding="utf-8")
+    results = data.load_ocr_results(ingest_dir)
+    assert results["1:1"].markdown == "read again since" and results["3:1"].markdown == "new batch"
 
 
 def test_extractions_roundtrip(ingest_dir, tmp_path):
@@ -160,3 +221,25 @@ def test_save_decisions_gives_up_and_cleans_up_when_locked_for_good(ingest_dir, 
         data.save_decisions(ingest_dir, {})
     assert (ingest_dir / "decisions.json").read_text(encoding="utf-8") == before
     assert not list(ingest_dir.glob("decisions.*.tmp"))
+
+
+def test_the_ocr_cache_follows_every_batch_file(ingest_dir):
+    from api import ingest_store as store
+
+    store.clear()
+    first = store.ocr_results(ingest_dir)
+    assert store.ocr_results(ingest_dir) is first                  # unchanged: served from the cache
+    data.save_ocr_batch(ingest_dir, 2, {"2:1": first["1:1"]})       # a batch file appears
+    assert "2:1" in store.ocr_results(ingest_dir)
+    data.save_ocr_batch(ingest_dir, 2, {})                          # ... and goes
+    assert "2:1" not in store.ocr_results(ingest_dir)
+
+
+def test_the_ocr_cache_migrates_before_it_measures(ingest_dir):
+    from api import ingest_store as store
+
+    store.clear()
+    _legacy(ingest_dir)
+    migrated = store.ocr_results(ingest_dir)
+    assert "2:1" in migrated
+    assert store.ocr_results(ingest_dir) is migrated                # the migration isn't mistaken for a change

@@ -1,4 +1,4 @@
-"""Ingest step endpoints: File Index (batches, grouping, rotate, toss), OCR, Parse and Archive.
+"""Ingest step endpoints: File Index (batches, slicing, grouping, rotate, toss), OCR, Parse and Archive.
 
 Thin wrappers over ingest_pipeline. OCR, Parse and Archive run as background jobs (api.jobs), side by
 side when they don't collide: each holds the batches it works on (and the GPU, if it loads a model), a
@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 import ingest_pipeline as pipeline
 import rate_budget
+import slicing
 from api import cache, ingest_registry as registry
 from api import ingest_store as store
 from api.deps import get_input_path, get_output_path
@@ -22,12 +23,13 @@ from api.guards import no_job_running, planning_a_job
 from api.jobs import EVERYTHING, NOTHING_HELD, Claim, JobConflict, runner
 from api.model_manager import models
 from api.schemas import (
-    ArchiveMoveOut, ArchiveStatus, BatchFile, BatchOut, ConfirmIndexIn, GroupingOut, GroupingPageOut, IndexStatus,
-    JobOut, OcrStatus, PageIn, ParseStatus, ProposedBatch, RotateIn, SaveGroupingIn, SaveGroupingOut,
-    StartOcrIn, StartParseIn,
+    ApplySliceIn, ArchiveMoveOut, ArchiveStatus, BatchFile, BatchOut, ConfirmIndexIn, GroupingOut, GroupingPageOut,
+    IndexStatus, JobOut, OcrStatus, PageIn, ParseStatus, ProposedBatch, RotateIn, SaveGroupingIn, SaveGroupingOut,
+    SliceCropOut, SliceMoveOut, SlicePlanIn, SlicePlanOut, SlicingOut, SlicingSheetOut, StartOcrIn, StartParseIn,
 )
+from data import load_decisions, load_document_groups
 from indexing_schemes import SCHEMES
-from models import ScanBatch, parse_batch_serial_key
+from models import ScanBatch, batch_serial_key, parse_batch_serial_key
 from settings import get_config, update_config
 
 router = APIRouter(prefix="/api/ingest", tags=["ingest"])
@@ -49,6 +51,13 @@ def _start(kind: str, title: str, prepare) -> dict:
     with planning_a_job():
         fn, claim = prepare(runner.held_batches())
         return runner.start(kind, title, fn, claim)
+
+
+def _image(input_path: Path, filename: str) -> tuple[bool, int]:
+    """Whether a page's image is in the input folder, and its version (for thumbnail caching)."""
+    path = input_path / filename
+    available = path.is_file()
+    return available, path.stat().st_mtime_ns if available else 0
 
 
 def _page_claim(key: str) -> Claim:
@@ -124,11 +133,10 @@ def grouping(
         raise HTTPException(status_code=404, detail=str(exc.args[0])) from exc
     pages = []
     for page in state.pages:
-        path = input_path / page.filename
-        available = path.is_file()
+        available, version = _image(input_path, page.filename)
         pages.append(GroupingPageOut(key=page.key, serial=page.serial, filename=page.filename, tossed=page.tossed,
-                                     image_available=available,
-                                     image_version=path.stat().st_mtime_ns if available else 0))
+                                     image_available=available, image_version=version, crop_of=page.crop_of,
+                                     cell=page.cell, sliced=page.sliced))
     return GroupingOut(blocker=None, batches=batches, batch_id=chosen, pages=pages, display_keys=state.display_keys,
                        active_links=state.active_links, saved_groups=state.saved_groups)
 
@@ -153,6 +161,8 @@ def _set_tossed(body: PageIn, output_path: Path, tossed: bool) -> SaveGroupingOu
             pipeline.set_page_tossed(output_path, body.key, tossed)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc.args[0])) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return SaveGroupingOut(changed=True)
 
 
@@ -182,7 +192,99 @@ def rotate_page(
         raise HTTPException(status_code=404, detail=str(exc.args[0])) from exc
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="the scan is not in the input folder") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return SaveGroupingOut(changed=True)
+
+
+# --- Slicing sheets of small receipts ------------------------------------------------------------------
+@router.get("/slicing", response_model=SlicingOut)
+def slicing_state(
+    batch_id: int | None = None,
+    output_path: Path = Depends(get_output_path),
+    input_path: Path = Depends(get_input_path),
+):
+    """A batch's scanned pages with their grids and crops, for cutting sheets into one page per receipt.
+
+    Without ``batch_id``, or when that batch has been archived meanwhile, the first unarchived batch.
+    """
+    batches = _unarchived_batches(output_path)
+    if not batches:
+        return SlicingOut(blocker="No unarchived batches. Add batches on File Index first.", batches=[],
+                          batch_id=None, sheets=[], problems=[])
+    chosen = batch_id if any(b.batch_id == batch_id for b in batches) else batches[0].batch_id
+    batch = next(b for b in pipeline._load_index(output_path).batches if b.batch_id == chosen)
+    decisions = load_decisions(output_path)
+    groups = load_document_groups(output_path).groups
+    crops_of: dict[int, list[SliceCropOut]] = {}
+    for crop in slicing.current_crops(batch):
+        available, version = _image(input_path, crop.filename)
+        crops_of.setdefault(crop.of.sheet, []).append(SliceCropOut(
+            key=batch_serial_key(chosen, crop.serial), serial=crop.serial, filename=crop.filename, row=crop.of.row,
+            col=crop.of.col, image_available=available, image_version=version))
+    sheets = []
+    for serial in slicing.scan_serials(batch):
+        key = batch_serial_key(chosen, serial)
+        available, version = _image(input_path, batch.files[serial])
+        decision = decisions.get(key)
+        sheets.append(SlicingSheetOut(
+            key=key, serial=serial, filename=batch.files[serial], image_available=available, image_version=version,
+            grid=batch.grids.get(serial), crops=crops_of.get(serial, []), sliced=bool(decision and decision.sliced),
+            refusal=slicing.why_not(batch, serial, decisions, groups)))
+    return SlicingOut(blocker=None, batches=batches, batch_id=chosen, sheets=sheets,
+                      problems=slicing.mismatches(batch, decisions))
+
+
+def _sheet(key: str) -> tuple[int, int]:
+    parsed = parse_batch_serial_key(key)
+    if parsed is None:
+        raise HTTPException(status_code=404, detail=f"not a page key: {key}")
+    return parsed
+
+
+def _plan_out(key: str, plan: slicing.SlicePlan) -> SlicePlanOut:
+    b = plan.batch_id
+    return SlicePlanOut(
+        key=key, new_keys=plan.new_keys,
+        moved=[SliceMoveOut(old_key=batch_serial_key(b, old), new_key=batch_serial_key(b, new))
+               for old, new in plan.moved],
+        dropped_keys=sorted(plan.dropped_keys, key=lambda k: parse_batch_serial_key(k) or (0, 0)),
+        ocr=plan.ocr, extractions=plan.extractions, decisions=plan.decisions,
+        replaces_decision=plan.replaces_decision, token=plan.token)
+
+
+@router.post("/slices/plan", response_model=SlicePlanOut)
+def plan_slices(body: SlicePlanIn, output_path: Path = Depends(get_output_path)):
+    """What cutting a sheet by ``grid`` (or unslicing it, with no grid) would do, to confirm before saving."""
+    batch_id, serial = _sheet(body.key)
+    try:
+        return _plan_out(body.key, slicing.plan_slices(output_path, batch_id, serial, body.grid))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc.args[0])) from exc
+    except slicing.SliceRefused as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.put("/slices", response_model=SlicePlanOut)
+def apply_slices(
+    body: ApplySliceIn,
+    output_path: Path = Depends(get_output_path),
+    input_path: Path = Depends(get_input_path),
+):
+    """Cut the sheet (or unslice it), if the plan is still the one confirmed. Holds the sheet's batch."""
+    batch_id, serial = _sheet(body.key)
+    try:
+        with no_job_running("slice sheets", claim=Claim(batches=frozenset({batch_id}))), store.decisions_lock:
+            plan = slicing.apply_slices(output_path, input_path, batch_id, serial, body.grid, body.token)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc.args[0])) from exc
+    except slicing.SliceRefused as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except slicing.StaleSlicePlan as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="the sheet's scan is not in the input folder") from exc
+    return _plan_out(body.key, plan)
 
 
 # --- OCR --------------------------------------------------------------------------------------------
@@ -305,7 +407,8 @@ def archive_status(output_path: Path = Depends(get_output_path)):
         blocker=plan.blocker, unarchived_batches=plan.unarchived_batches, complete_batches=plan.complete_batches,
         documents=plan.documents, multipage=plan.multipage, files=plan.files, accepted=plan.accepted,
         marked=plan.marked, tossed=plan.tossed,
-        moves=[ArchiveMoveOut(key=m.key, filename=m.filename, destination=m.destination) for m in plan.moves],
+        moves=[ArchiveMoveOut(key=m.key, filename=m.filename, destination=m.destination, note=m.note)
+               for m in plan.moves],
     )
 
 

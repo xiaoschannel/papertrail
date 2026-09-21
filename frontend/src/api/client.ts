@@ -2,7 +2,8 @@ import createClient from 'openapi-fetch'
 import type { paths } from './schema'
 import type {
   AppConfig, BrandIn, ConfirmIndexIn, DecisionIn, Draft, ExperimentOcrIn, ExperimentParseIn, ExperimentTreatment,
-  MerchantTotals, ReceiptEditIn, StartOcrIn, StartParseIn, TopPoints, Verdict, WorkshopDecisionIn, WorkshopReprocessIn,
+  MerchantTotals, ReceiptEditIn, SheetGrid, StartOcrIn, StartParseIn, TopPoints, Verdict, WorkshopDecisionIn,
+  WorkshopReprocessIn,
 } from './types.ts'
 
 /** Typed HTTP client. Paths, query parameters and response bodies all come from
@@ -92,6 +93,13 @@ export const api = {
     recover: (key: string) => unwrap(client.POST('/api/ingest/pages/recover', { body: { key } })),
     rotate: (key: string, topPoints: TopPoints) =>
       unwrap(client.POST('/api/ingest/pages/rotate', { body: { key, top_points: topPoints } })),
+    slicing: (batchId?: number) =>
+      unwrap(client.GET('/api/ingest/slicing', { params: { query: { batch_id: batchId ?? null } } })),
+    /** What cutting `key` by `grid` (null: unslicing it) would do, to confirm before `applySlices`. */
+    planSlices: (key: string, grid: SheetGrid | null) =>
+      unwrap(client.POST('/api/ingest/slices/plan', { body: { key, grid } })),
+    applySlices: (key: string, grid: SheetGrid | null, token: string) =>
+      unwrap(client.PUT('/api/ingest/slices', { body: { key, grid, token } })),
     ocr: (query: OcrQuery) => unwrap(client.GET('/api/ingest/ocr', {
       params: {
         query: { provider: query.provider ?? null, batch_id: query.batchId ?? null, reprocess: query.reprocess, limit: query.limit },
@@ -212,8 +220,10 @@ export const experimentScanUrl = (runId: string, treatment: ExperimentTreatment)
 export const experimentSeenUrl = (runId: string, version: string): string =>
   withQuery(`/api/dev/experiment/${encodeURIComponent(runId)}/seen`, { v: version })
 
-/** A scan in the input folder at full size. */
-export const inputUrl = (filename: string): string => `/api/media/input/${encodeURIComponent(filename)}`
+/** A scan in the input folder at full size; `version` (the file's mtime) busts the cache after a rotate,
+ *  since the file keeps its name and the browser would otherwise show the copy it has. */
+export const inputUrl = (filename: string, version: number): string =>
+  `/api/media/input/${encodeURIComponent(filename)}?v=${version}`
 
 /** A scan in the input folder, scaled down; `version` (the file's mtime) busts the cache after a rotate. */
 export const inputThumbUrl = (filename: string, version: number, width = 360): string =>

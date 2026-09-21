@@ -99,10 +99,13 @@ Scan your documents into a folder, and follow this process:
 
 ## Ingest
 1. **File Index** — Ingest new batches of scanned files.
-2. **OCR** — Batch OCR across all scanned images.
-3. **Parse** — Parse OCR results into file metadata.
-4. **Review** — Review parsed metadata and manually correct if needed. Mark bad documents for re-processing.
-5. **Archive** — Organize files into date-based folders and clean up.
+2. **Slice** — Cut a sheet of receipts too small to scan alone (tape them onto a sheet in a grid) into one page
+   per receipt. The sheet is kept, tossed. Turn it upright first: the crops are cut the way it faces.
+3. **Group** — Link pages that belong to one document, and toss pages that don't belong in the archive.
+4. **OCR** — Batch OCR across all scanned images.
+5. **Parse** — Parse OCR results into file metadata.
+6. **Review** — Review parsed metadata and manually correct if needed. Mark bad documents for re-processing.
+7. **Archive** — Organize files into date-based folders and clean up.
 
 ## Curate
 1. **Marked Workshop** — Reprocess marked files with image enhancement, and contextual aids.

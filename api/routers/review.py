@@ -153,6 +153,13 @@ def hints_endpoint(body: HintsRequest, output_path: Path = Depends(get_output_pa
                          accept_error=rl.accept_error(draft))
 
 
+def _refuse_a_sliced_sheet(decisions: dict[str, ReviewDecision], key: str) -> None:
+    """A sheet cut into crops stays tossed until it is unsliced; nothing in Review may change that."""
+    if key in decisions and decisions[key].sliced:
+        raise HTTPException(status_code=409,
+                            detail=f"{key} is a sliced sheet; unslice it on the Slice page to review it.")
+
+
 @router.post("/decisions", response_model=ReviewSummary)
 def decide_endpoint(body: DecisionIn, output_path: Path = Depends(get_output_path)):
     """Record accept/mark/toss for a document. Accept is validated; mark and toss never are."""
@@ -164,6 +171,7 @@ def decide_endpoint(body: DecisionIn, output_path: Path = Depends(get_output_pat
     decision = _decision(body)
     with _no_archive_running(), store.decisions_lock:
         decisions = load_decisions(output_path)
+        _refuse_a_sliced_sheet(decisions, body.key)
         decisions[body.key] = decision
         save_decisions(output_path, decisions)
     return _summary(store.extractions(output_path), decisions)
@@ -181,6 +189,7 @@ def undo_endpoint(body: DecisionIn, output_path: Path = Depends(get_output_path)
         decisions = load_decisions(output_path)
         if body.key not in decisions:
             raise HTTPException(status_code=404, detail=f"Can't undo {body.key}: it no longer has a decision.")
+        _refuse_a_sliced_sheet(decisions, body.key)
         if decisions[body.key] != _decision(body):
             raise HTTPException(status_code=409,
                                 detail=f"Can't undo {body.key}: it was decided again or regrouped since.")
@@ -191,7 +200,9 @@ def undo_endpoint(body: DecisionIn, output_path: Path = Depends(get_output_path)
 
 @router.delete("/decisions", response_model=ReviewSummary)
 def clear_endpoint(output_path: Path = Depends(get_output_path)):
-    """Clear every review decision (the UI confirms first)."""
+    """Clear every review decision (the UI confirms first). Sliced sheets stay tossed: only unslicing a
+    sheet takes that toss back."""
     with _no_archive_running(), store.decisions_lock:
-        save_decisions(output_path, {})
-    return _summary(store.extractions(output_path), {})
+        kept = {k: v for k, v in load_decisions(output_path).items() if v.sliced}
+        save_decisions(output_path, kept)
+    return _summary(store.extractions(output_path), kept)

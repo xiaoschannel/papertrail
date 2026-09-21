@@ -69,19 +69,108 @@ def atomic_write_text(target: Path, text: str) -> None:
         tmp.unlink(missing_ok=True)
 
 
-def load_ocr_results(output_path: Path) -> dict[str, OcrResult]:
-    results_file = output_path / "ocr.json"
-    if not results_file.exists():
-        return {}
-    data = json.loads(results_file.read_text(encoding="utf-8"))
-    if "results" in data:
+#: OCR results live one file per batch, ``ocr/<batch_id>.json``. Jobs and edits claim whole batches, so
+#: only the one holding a batch ever writes its file: the batch claim is the lock, and a run on one batch
+#: can't write back a stale copy of another batch's results.
+OCR_DIR = "ocr"
+#: The single file OCR results were kept in before; migrated into ``ocr/`` on first read and kept, renamed,
+#: until the next Archive as a backup.
+LEGACY_OCR, MIGRATED_OCR = "ocr.json", "ocr.json.migrated"
+
+_ocr_migration_lock = threading.Lock()
+
+
+def _ocr_batch_path(output_path: Path, batch_id: int) -> Path:
+    return output_path / OCR_DIR / f"{batch_id}.json"
+
+
+def _ocr_batch_of(key: str) -> int | None:
+    left, _, right = key.partition(":")
+    return int(left) if left.isdigit() and right else None
+
+
+def _parse_ocr(text: str) -> dict[str, OcrResult]:
+    data = json.loads(text)
+    if "results" in data:       # an older layout that is no longer read
         return {}
     return {k: OcrResult.model_validate(v) for k, v in data.items()}
 
 
+def _write_ocr_batch(output_path: Path, batch_id: int, results: dict[str, OcrResult]) -> None:
+    path = _ocr_batch_path(output_path, batch_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write_text(path, json.dumps({k: v.model_dump() for k, v in results.items()}, indent=2, ensure_ascii=False))
+
+
+def migrate_ocr_results(output_path: Path) -> None:
+    """Split a legacy ``ocr.json`` into per-batch files, then rename it to ``ocr.json.migrated``.
+
+    Safe to repeat: batch files are written whole (atomically), so an interrupted migration just runs again
+    and writes the ones still missing. A batch that already has a file keeps it, so an ``ocr.json`` that
+    turns up again (older code run against the folder) can't overwrite newer results.
+    """
+    legacy = output_path / LEGACY_OCR
+    with _ocr_migration_lock:
+        if not legacy.exists():
+            return
+        by_batch: dict[int, dict[str, OcrResult]] = {}
+        for key, result in _parse_ocr(legacy.read_text(encoding="utf-8")).items():
+            batch_id = _ocr_batch_of(key)
+            if batch_id is not None:
+                by_batch.setdefault(batch_id, {})[key] = result
+        for batch_id, results in by_batch.items():
+            if not _ocr_batch_path(output_path, batch_id).exists():
+                _write_ocr_batch(output_path, batch_id, results)
+        legacy.replace(output_path / MIGRATED_OCR)
+
+
+def ocr_batch_ids(output_path: Path) -> list[int]:
+    folder = output_path / OCR_DIR
+    if not folder.is_dir():
+        return []
+    return sorted(int(p.stem) for p in folder.glob("*.json") if p.stem.isdigit())
+
+
+def load_ocr_batch(output_path: Path, batch_id: int) -> dict[str, OcrResult]:
+    """One batch's OCR results."""
+    migrate_ocr_results(output_path)
+    path = _ocr_batch_path(output_path, batch_id)
+    return _parse_ocr(path.read_text(encoding="utf-8")) if path.exists() else {}
+
+
+def save_ocr_batch(output_path: Path, batch_id: int, results: dict[str, OcrResult]) -> None:
+    """Replace one batch's OCR results. Only whoever holds the batch may call this."""
+    if any(_ocr_batch_of(key) != batch_id for key in results):
+        raise ValueError(f"OCR results for another batch can't be saved into batch {batch_id}")
+    if results:
+        _write_ocr_batch(output_path, batch_id, results)
+    else:
+        _ocr_batch_path(output_path, batch_id).unlink(missing_ok=True)
+
+
+def load_ocr_results(output_path: Path) -> dict[str, OcrResult]:
+    """Every batch's OCR results, for readers."""
+    migrate_ocr_results(output_path)
+    results: dict[str, OcrResult] = {}
+    for batch_id in ocr_batch_ids(output_path):
+        results.update(load_ocr_batch(output_path, batch_id))
+    return results
+
+
 def save_ocr_results(output_path: Path, results: dict[str, OcrResult]):
-    d = {k: v.model_dump() for k, v in results.items()}
-    atomic_write_text(output_path / "ocr.json", json.dumps(d, indent=2, ensure_ascii=False))
+    """Replace every batch's OCR results (a batch left out loses its file). For tools and tests: a
+    running step writes only the batches it holds, with ``save_ocr_batch``."""
+    migrate_ocr_results(output_path)
+    by_batch: dict[int, dict[str, OcrResult]] = {}
+    for key, result in results.items():
+        batch_id = _ocr_batch_of(key)
+        if batch_id is None:
+            raise ValueError(f"not a page key: {key}")
+        by_batch.setdefault(batch_id, {})[key] = result
+    for batch_id in set(ocr_batch_ids(output_path)) - set(by_batch):
+        _ocr_batch_path(output_path, batch_id).unlink()
+    for batch_id, batch_results in by_batch.items():
+        save_ocr_batch(output_path, batch_id, batch_results)
 
 
 def load_extractions(output_path: Path) -> dict[str, DocumentExtraction]:
@@ -113,6 +202,16 @@ def merge_extractions(output_path: Path, produced: dict[str, DocumentExtraction]
         save_extractions(output_path, current)
 
 
+def drop_extractions(output_path: Path, keys: set[str]) -> int:
+    """Remove these documents' extractions from the file as it is on disk now; returns how many went."""
+    with extractions_lock:
+        current = load_extractions(output_path)
+        gone = keys & set(current)
+        if gone:
+            save_extractions(output_path, {k: v for k, v in current.items() if k not in gone})
+        return len(gone)
+
+
 #: Where the runs behind the mid-ingest results live, keyed exactly as the results they describe: pages
 #: for OCR, documents for extractions. Archive folds them into the sidecars and deletes them.
 OCR_RUNS, EXTRACTION_RUNS = "ocr_runs.json", "extraction_runs.json"
@@ -138,6 +237,17 @@ def merge_model_runs(output_path: Path, name: str, produced: dict[str, ModelRun]
                           json.dumps({k: v.model_dump() for k, v in current.items()}, indent=2, ensure_ascii=False))
 
 
+def drop_model_runs(output_path: Path, name: str, keys: set[str]) -> int:
+    """Remove these items' runs from the file as it is on disk now; returns how many went."""
+    with _runs_lock:
+        current = load_model_runs(output_path, name)
+        gone = keys & set(current)
+        if gone:
+            atomic_write_text(output_path / name, json.dumps(
+                {k: v.model_dump() for k, v in current.items() if k not in gone}, indent=2, ensure_ascii=False))
+        return len(gone)
+
+
 def load_decisions(output_path: Path) -> dict[str, ReviewDecision]:
     dec_file = output_path / "decisions.json"
     if not dec_file.exists():
@@ -147,7 +257,7 @@ def load_decisions(output_path: Path) -> dict[str, ReviewDecision]:
 
 
 def save_decisions(output_path: Path, decisions: dict[str, ReviewDecision]):
-    d = {k: v.model_dump() for k, v in decisions.items()}
+    d = {k: v.model_dump(exclude_none=True) for k, v in decisions.items()}
     atomic_write_text(output_path / "decisions.json", json.dumps(d, indent=2, ensure_ascii=False))
 
 
@@ -312,14 +422,19 @@ def _iter_year_month_dirs(output_path: Path):
             yield month_dir
 
 
+def _filed_scan_name(page: Path) -> str:
+    """The scan a page in tossed/ or marked/ was filed from: its sidecar's name for it (a crop's includes its
+    slices/ folder, which the file in tossed/ doesn't), or the file's own name without a sidecar."""
+    sidecar = read_sidecar(page)
+    return sidecar.original_filename if sidecar and sidecar.original_filename else page.name
+
+
 def scan_organized_filenames(output_path: Path) -> set[str]:
     organized: set[str] = set()
-    tossed_dir = output_path / "tossed"
-    if tossed_dir.exists():
-        organized.update(p.name for p in tossed_dir.iterdir() if p.is_file() and p.suffix.lower() != ".json")
-    marked_dir = output_path / "marked"
-    if marked_dir.exists():
-        organized.update(p.name for p in marked_dir.iterdir() if p.is_file() and p.suffix.lower() != ".json")
+    for folder in (output_path / "tossed", output_path / "marked"):
+        if folder.exists():
+            organized.update(_filed_scan_name(p) for p in folder.iterdir()
+                             if p.is_file() and p.suffix.lower() != ".json")
     for month_dir in _iter_year_month_dirs(output_path):
         for sidecar_path in month_dir.glob("*.json"):
             sidecar = Sidecar.model_validate_json(sidecar_path.read_text(encoding="utf-8"))
