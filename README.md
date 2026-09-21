@@ -46,6 +46,54 @@ To try things without touching your archive, `tools/sandbox_server.py` runs the 
 invented scans with fake models (port 8001); `npm --prefix frontend run dev:sandbox` serves the web app for it
 on port 5174.
 
+## Several checkouts at once
+
+Each git worktree runs its own sandbox beside the main checkout's, on ports of its own. Set a new worktree up
+once, with the main checkout's Python:
+```
+<main checkout>\.venv\Scripts\python tools\worktree_setup.py
+npm --prefix frontend install
+```
+It claims the worktree a numbered slot — slot *n* serves its sandbox on API `8001+n` and web `5174+n` — and
+prints the URL. The slot is kept for as long as the worktree exists, so the ports stay put across restarts;
+deleting the worktree frees it. The main checkout's ports never change.
+
+A worktree runs the **sandbox only**. The live archive belongs to the main checkout: two API processes on it,
+running different code, is how it gets hurt, so `npm run dev` in a worktree refuses. A worktree that hasn't
+been set up refuses to start its sandbox too, rather than landing on the main checkout's ports.
+
+The setup also writes `.claude/launch.json`, the dev servers Claude Code starts. A worktree's are named for
+its slot (`sandbox-api-1`, `sandbox-web-1`), so starting one never stands in for another checkout's server of
+the same name. How slots are chosen is in `dev_ports.py`.
+
+## Deploying live
+
+The live app — the main checkout's API on 8000 and web app on 5173 — runs as the Windows scheduled task
+`papertrail-live` rather than in a terminal, so it stays up however terminals and editors come and go.
+
+Set it up once per machine, after the venv and `npm --prefix frontend install` above:
+```
+.venv\Scripts\python tools\deploy.py install        register the task
+.venv\Scripts\python tools\deploy.py autostart on   start live whenever you log in (off by default)
+.venv\Scripts\python tools\deploy.py                start it now
+```
+`autostart off` undoes the second one; without it, a reboot leaves live down until someone starts it. The
+commands work from any checkout, and always act on the main checkout.
+
+After a PR merges, that same `tools\deploy.py` puts the main checkout on the latest `main`, installs what
+changed in `requirements.txt` or the frontend's packages, restarts live, and waits until the web app answers
+through its API proxy.
+
+It won't restart while a job (OCR, Parse, Archive) is running on live, since that would kill it — it names
+the job and stops; `--even-with-job` overrides. And it leaves the main checkout alone if it holds work:
+uncommitted changes to tracked files, a branch not merged into `main`, or commits `origin` doesn't have.
+Either way nothing is stopped, so a refused deploy costs no uptime.
+
+`tools\deploy.py status` shows what live runs, whether it starts at logon, and how far behind it is;
+`restart` restarts it as it is, and `stop` takes it down until someone starts it again — killing the servers
+by hand instead leaves the task believing it still runs them. Live's output goes to `.live\api.log` and
+`.live\web.log` in the main checkout.
+
 # Workflow
 Scan your documents into a folder, and follow this process:
 

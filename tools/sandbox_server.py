@@ -1,14 +1,16 @@
 """The SANDBOX environment: the API on a throwaway archive of invented scans, with fake OCR/LLM models.
 
 It never reads or writes the live archive, never loads a real model (so it takes no VRAM from a live
-OCR run), and listens on 8001 — the live API keeps 8000 — so both can run at once:
+OCR run), and listens on its own port — 8001 in the main checkout, the live API keeping 8000; a worktree's
+own slot otherwise (dev_ports.py) — so every checkout's sandbox and the live app can all run at once:
 
     .venv/Scripts/python tools/sandbox_server.py
     npm --prefix frontend run dev:sandbox
 
-Then open http://127.0.0.1:5174 and walk File Index -> OCR -> Parse -> Review -> Archive. Everything
-lives under <repo>/.sandbox (gitignored). A restart keeps whatever is there, so you don't lose a
-half-finished batch when the server picks up new code; pass --fresh to start from nothing.
+Then open http://127.0.0.1:5174 (in a worktree, the port tools/worktree_setup.py printed) and walk
+File Index -> OCR -> Parse -> Review -> Archive. Everything lives under <repo>/.sandbox (gitignored).
+A restart keeps whatever is there, so you don't lose a half-finished batch when the server picks up new
+code; pass --fresh to start from nothing.
 """
 import json, os, re, shutil, sys, time
 from pathlib import Path
@@ -18,6 +20,14 @@ from PIL import Image, ImageDraw, ImageFont
 REPO = Path(__file__).resolve().parent.parent
 BOX = REPO / ".sandbox"
 sys.path.insert(0, str(REPO))
+
+# Settled before anything is built: a worktree that hasn't claimed its ports must stop here, not come up
+# on the main checkout's sandbox ports. PAPERTRAIL_API_PORT still wins, for a one-off.
+from dev_ports import NotSetUp, checkout_ports
+try:
+    PORT = int(os.environ.get("PAPERTRAIL_API_PORT") or checkout_ports(REPO).sandbox_api)
+except NotSetUp as not_set_up:
+    sys.exit(str(not_set_up))
 
 FRESH = "--fresh" in sys.argv[1:]
 REUSING = BOX.exists() and not FRESH
@@ -128,5 +138,4 @@ ingest_registry.unload_extractor = lambda name: (lambda: print(f"[sandbox] unloa
 
 import uvicorn
 from api.main import create_app
-PORT = int(os.environ.get("PAPERTRAIL_API_PORT", 8001))  # the live API keeps 8000
 uvicorn.run(create_app(), host="127.0.0.1", port=PORT)
