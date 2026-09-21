@@ -93,6 +93,9 @@ export const api = {
     recover: (key: string) => unwrap(client.POST('/api/ingest/pages/recover', { body: { key } })),
     rotate: (key: string, topPoints: TopPoints) =>
       unwrap(client.POST('/api/ingest/pages/rotate', { body: { key, top_points: topPoints } })),
+    /** The batch's pages whose scan looks sideways or upside down (503 when the model can't be had). */
+    turned: (batchId: number) =>
+      unwrap(client.GET('/api/ingest/turned', { params: { query: { batch_id: batchId } } })),
     slicing: (batchId?: number) =>
       unwrap(client.GET('/api/ingest/slicing', { params: { query: { batch_id: batchId ?? null } } })),
     /** What cutting `key` by `grid` (null: unslicing it) would do, to confirm before `applySlices`. */
