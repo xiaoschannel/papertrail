@@ -1,6 +1,9 @@
 """Keys and document grouping — the backbone identifiers the whole app uses."""
 
+import json
+
 import data
+import models
 from models import DocumentIndex, DocumentKey, FileKey
 
 
@@ -97,3 +100,20 @@ def test_document_index_expand_decisions(ingest_dir):
 
     expanded = index.expand_decisions({multi: "verdict"})
     assert expanded == {"1:4": "verdict", "1:5": "verdict"}
+
+
+def test_a_batch_without_sliced_sheets_is_saved_as_before(ingest_dir):
+    raw = json.loads((ingest_dir / "batches.json").read_text(encoding="utf-8"))
+    index = models.load_scan_index(ingest_dir)
+    assert json.loads(index.model_dump_json()) == raw          # no empty grids/slices keys appear
+
+
+def test_a_sliced_toss_is_kept_in_decisions_json_and_others_look_as_before(ingest_dir):
+    decisions = data.load_decisions(ingest_dir)
+    decisions["1:2"] = models.ReviewDecision(verdict="tossed", toss_reason="sliced", document_type="other",
+                                             name="", date="", time="")
+    data.save_decisions(ingest_dir, decisions)
+    raw = json.loads((ingest_dir / "decisions.json").read_text(encoding="utf-8"))
+    assert raw["1:2"]["toss_reason"] == "sliced" and "toss_reason" not in raw["1:1"]
+    reread = data.load_decisions(ingest_dir)
+    assert reread["1:2"].sliced and not reread["1:6"].sliced   # 1:6 was tossed by hand

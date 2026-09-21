@@ -288,6 +288,7 @@ class DecisionOut(_Model):
     cost: float
     currency: str
     comment: str
+    toss_reason: Literal["sliced"] | None = None
 
 
 class ReviewDocument(_Model):

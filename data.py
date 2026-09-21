@@ -202,6 +202,16 @@ def merge_extractions(output_path: Path, produced: dict[str, DocumentExtraction]
         save_extractions(output_path, current)
 
 
+def drop_extractions(output_path: Path, keys: set[str]) -> int:
+    """Remove these documents' extractions from the file as it is on disk now; returns how many went."""
+    with extractions_lock:
+        current = load_extractions(output_path)
+        gone = keys & set(current)
+        if gone:
+            save_extractions(output_path, {k: v for k, v in current.items() if k not in gone})
+        return len(gone)
+
+
 #: Where the runs behind the mid-ingest results live, keyed exactly as the results they describe: pages
 #: for OCR, documents for extractions. Archive folds them into the sidecars and deletes them.
 OCR_RUNS, EXTRACTION_RUNS = "ocr_runs.json", "extraction_runs.json"
@@ -227,6 +237,17 @@ def merge_model_runs(output_path: Path, name: str, produced: dict[str, ModelRun]
                           json.dumps({k: v.model_dump() for k, v in current.items()}, indent=2, ensure_ascii=False))
 
 
+def drop_model_runs(output_path: Path, name: str, keys: set[str]) -> int:
+    """Remove these items' runs from the file as it is on disk now; returns how many went."""
+    with _runs_lock:
+        current = load_model_runs(output_path, name)
+        gone = keys & set(current)
+        if gone:
+            atomic_write_text(output_path / name, json.dumps(
+                {k: v.model_dump() for k, v in current.items() if k not in gone}, indent=2, ensure_ascii=False))
+        return len(gone)
+
+
 def load_decisions(output_path: Path) -> dict[str, ReviewDecision]:
     dec_file = output_path / "decisions.json"
     if not dec_file.exists():
@@ -236,7 +257,7 @@ def load_decisions(output_path: Path) -> dict[str, ReviewDecision]:
 
 
 def save_decisions(output_path: Path, decisions: dict[str, ReviewDecision]):
-    d = {k: v.model_dump() for k, v in decisions.items()}
+    d = {k: v.model_dump(exclude_none=True) for k, v in decisions.items()}
     atomic_write_text(output_path / "decisions.json", json.dumps(d, indent=2, ensure_ascii=False))
 
 

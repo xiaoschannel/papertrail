@@ -161,6 +161,11 @@ VERDICT_LABELS: dict[Verdict, str] = {
 }
 
 
+#: Why a document was tossed, when it wasn't a person's call. "sliced": the page is a sheet of small
+#: receipts that was cut into crops (``ScanBatch.grids``); only slicing sets or clears this toss.
+TossReason = Literal["sliced"]
+
+
 class ReviewDecision(BaseModel):
     verdict: Verdict
     document_type: str
@@ -170,6 +175,11 @@ class ReviewDecision(BaseModel):
     cost: float = 0.0
     currency: str = ""
     comment: str = ""
+    toss_reason: TossReason | None = None
+
+    @property
+    def sliced(self) -> bool:
+        return self.verdict == "tossed" and self.toss_reason == "sliced"
 
 
 class SmartMatchHistoryRow(BaseModel):
@@ -197,14 +207,68 @@ class Sidecar(BaseModel):
     #: what the two model calls behind this document took; absent for documents filed before this was kept
     ocr_run: ModelRun | None = None
     extraction_run: ModelRun | None = None
+    #: a crop: the sheet it was cut from ("batch:serial"), its grid cell and the cell's box on the sheet
+    slice_of: str | None = None
+    slice_cell: tuple[int, int] | None = None
+    slice_box: "Box | None" = None
+
+
+#: Grid coordinates are on a 0-1000 scale of the sheet image, like OCR boxes, so they never need its size.
+GRID_SCALE = 1000
+#: The most rows or columns a sheet's grid may have.
+MAX_GRID = 12
+
+
+class Box(BaseModel):
+    x1: int
+    y1: int
+    x2: int
+    y2: int
+
+
+class SheetGrid(BaseModel):
+    """How a sheet of small receipts taped together is cut: an m x n grid over ``frame``.
+
+    ``row_lines`` and ``col_lines`` are the m-1 and n-1 dividers inside the frame; ``cells`` are the
+    [row, col] (from 1) that hold a receipt, since a grid can run out of receipts before it runs out of
+    cells. The sheet is already upright, so every crop inherits its rotation.
+    """
+
+    frame: Box
+    row_lines: list[int] = []
+    col_lines: list[int] = []
+    cells: list[tuple[int, int]]
+
+    @property
+    def rows(self) -> int:
+        return len(self.row_lines) + 1
+
+    @property
+    def cols(self) -> int:
+        return len(self.col_lines) + 1
+
+
+class SliceOf(BaseModel):
+    """Where a crop was cut from: its sheet's serial and the grid cell."""
+
+    sheet: int
+    row: int
+    col: int
 
 
 class ScanBatch(BaseModel):
+    """A scanner run. Serials run without gaps: the scanner's own pages first, then the crops cut from
+    sliced sheets (``slices``), in sheet order and, within a sheet, cell by cell in reading order."""
+
     batch_id: int
     start_datetime: str
     end_datetime: str
     files: dict[int, str]
     archived: bool = False
+    #: sheet serial -> how it is cut
+    grids: dict[int, SheetGrid] = Field(default_factory=dict, exclude_if=lambda v: not v)
+    #: crop serial -> where it was cut from
+    slices: dict[int, SliceOf] = Field(default_factory=dict, exclude_if=lambda v: not v)
 
 
 class ScanIndex(BaseModel):
