@@ -3,10 +3,12 @@
 import io
 import json
 import threading
+from pathlib import Path
 
 import pytest
 from PIL import Image
 
+import orientation
 from api import ingest_registry
 from api.jobs import EVERYTHING, FINISHED, Claim, JobConflict, JobRunner, runner
 from api.model_manager import ModelManager, models
@@ -14,6 +16,9 @@ from data import load_decisions, load_extractions, load_ocr_results, save_decisi
 from models import ReceiptResult, TokenUse, load_scan_index
 
 PAGE_1 = "01102025132642_1.png"  # the only scan conftest puts in the input folder (page 1:1)
+#: Printed pages for the orientation checks, and how to make one face each way (tests/fixtures/orientation).
+PRINTED = Path(__file__).resolve().parent / "fixtures" / "orientation"
+FACING = {"left": Image.Transpose.ROTATE_90, "right": Image.Transpose.ROTATE_270, "down": Image.Transpose.ROTATE_180}
 
 
 class GatedOcr:
@@ -76,6 +81,12 @@ def _finish(job):
 
 
 # --- File Index ------------------------------------------------------------------------------------------
+def printed(name: str = "receipt.png", top_points: str | None = None) -> Image.Image:
+    """A printed fixture page, turned so its top points ``top_points`` (upright when None)."""
+    with Image.open(PRINTED / name) as img:
+        return img.transpose(FACING[top_points]) if top_points else img.copy()
+
+
 def test_index_propose_confirm_and_stale_token(ingest_client, configured_ingest, tmp_path):
     for serial in (1, 2):
         Image.new("RGB", (4, 4)).save(tmp_path / "scans" / f"01112025090{serial}00_{serial}.png")
@@ -119,6 +130,53 @@ def test_grouping_state_and_save(ingest_client, configured_ingest):
     assert ingest_client.put("/api/ingest/grouping", json={"batch_id": 9, "groups": []}).status_code == 404
     # a batch that is gone (e.g. archived while the page was open) falls back to the first unarchived one
     assert ingest_client.get("/api/ingest/grouping", params={"batch_id": 9}).json()["batch_id"] == 1
+
+
+def test_turned_pages_are_suggested_and_rotated_only_on_request(ingest_client, configured_ingest, tmp_path):
+    scans = tmp_path / "scans"
+    printed(top_points="down").save(scans / PAGE_1)                                   # 1:1
+    printed("flyer.png").save(scans / "01102025140000_3.png")                          # 1:3, upright
+    printed("flyer.png", "right").save(scans / "01102025141500_4.png")                 # 1:4
+    printed(top_points="left").save(scans / "01102025142000_6.png")                    # 1:6 is tossed
+    untouched = (scans / PAGE_1).read_bytes()
+
+    pages = ingest_client.get("/api/ingest/turned", params={"batch_id": 1}).json()["pages"]
+    assert [(p["key"], p["top_points"]) for p in pages] == [("1:1", "down"), ("1:4", "right")]
+    assert all(orientation.MIN_CONFIDENCE <= p["confidence"] <= 1 for p in pages)
+    versions = {p["key"]: p["image_version"] for p in ingest_client.get("/api/ingest/grouping").json()["pages"]}
+    assert all(p["image_version"] == versions[p["key"]] for p in pages)             # measured on this version
+    assert (scans / PAGE_1).read_bytes() == untouched                                # asking changes nothing
+    assert ingest_client.get("/api/ingest/turned", params={"batch_id": 9}).status_code == 404
+
+    assert ingest_client.post("/api/ingest/pages/rotate", json={"key": "1:1", "top_points": "down"}).status_code == 200
+    pages = ingest_client.get("/api/ingest/turned", params={"batch_id": 1}).json()["pages"]
+    assert [p["key"] for p in pages] == ["1:4"]                                      # the rotated scan is judged afresh
+
+
+def test_a_scan_that_cant_be_read_doesnt_stop_the_others_being_checked(ingest_client, configured_ingest, tmp_path):
+    scans = tmp_path / "scans"
+    printed(top_points="down").save(scans / PAGE_1)                                   # 1:1
+    (scans / "01102025140000_3.png").write_bytes(b"")                                 # 1:3, half copied
+    (scans / "01102025141500_4.png").write_bytes(b"not a png")                        # 1:4
+    pages = ingest_client.get("/api/ingest/turned", params={"batch_id": 1})
+    assert pages.status_code == 200 and [p["key"] for p in pages.json()["pages"]] == ["1:1"]
+
+
+def test_turned_pages_say_when_the_model_cannot_be_had_after_one_try(ingest_client, configured_ingest, tmp_path,
+                                                                    monkeypatch):
+    for name in ("01102025140000_3.png", "01102025141500_4.png"):
+        printed().save(tmp_path / "scans" / name)
+    tries = []
+
+    def unavailable(url=orientation.MODEL_URL):
+        tries.append(url)
+        raise orientation.ModelUnavailable("couldn't download the orientation model: no network")
+    monkeypatch.setattr(orientation, "_net", None)            # not loaded yet
+    monkeypatch.setattr(orientation, "fetch_model", unavailable)
+    response = ingest_client.get("/api/ingest/turned", params={"batch_id": 1})
+    assert response.status_code == 503 and response.json()["detail"] == \
+        "couldn't download the orientation model: no network"
+    assert len(tries) == 1                                    # not once per page
 
 
 def test_toss_recover_and_rotate(ingest_client, configured_ingest, tmp_path):

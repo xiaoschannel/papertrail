@@ -1,4 +1,5 @@
-"""Ingest step endpoints: File Index (batches, slicing, grouping, rotate, toss), OCR, Parse and Archive.
+"""Ingest step endpoints: File Index (batches, slicing, grouping, rotate, toss, and the scans that look
+turned), OCR, Parse and Archive.
 
 Thin wrappers over ingest_pipeline. OCR, Parse and Archive run as background jobs (api.jobs), side by
 side when they don't collide: each holds the batches it works on (and the GPU, if it loads a model), a
@@ -26,10 +27,12 @@ from api.schemas import (
     ApplySliceIn, ArchiveMoveOut, ArchiveStatus, BatchFile, BatchOut, ConfirmIndexIn, GroupingOut, GroupingPageOut,
     IndexStatus, JobOut, OcrStatus, PageIn, ParseStatus, ProposedBatch, RotateIn, SaveGroupingIn, SaveGroupingOut,
     SliceCropOut, SliceMoveOut, SlicePlanIn, SlicePlanOut, SlicingOut, SlicingSheetOut, StartOcrIn, StartParseIn,
+    TurnedPageOut, TurnedPagesOut,
 )
 from data import load_decisions, load_document_groups
 from indexing_schemes import SCHEMES
 from models import ScanBatch, batch_serial_key, parse_batch_serial_key
+from orientation import ModelUnavailable, load_model
 from settings import get_config, update_config
 
 router = APIRouter(prefix="/api/ingest", tags=["ingest"])
@@ -195,6 +198,29 @@ def rotate_page(
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return SaveGroupingOut(changed=True)
+
+
+@router.get("/turned", response_model=TurnedPagesOut)
+def turned_pages(
+    batch_id: int,
+    output_path: Path = Depends(get_output_path),
+    input_path: Path = Depends(get_input_path),
+):
+    """A batch's pages whose scan looks sideways or upside down, each with where its top points.
+
+    Only a suggestion: nothing changes until a page is rotated. 503 when the orientation model can't be
+    downloaded or loaded.
+    """
+    try:
+        load_model()   # up front: a model that can't be had fails once, not once per page
+        found = pipeline.turned_pages(output_path, input_path, batch_id, estimate=store.scan_orientation)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc.args[0])) from exc
+    except ModelUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return TurnedPagesOut(batch_id=batch_id, pages=[
+        TurnedPageOut(key=key, top_points=e.top_points, confidence=e.confidence, image_version=version)
+        for key, e, version in found])
 
 
 # --- Slicing sheets of small receipts ------------------------------------------------------------------
