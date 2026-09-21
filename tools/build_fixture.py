@@ -22,6 +22,8 @@ Design notes
       ``name_embeddings.npz``).
     * ``tests/fixtures/sheets/`` -- scans of small receipts taped onto a sheet,
       each with the grid that cuts it and where every ticket lies, for slicing.
+    * ``tests/fixtures/orientation/`` -- printed pages, upright, for telling which
+      way up a scan is (the tests turn them), and the nearly blank back of a page.
 - **Edge cases are deliberate.** JP/CN/EN docs; a multi-page document group; an
   undated doc; a corrupted doc; tossed + marked docs; a dedupe pair (equal cost,
   <5 min apart); a near-duplicate merchant name for normalization; a brand-prefix
@@ -470,16 +472,19 @@ def _write_npz(path: Path, **arrays) -> None:
             archive.writestr(entry, buffer.getvalue())
 
 
-def _write_gray_png(path: Path, width: int, height: int, pixels: bytes) -> None:
+def _write_gray_png(path: Path, width: int, height: int, pixels: bytes, bit_depth: int = 8) -> None:
     """A greyscale PNG with the same bytes on every platform.
 
     zlib builds compress differently, so the image data goes in deflate's stored (uncompressed) blocks,
-    written here rather than by zlib; only its checksums are computed, and those are fixed.
+    written here rather than by zlib; only its checksums are computed, and those are fixed. At a bit depth
+    of 1 (black and white, 1 is white) ``pixels`` holds packed rows, each padded to a whole byte, as PIL's
+    ``Image.tobytes()`` gives them for a mode "1" image.
     """
     import struct
     import zlib
 
-    raw = b"".join(b"\x00" + pixels[y * width:(y + 1) * width] for y in range(height))   # filter: none
+    stride = (width * bit_depth + 7) // 8
+    raw = b"".join(b"\x00" + pixels[y * stride:(y + 1) * stride] for y in range(height))   # filter: none
     blocks, limit = [], 65535
     for start in range(0, len(raw), limit):
         chunk = raw[start:start + limit]
@@ -491,7 +496,7 @@ def _write_gray_png(path: Path, width: int, height: int, pixels: bytes) -> None:
         return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 0, 0, 0, 0))
+    path.write_bytes(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, bit_depth, 0, 0, 0, 0))
                      + chunk(b"IDAT", stream) + chunk(b"IEND", b""))
 
 
@@ -541,16 +546,71 @@ def build_sheets(root: Path) -> None:
         "grid": grid, "tickets": tickets, "background": SHEET_BG, "ticket_mark": TICKET_MARK})
 
 
+#: Made-up words for the printed pages.
+_WORDS = ("TEA", "RICE", "BREAD", "MILK", "SOAP", "APPLE", "PEN", "PAPER", "EGGS", "JAM", "SALT", "NOODLE",
+          "coffee", "small", "set", "tax", "item", "total")
+
+
+def _printed(width: int, height: int, lines: list[tuple[int, int, str]], scale: int = 3):
+    """A black-and-white page with ``lines`` of text, each ``(x, y, text)``, set in Pillow's built-in
+    bitmap font and blown up ``scale`` times: bitmap text has no anti-aliasing to differ between platforms.
+    """
+    from PIL import Image, ImageDraw, ImageFont
+
+    font = ImageFont.load_default_imagefont()
+    img = Image.new("1", (width, height), 1)
+    draw = ImageDraw.Draw(img)
+    for x, y, text in lines:
+        draw.text((x, y), text, font=font, fill=0)
+    return img.resize((width * scale, height * scale), Image.Resampling.NEAREST)
+
+
+def build_orientation(root: Path) -> None:
+    """Printed pages, upright, for telling which way up a scan is: the tests turn them each way.
+
+    A narrow receipt (a shop name, item lines with prices on the right, a total) and a wide flyer (a title
+    over lines of words), both in made-up words, and the back of a page: blank but for a few faint specks
+    and a soft shadow along one edge, which must never be taken for turned text. The JSON says which is
+    which.
+    """
+    import random
+
+    rng = random.Random(1)
+    receipt = [(8, 6, "SAMPLE MART")]
+    receipt += [(x, y, text) for y in range(26, 200, 13) for x, text in (
+        (8, f"{rng.choice(_WORDS)} {rng.choice(_WORDS).lower()}"), (66, f"{rng.randint(1, 999):>3}"))]
+    receipt.append((8, 206, f"TOTAL {rng.randint(1000, 9999)}"))
+    flyer = [(20, 8, "GRAND OPENING SALE")]
+    flyer += [(20, y, " ".join(rng.choice(_WORDS) for _ in range(rng.randint(4, 8)))) for y in range(30, 158, 14)]
+    pages = {"receipt.png": _printed(96, 220, receipt), "flyer.png": _printed(300, 170, flyer)}
+    for name, img in pages.items():
+        _write_gray_png(root / name, img.width, img.height, img.tobytes(), bit_depth=1)
+
+    width, height = 120, 260
+    pixels = bytearray([255]) * (width * height)
+    for x in range(10):                                     # the shadow, fading in from the left edge
+        for y in range(height):
+            pixels[y * width + x] = 226 + 3 * x
+    for _ in range(30):                                     # specks of dust
+        x, y = rng.randrange(12, width), rng.randrange(height)
+        pixels[y * width + x] = rng.randint(60, 180)
+    _write_gray_png(root / "blank_back.png", width, height, bytes(pixels))
+    _write_json(root / "pages.json", {"printed": sorted(pages), "blank": ["blank_back.png"]})
+
+
 def main() -> int:
     ingest_root = FIXTURES / "ingest"
     archive_root = FIXTURES / "archive"
     sheets_root = FIXTURES / "sheets"
+    orientation_root = FIXTURES / "orientation"
     build_ingest(ingest_root)
     build_archive(archive_root)
     build_sheets(sheets_root)
+    build_orientation(orientation_root)
     print(f"Wrote ingest fixture  -> {ingest_root}")
     print(f"Wrote archive fixture -> {archive_root}")
     print(f"Wrote sheet fixtures  -> {sheets_root}")
+    print(f"Wrote orientation fixtures -> {orientation_root}")
     return 0
 
 

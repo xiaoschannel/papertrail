@@ -502,6 +502,21 @@ class SlicePlanOut(_Model):
     token: str
 
 
+class TurnedPageOut(_Model):
+    key: str
+    #: Where the scan's top points now: the rotate arrow that turns it upright.
+    top_points: Literal["left", "right", "down"]
+    #: How sure the orientation model is, 0-1.
+    confidence: float
+    #: The scan version it was measured on (GroupingPageOut.image_version): a suggestion is for that one.
+    image_version: int
+
+
+class TurnedPagesOut(_Model):
+    batch_id: int
+    pages: list[TurnedPageOut]
+
+
 class RotateIn(_Model):
     key: str
     top_points: Literal["left", "right", "down"]
