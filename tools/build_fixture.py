@@ -13,7 +13,7 @@ Design notes
 - **Modelled on real shapes.** Two archive states are emitted, matching the real
   app's lifecycle:
     * ``tests/fixtures/ingest/``  -- a mid-ingest, un-archived batch with
-      ``batches.json`` + ``ocr.json`` + ``extractions.json`` + ``decisions.json``
+      ``batches.json`` + ``ocr/<batch_id>.json`` + ``extractions.json`` + ``decisions.json``
       + ``documents.json`` keyed by file/doc keys.
     * ``tests/fixtures/archive/`` -- an archived state with ``YYYY/MM`` +
       ``YYYY/undated`` sidecar folders, ``tossed/`` + ``marked/``, and the root
@@ -259,7 +259,7 @@ def build_ingest(root: Path) -> None:
     documents = {"groups": [["1:4", "1:5"]]}
 
     _write_json(root / "batches.json", batches)
-    _write_json(root / "ocr.json", ocr)
+    _write_json(root / "ocr" / "1.json", ocr)
     _write_json(root / "extractions.json", extractions)
     _write_json(root / "decisions.json", decisions)
     _write_json(root / "documents.json", documents)

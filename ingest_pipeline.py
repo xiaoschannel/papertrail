@@ -5,8 +5,9 @@ Each step has a ``plan_*`` (what would happen, for the page to show) and, for th
 fakes (no GPU, no network).
 
 Guarantees the steps keep:
-- OCR and Parse never drop results for items outside the current run (they merge into ocr.json /
-  extractions.json rather than rewriting it from a filtered or emptied dict).
+- OCR and Parse never drop results for items outside the current run: OCR writes only the batch files
+  (``ocr/<batch_id>.json``) of the batches it holds, and Parse merges into extractions.json rather than
+  rewriting it from a filtered or emptied dict.
 - Reprocessing replaces results as each item finishes, so cancelling keeps the old results of items
   not yet redone.
 - OCR runs the second "structured" pass only for providers that return grounding boxes.
@@ -41,13 +42,16 @@ from data import (
     load_document_groups,
     load_extractions,
     load_model_runs,
+    load_ocr_batch,
     load_ocr_results,
     load_smart_match_cache,
     replace_groups_for_batch,
     save_decisions,
     merge_extractions,
     merge_model_runs,
-    save_ocr_results,
+    save_ocr_batch,
+    MIGRATED_OCR,
+    OCR_DIR,
     OCR_RUNS,
     EXTRACTION_RUNS,
     save_scan_index,
@@ -387,17 +391,25 @@ def plan_ocr(output_path: Path, input_path: Path, batch_id: int | None, reproces
 
 def run_ocr(output_path: Path, items: list[tuple[str, Path]], provider: OcrProvider, structured: bool,
             progress: Progress, model: str, shuffle: bool = True) -> str:
-    """OCR each page, saving after every image (so an interruption loses at most one page)."""
+    """OCR each page, saving its batch's file after every image (so an interruption loses at most one page).
+
+    The run holds the batches it reads, so it is the only writer of their files: each is loaded once and
+    saved whole, and no other batch's file is ever touched.
+    """
     work = list(items)
     if shuffle:
         random.shuffle(work)
     progress.set_total(len(work))
-    results = load_ocr_results(output_path)
+    by_batch: dict[int, dict[str, OcrResult]] = {}
     ran = failed = 0
     for key, path in work:
         if progress.cancelled:
             break
         started = time.perf_counter()
+        batch_id = parse_batch_serial_key(key)[0]
+        if batch_id not in by_batch:
+            by_batch[batch_id] = load_ocr_batch(output_path, batch_id)
+        results = by_batch[batch_id]
         try:
             markdown = provider.run(path, structured=False)
             boxes = parse_grounding_output(provider.run(path, structured=True)) if structured else None
@@ -408,7 +420,7 @@ def run_ocr(output_path: Path, items: list[tuple[str, Path]], provider: OcrProvi
             ok, error = False, _short_error(exc)
         ran += 1
         failed += 0 if ok else 1
-        save_ocr_results(output_path, results)
+        save_ocr_batch(output_path, batch_id, results)
         _keep_run(output_path, OCR_RUNS, "ocr", key, progress,
                   ModelRun(model=model, at=time.time(), seconds=round(time.perf_counter() - started, 3)),
                   error=error)
@@ -619,7 +631,8 @@ def _sleep_while_running(seconds: float, progress: Progress) -> None:
 # =====================================================================================
 # Archive
 # =====================================================================================
-CLEANUP_ARTIFACTS = ("ocr.json", "extractions.json", "decisions.json", OCR_RUNS, EXTRACTION_RUNS)
+#: The mid-ingest working files Archive deletes once every file is archived (``ocr/`` is a folder).
+CLEANUP_ARTIFACTS = (OCR_DIR, MIGRATED_OCR, "extractions.json", "decisions.json", OCR_RUNS, EXTRACTION_RUNS)
 
 
 @dataclass
@@ -789,5 +802,8 @@ def run_archive(output_path: Path, input_path: Path, progress: Progress) -> str:
 
     cleaned = [name for name in CLEANUP_ARTIFACTS if (output_path / name).exists()]
     for name in cleaned:
-        (output_path / name).unlink()
+        if (output_path / name).is_dir():
+            shutil.rmtree(output_path / name)
+        else:
+            (output_path / name).unlink()
     return f"Archived {copied} file(s)." + (f" Cleaned up {', '.join(cleaned)}." if cleaned else "")

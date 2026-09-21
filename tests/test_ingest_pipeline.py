@@ -11,7 +11,7 @@ from PIL import Image
 import ingest_pipeline as ip
 from data import (
     load_decisions, load_document_groups, load_extractions, load_ocr_results, load_smart_match_cache, save_decisions,
-    save_ocr_results,
+    load_ocr_batch, save_ocr_batch, save_ocr_results,
 )
 from models import OcrResult, ReceiptResult, TokenUse, iter_indexed_files, load_scan_index
 
@@ -205,6 +205,25 @@ def test_run_ocr_without_grounding_runs_one_pass_and_stops_when_cancelled(ingest
     progress = FakeProgress(cancel_after=1)
     ip.run_ocr(ingest_dir, items, provider, structured=False, progress=progress, model="Fake OCR", shuffle=False)
     assert provider.calls == [("01102025132642_1.png", False)]
+
+
+def test_run_ocr_writes_only_the_batches_it_reads(ingest_dir, tmp_path):
+    """A run holds its batches and no others: what another batch's owner changes meanwhile stays changed."""
+    scans = _scans(tmp_path, ingest_dir)
+
+    class EditsBatchOne(FakeOcr):
+        def run(self, path, structured=False):
+            batch_one = load_ocr_batch(ingest_dir, 1)
+            batch_one.pop("1:3", None)                   # e.g. slicing batch 1 dropping a page's result
+            save_ocr_batch(ingest_dir, 1, batch_one)
+            return super().run(path, structured)
+
+    items = [("2:1", scans / "01102025132642_1.png"), ("2:2", scans / "01102025133000_2.png")]
+    ip.run_ocr(ingest_dir, items, EditsBatchOne(), structured=False, progress=FakeProgress(), model="Fake OCR",
+               shuffle=False)
+
+    assert "1:3" not in load_ocr_results(ingest_dir)
+    assert sorted(load_ocr_batch(ingest_dir, 2)) == ["2:1", "2:2"]
 
 
 # --- Parse -----------------------------------------------------------------------------------------------
@@ -427,6 +446,7 @@ def test_run_archive_copies_finalizes_and_cleans_up(ingest_dir, tmp_path):
     assert (scans / "01102025132642_1.png").exists()             # originals are copied, not moved
     assert load_scan_index(ingest_dir).batches[0].archived
     assert not any((ingest_dir / name).exists() for name in ip.CLEANUP_ARTIFACTS)
+    assert "ocr" in ip.CLEANUP_ARTIFACTS and "ocr.json.migrated" in ip.CLEANUP_ARTIFACTS
     assert load_smart_match_cache(ingest_dir)["1:7"]["confirmed"] == "Business Card - John Doe"
 
 

@@ -177,7 +177,7 @@ def test_decision_for_unknown_document_is_404(pending):
 
 
 def test_boxes_cited_on_a_later_page_of_a_multi_page_document(pending, configured_ingest):
-    ocr_path = configured_ingest / "ocr.json"
+    ocr_path = configured_ingest / "ocr" / "1.json"
     ocr = json.loads(ocr_path.read_text(encoding="utf-8"))
     ocr["1:5"]["boxes"] = [{"ref_type": "text", "coords": [[100, 300, 60, 260]], "text": "RM15.90"}]
     ocr_path.write_text(json.dumps(ocr, ensure_ascii=False), encoding="utf-8")
