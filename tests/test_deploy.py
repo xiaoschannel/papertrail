@@ -1,12 +1,16 @@
 """Deploying live: what blocks a restart, and never losing work in the main checkout on the way to main."""
 
+import pathlib
+import shutil
 import subprocess
+import sys
+import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import pytest
 
-from tools import deploy
+from tools import deploy, live_server
 from tools.deploy import Refusal
 
 NS = {"t": "http://schemas.microsoft.com/windows/2004/02/mit/task"}
@@ -145,8 +149,86 @@ def test_edits_to_tracked_files_still_block_a_deploy(checkout):
 
 
 def test_the_task_can_be_asked_to_start_live_at_logon():
-    root = ET.fromstring(deploy.task_xml(Path("pythonw.exe"), Path("live_server.py"), Path("C:\main"),
+    root = ET.fromstring(deploy.task_xml(Path("pythonw.exe"), Path("live_server.py"), Path(r"C:\main"),
                                          at_logon=True).split("\n", 1)[1])
     trigger = root.find("t:Triggers/t:LogonTrigger", NS)
     assert trigger is not None and trigger.find("t:Enabled", NS).text == "true"
     assert trigger.find("t:Delay", NS).text == "PT30S"      # out of the way of logging in
+
+
+def test_npm_installs_from_the_frontend_folder(tmp_path, monkeypatch):
+    """`npm --prefix frontend install` reads package.json from the working directory and fails there."""
+    calls = []
+    monkeypatch.setattr(deploy.subprocess, "run", lambda command, **kw: calls.append((command, kw)) or None)
+    deploy.run_followups(tmp_path, ["npm"])
+    command, keywords = calls[0]
+    assert command[-1] == "install" and "--prefix" not in command
+    assert keywords["cwd"] == tmp_path / "frontend"
+
+
+# --- the paths a passing deploy never takes ------------------------------------------------------------
+def test_a_merge_blocked_by_an_untracked_file_leaves_live_running(checkout, monkeypatch, capsys):
+    """git refuses to overwrite an untracked file; live must come back anyway, on the code it already had."""
+    seed, main = checkout
+    _land_on_main(seed, "later.py")
+    (main / "later.py").write_text("mine, untracked", encoding="utf-8")
+    started = []
+    monkeypatch.setattr(deploy, "stop", lambda: None)
+    monkeypatch.setattr(deploy, "start", lambda _main: started.append(True))
+    monkeypatch.setattr(deploy, "wait_healthy", lambda _main: True)
+    monkeypatch.setattr(deploy, "live_jobs", list)
+    monkeypatch.setattr(deploy, "_task_exists", lambda: True)
+    assert deploy.deploy(main, update=True, even_with_job=False) == 1
+    assert started == [True]                                   # live came back up
+    assert "Could not update the checkout" in capsys.readouterr().out
+    assert (main / "later.py").read_text(encoding="utf-8") == "mine, untracked"
+
+
+def test_a_failed_install_is_not_reported_as_a_failed_update(checkout, monkeypatch, capsys):
+    seed, main = checkout
+    _land_on_main(seed, "requirements.txt")
+    monkeypatch.setattr(deploy, "stop", lambda: None)
+    monkeypatch.setattr(deploy, "start", lambda _main: None)
+    monkeypatch.setattr(deploy, "wait_healthy", lambda _main: True)
+    monkeypatch.setattr(deploy, "live_jobs", list)
+    monkeypatch.setattr(deploy, "_task_exists", lambda: True)
+    monkeypatch.setattr(deploy, "run_followups", lambda *_: (_ for _ in ()).throw(
+        subprocess.CalledProcessError(1, "pip", stderr="no network")))
+    assert deploy.deploy(main, update=True, even_with_job=False) == 1
+    out = capsys.readouterr().out
+    assert "is on main at" in out and "installing what it needs failed" in out
+    assert "Could not update the checkout" not in out
+
+
+def test_installing_without_a_venv_refuses(tmp_path):
+    with pytest.raises(Refusal, match="venv"):
+        deploy.install(tmp_path)
+
+
+def test_an_app_that_never_answers_reports_the_end_of_its_logs(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(deploy, "HEALTH_TIMEOUT", 1)
+    # Ports nothing serves: otherwise this passes or fails depending on whether live happens to be running.
+    monkeypatch.setattr(deploy, "LIVE_API", 65000)
+    monkeypatch.setattr(deploy, "LIVE_WEB", 65001)
+    (tmp_path / ".live").mkdir()
+    (tmp_path / ".live" / "api.log").write_text("Traceback: boom", encoding="utf-8")
+    assert deploy.wait_healthy(tmp_path) is False
+    out = capsys.readouterr().out
+    assert "did not come up" in out and "Traceback: boom" in out
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="the launcher is what a Windows scheduled task runs: "
+                    "it uses Windows-only process flags and taskkill, so it is tested on the Windows CI job")
+def test_one_server_stopping_stops_the_other(tmp_path):
+    """Otherwise the task looks healthy while half the app is down."""
+    node = shutil.which("node")
+    assert node, "node is needed for this test"
+    logs = tmp_path / ".live"
+    logs.mkdir()
+    marker = (tmp_path / "still-alive.txt").as_posix()
+    # If it outlives run(), it says so in a file a second later; being killed is the only way it stays quiet.
+    stays = f"setTimeout(() => require('fs').writeFileSync('{marker}', 'alive'), 1000); setTimeout(() => {{}}, 600000)"
+    live_server.run({"quits": [node, "-e", "process.exit(1)"], "stays": [node, "-e", stays]}, tmp_path, logs)
+    assert "started" in (logs / "stays.log").read_text(encoding="utf-8")    # it really ran
+    time.sleep(2.5)
+    assert not pathlib.Path(marker).exists(), "the surviving server was left running"

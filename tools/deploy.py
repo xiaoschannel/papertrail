@@ -106,7 +106,10 @@ def run_followups(main: Path, needed: list[str]) -> None:
         subprocess.run([str(main / ".venv" / "Scripts" / "python.exe"), "-m", "pip", "install", "--quiet",
                         "-r", "requirements.txt"], cwd=main, check=True)
     if "npm" in needed:
-        subprocess.run([shutil.which("npm") or "npm", "--prefix", "frontend", "install"], cwd=main, check=True)
+        # From the frontend folder, not --prefix: npm reads package.json from the working directory, so
+        # `npm --prefix frontend install` looks for one in the repo root and fails, however well --prefix
+        # works for `npm --prefix frontend run <script>`.
+        subprocess.run([shutil.which("npm") or "npm", "install"], cwd=main / "frontend", check=True)
     if "gpu" in needed:
         print("requirements-deepseek.txt changed; the GPU stack is updated by hand (flash_attn.md), not here.")
 
@@ -283,8 +286,15 @@ def deploy(main: Path, *, update: bool, even_with_job: bool) -> int:
     updated = True
     try:
         if branch is not None:
-            run_followups(main, followups(apply_update(main, branch)))
+            changed = apply_update(main, branch)
             print(f"{main} is on main at {git(main, 'log', '-1', '--format=%h %s')}")
+            try:
+                run_followups(main, followups(changed))
+            except subprocess.CalledProcessError as failure:
+                # Said apart from a failed update: the new code is checked out, only its packages are not.
+                updated = False
+                print(f"The checkout is up to date, but installing what it needs failed: "
+                      f"{(failure.stderr or '').strip() or failure}")
     except subprocess.CalledProcessError as failure:
         # e.g. an untracked file in the way of one the merge brings in: live still goes back up, as it was.
         updated = False
