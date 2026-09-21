@@ -46,6 +46,26 @@ To try things without touching your archive, `tools/sandbox_server.py` runs the 
 invented scans with fake models (port 8001); `npm --prefix frontend run dev:sandbox` serves the web app for it
 on port 5174.
 
+## Several checkouts at once
+
+Each git worktree runs its own sandbox beside the main checkout's, on ports of its own. Set a new worktree up
+once, with the main checkout's Python:
+```
+<main checkout>\.venv\Scripts\python tools\worktree_setup.py
+npm --prefix frontend install
+```
+It claims the worktree a numbered slot — slot *n* serves its sandbox on API `8001+n` and web `5174+n` — and
+prints the URL. The slot is kept for as long as the worktree exists, so the ports stay put across restarts;
+deleting the worktree frees it. The main checkout's ports never change.
+
+A worktree runs the **sandbox only**. The live archive belongs to the main checkout: two API processes on it,
+running different code, is how it gets hurt, so `npm run dev` in a worktree refuses. A worktree that hasn't
+been set up refuses to start its sandbox too, rather than landing on the main checkout's ports.
+
+The setup also writes `.claude/launch.json`, the dev servers Claude Code starts. A worktree's are named for
+its slot (`sandbox-api-1`, `sandbox-web-1`), so starting one never stands in for another checkout's server of
+the same name. How slots are chosen is in `dev_ports.py`.
+
 # Workflow
 Scan your documents into a folder, and follow this process:
 

@@ -11,6 +11,8 @@ frontend/src/api/schema.d.ts
 
 # throwaway sandbox archive (tools/sandbox_server.py)
 .sandbox/
+# a worktree's claimed dev ports (tools/worktree_setup.py)
+.dev-ports.json
 
 # local tooling, whatever created it
 .venv/
