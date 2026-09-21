@@ -7,3 +7,8 @@ Do not use dataclass and always prefer pydantic instead.
 
 If a data migration is needed, create a page under the Dev section of the web app (frontend/src/App.tsx),
 with its endpoints in api/routers/.
+
+Maintain the test fixtures. A feature that reads a new kind of input (a file layout, a kind of scan, a
+record) adds a synthetic example of it to tools/build_fixture.py, with tests that run against it, in the
+same change. Fixtures are generated, never hand-edited, never taken from the real archive, and must come
+out byte for byte the same on every platform: CI regenerates them and fails on any difference.

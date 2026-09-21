@@ -320,6 +320,29 @@ def test_the_crops_are_pages_ocr_reads_like_any_other_and_the_sheet_is_not(inges
     assert "1:2" not in [k for k, _ in everything.items] and "1:6" in [k for k, _ in everything.items]
 
 
+# --- the taped-tickets fixture ------------------------------------------------------------------------
+def test_the_fixture_grid_cuts_every_ticket_out_whole_and_in_reading_order(ingest_dir, scans):
+    """Tickets of uneven sizes with two empty cells: each crop holds exactly one whole ticket, the right one."""
+    import json
+    import shutil
+
+    fixture = Path(__file__).resolve().parent / "fixtures" / "sheets"
+    spec = json.loads((fixture / "taped_tickets.json").read_text(encoding="utf-8"))
+    shutil.copy(fixture / "taped_tickets.png", scans / "01102025133000_2.png")      # sheet 1:2
+    plan = slice_(ingest_dir, scans, 2, SheetGrid.model_validate(spec["grid"]))
+
+    assert len(plan.new_keys) == len(spec["tickets"]) == 7
+    marks = {spec["ticket_mark"] * (i + 1) for i in range(len(spec["tickets"]))}
+    for number, crop in enumerate(sl.current_crops(batch(ingest_dir)), start=1):
+        with Image.open(scans / crop.filename) as img:
+            gray = img.convert("L")
+            w, h = gray.size
+            edge = {gray.getpixel((x, y)) for x in range(w) for y in (0, h - 1)} | \
+                   {gray.getpixel((x, y)) for y in range(h) for x in (0, w - 1)}
+            assert edge == {spec["background"]}, f"crop {number} cuts through a ticket"
+            assert set(gray.tobytes()) & marks == {spec["ticket_mark"] * number}, f"crop {number} holds another ticket"
+
+
 # --- archive ---------------------------------------------------------------------------------------------
 def test_archive_files_crops_with_where_they_came_from_and_the_sheet_under_tossed(ingest_dir, scans):
     import ingest_pipeline as ip
