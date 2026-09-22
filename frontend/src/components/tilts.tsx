@@ -1,13 +1,12 @@
 import { useState } from 'react'
-import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api/client.ts'
-import type { TiltedPages } from '../api/types.ts'
 import type { ScanPage } from './turns.tsx'
 
 /*
- * Scans fed in slightly crooked, as the Straighten page points them out: a notice over the grid, a badge
- * on each tile, and, in the full-size viewer, a turn slider over level guides that previews the scan
- * straightened before anything is saved. Any scan can be straightened there, detected or not.
+ * Scans fed in slightly crooked, as the Straighten page points them out: a badge on each tile, and, in
+ * the full-size viewer, a turn slider over level guides that previews the scan straightened before
+ * anything is saved. Any scan can be straightened there, detected or not.
  */
 
 /**
@@ -32,23 +31,6 @@ export function useTiltedPages(batchId: number, pages: Map<string, ScanPage>) {
     setLeftCount((n) => n + 1)
   }
   return { query, tilts, setAside }
-}
-
-/** Says how many scans look tilted, once the batch has been checked, with the way to go through them. */
-export function TiltNotice({ query, tilts, onReview }: {
-  query: UseQueryResult<TiltedPages>
-  tilts: Map<string, number>
-  onReview: () => void
-}) {
-  if (query.isPending) return <p className="ingest-note">Checking the scans for tilt…</p>
-  if (query.error) return <p className="ingest-note ingest-warning">Couldn’t check the scans for tilt: {query.error.message}</p>
-  if (tilts.size === 0) return null
-  return (
-    <div className="suggestion-notice">
-      <span>{tilts.size === 1 ? '1 scan looks' : `${tilts.size} scans look`} slightly tilted.</span>
-      <button onClick={onReview}>Review {tilts.size === 1 ? 'it' : 'them'}</button>
-    </div>
-  )
 }
 
 /** A tile's mark for a scan that looks tilted; it opens the scan to straighten it. */

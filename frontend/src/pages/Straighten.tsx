@@ -6,8 +6,8 @@ import type { Grouping, GroupingPage, TopPoints } from '../api/types.ts'
 import { CappedImage } from '../components/DocumentCard.tsx'
 import { useBatchHolder } from '../components/jobs.tsx'
 import { BatchSelect, Pager, RotateButtons } from '../components/scans.tsx'
-import { TiltBadge, TiltNotice, useTiltedPages } from '../components/tilts.tsx'
-import { PageViewer, TurnNotice, useTurnedPages, type Viewing } from '../components/turns.tsx'
+import { TiltBadge, useTiltedPages } from '../components/tilts.tsx'
+import { PageViewer, describeTurned, useTurnedPages, type Viewing } from '../components/turns.tsx'
 import { Card, Empty, ErrorState, Loading } from '../components/ui.tsx'
 import { useGridColumnCount } from '../components/useGridColumnCount.ts'
 import './ingest.css'
@@ -17,8 +17,9 @@ const ROWS_PER_PAGE = 6
 
 /**
  * Straighten: the one place a scan is turned. Before a sheet is cut or pages are grouped, each scan fed in
- * sideways or upside down is turned upright, and each fed in crooked is levelled; the page points out
- * the ones that look so, and any scan can be turned from its full-size view.
+ * sideways or upside down is turned upright, and each fed in crooked is levelled. The grid shows only the
+ * scans that look so, a queue that empties as they are turned or left as they are; "Show all scans"
+ * brings the rest back, since any scan can be turned from its full-size view.
  */
 export default function Straighten() {
   const [batchId, setBatchId] = useState<number | undefined>(undefined)
@@ -49,10 +50,38 @@ export default function Straighten() {
 const turnRefusal = (page: GroupingPage): string | null =>
   page.sliced ? 'Unslice the sheet on Slice to turn it' : null
 
+/** Whether the grid shows every scan, not just those that look turned or tilted: kept while the app is open. */
+let showingAll = false
+
+/** What the checks found, in a line: how many scans look turned and tilted, or that they are still being looked at. */
+function Findings({ turned, tilted }: { turned: ReturnType<typeof useTurnedPages>; tilted: ReturnType<typeof useTiltedPages> }) {
+  const found = [
+    turned.turns.size > 0 && `${turned.turns.size === 1 ? '1 scan looks' : `${turned.turns.size} scans look`} turned (${describeTurned([...turned.turns.values()])})`,
+    tilted.tilts.size > 0 && `${tilted.tilts.size === 1 ? '1 looks' : `${tilted.tilts.size} look`} slightly tilted`,
+  ].filter(Boolean).join('; ')
+  const checking = turned.query.isPending || tilted.query.isPending
+  return (
+    <>
+      {turned.query.error && <p className="ingest-note ingest-warning">Couldn’t check which way up the scans are: {turned.query.error.message}</p>}
+      {tilted.query.error && <p className="ingest-note ingest-warning">Couldn’t check the scans for tilt: {tilted.query.error.message}</p>}
+      <p className="ingest-note">
+        {found ? `${found}.` : checking ? '' : 'No scan looks turned or tilted.'}
+        {checking && `${found ? ' ' : ''}Still checking the scans…`}
+      </p>
+    </>
+  )
+}
+
 function Scans({ data, batchId, onBatch }: { data: Grouping; batchId: number; onBatch: (id: number) => void }) {
   const queryClient = useQueryClient()
   const holder = useBatchHolder(batchId)
   const [viewing, setViewing] = useState<Viewing | null>(null)
+  const [all, setAllState] = useState(showingAll)
+  const setAll = (on: boolean) => {
+    showingAll = on
+    setAllState(on)
+    setPage(0)
+  }
   const [page, setPage] = useState(0)
   const grid = useRef<HTMLDivElement>(null)
   const columns = useGridColumnCount(grid, 6)
@@ -70,30 +99,35 @@ function Scans({ data, batchId, onBatch }: { data: Grouping; batchId: number; on
     },
   })
 
+  const flagged = scans.filter((s) => turned.turns.has(s.key) || tilted.tilts.has(s.key))
+  const shown = all ? scans : flagged
   const perPage = ROWS_PER_PAGE * Math.max(1, columns)
-  const pageCount = Math.max(1, Math.ceil(scans.length / perPage))
+  const pageCount = Math.max(1, Math.ceil(shown.length / perPage))
   const shownPage = Math.min(page, pageCount - 1)
   const start = shownPage * perPage
   const pager = <Pager page={shownPage} pageCount={pageCount} onPage={setPage} />
   const locked = holder === null ? null : `Waiting for ${holder.title}: it is using batch ${batchId}.`
-  const flagged = (flags: Map<string, unknown>) => scans.map((s) => s.key).filter((k) => flags.has(k))
 
   return (
     <Card title="Scans" className="card--full"
       hint="The arrows say where a scan's top points now; open a scan to preview a turn before it is saved.">
       <div className="controls">
         <BatchSelect id="straighten-batch" batches={data.batches} value={batchId} onChange={onBatch} />
+        <label className="scan-viewer__check">
+          <input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} /> Show all scans
+        </label>
       </div>
       {rotate.error && <div className="error-banner" role="alert">{rotate.error.message}</div>}
-      <TurnNotice query={turned.query} turns={turned.turns}
-        onReview={() => setViewing({ keys: flagged(turned.turns), at: 0, review: 'turned' })} />
-      <TiltNotice query={tilted.query} tilts={tilted.tilts}
-        onReview={() => setViewing({ keys: flagged(tilted.tilts), at: 0, review: 'tilted' })} />
+      <Findings turned={turned} tilted={tilted} />
       {pager}
       <div className="page-grid" ref={grid}>
-        {scans.slice(start, start + perPage).map((scan) => {
+        {shown.slice(start, start + perPage).map((scan) => {
           const refusal = turnRefusal(scan)
-          const open = () => setViewing({ keys: [scan.key], at: 0, review: false })
+          // A scan that looks turned or tilted opens with the rest of them after it, to step through.
+          const at = flagged.indexOf(scan)
+          const open = () => setViewing(at >= 0
+            ? { keys: flagged.map((s) => s.key), at, review: true }
+            : { keys: [scan.key], at: 0, review: false })
           return (
             <div className="page-cell" key={scan.key}>
               <figure className={`page-tile${scan.tossed ? ' tossed' : ''}`}>

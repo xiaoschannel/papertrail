@@ -1,14 +1,14 @@
-import { useState } from 'react'
-import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api/client.ts'
-import type { TopPoints, TurnedPages } from '../api/types.ts'
+import type { TopPoints } from '../api/types.ts'
 import { ARROWS, FACING, ScanViewer } from './scans.tsx'
 import { StraightenControls, useStraightening } from './tilts.tsx'
 
 /*
- * Scans that look sideways or upside down, as the Straighten page points them out: a notice over the
- * grid, the suggested arrow lit on each tile, and a review that shows each page turned upright in the
- * full-size viewer before anything is saved. Turning one is the page's own rotate arrow.
+ * Scans that look sideways or upside down, as the Straighten page points them out: the suggested arrow lit
+ * on each tile, and a review that shows each page turned upright in the full-size viewer before anything
+ * is saved. Turning one is the page's own rotate arrow.
  */
 
 /** What these need of a page. */
@@ -46,39 +46,22 @@ export function useTurnedPages(batchId: number, pages: Map<string, ScanPage>) {
   return { query, turns, setAside }
 }
 
-/** "upside down", "sideways", or "turned: 2 upside down and 1 sideways", to finish "N scans look …". */
-function describeTurned(turns: TopPoints[]): string {
+/** "1 upside down" or "2 sideways" or "1 upside down and 2 sideways": the scans that look turned. */
+export function describeTurned(turns: TopPoints[]): string {
   const down = turns.filter((t) => t === 'down').length
   const sideways = turns.length - down
-  if (down > 0 && sideways > 0) return `turned: ${down} upside down and ${sideways} sideways`
-  return down > 0 ? 'upside down' : 'sideways'
+  return [down > 0 && `${down} upside down`, sideways > 0 && `${sideways} sideways`].filter(Boolean).join(' and ')
 }
 
-/** Says how many scans look turned, once the batch has been checked, with the way to go through them. */
-export function TurnNotice({ query, turns, onReview }: {
-  query: UseQueryResult<TurnedPages>
-  turns: Map<string, TopPoints>
-  onReview: () => void
-}) {
-  if (query.isPending) return <p className="ingest-note">Checking which way up the scans are…</p>
-  if (query.error) return <p className="ingest-note ingest-warning">Couldn’t check which way up the scans are: {query.error.message}</p>
-  if (turns.size === 0) return null
-  return (
-    <div className="suggestion-notice">
-      <span>{turns.size === 1 ? '1 scan looks' : `${turns.size} scans look`} {describeTurned([...turns.values()])}.</span>
-      <button onClick={onReview}>Review {turns.size === 1 ? 'it' : 'them'}</button>
-    </div>
-  )
-}
-
-/** Pages open in the full-size viewer: one opened from its tile, or the turned or tilted ones under review. */
-export type Viewing = { keys: string[]; at: number; review: false | 'turned' | 'tilted' }
+/** Pages open in the full-size viewer: one opened on its own, or the ones that look turned or tilted, stepped
+ *  through under review. */
+export type Viewing = { keys: string[]; at: number; review: boolean }
 
 /**
  * The page ``viewing`` is at, full size. One that looks turned is shown as it would be turned upright
  * (a checkbox shows it as scanned), with "Turn upright" and "Leave as is"; under it, any page can be
  * straightened, starting from its detected tilt if it looks tilted. Reviewing steps on to the next page
- * that still looks turned (or tilted), and a page opened on its own stays open, showing the saved scan.
+ * that still looks turned or tilted, and a page opened on its own stays open, showing the saved scan.
  */
 export function PageViewer({ viewing, pages, turns, tilts, locked, cannotTurn, onSetAside, onSetAsideTilt, onMove,
   onClose }: {
@@ -95,16 +78,19 @@ export function PageViewer({ viewing, pages, turns, tilts, locked, cannotTurn, o
   onMove: (viewing: Viewing | null) => void
   onClose: () => void
 }) {
-  const flagged = viewing.review === 'tilted' ? tilts : turns
-  const key = viewing.review ? viewing.keys.slice(viewing.at).find((k) => flagged.has(k)) : viewing.keys[viewing.at]
+  const flagged = (k: string) => turns.has(k) || tilts.has(k)
+  const key = viewing.review ? viewing.keys.slice(viewing.at).find(flagged) : viewing.keys[viewing.at]
   const page = key === undefined ? undefined : pages.get(key)
+  const done = key === undefined || page === undefined
+  useEffect(() => { if (done) onClose() }, [done, onClose])   // reviewed past the last one
   if (key === undefined || page === undefined) return null
   const at = viewing.keys.indexOf(key)
   const next = () => onMove(viewing.review ? { ...viewing, at: at + 1 } : viewing)
   const top = turns.get(key)
   const tilt = tilts.get(key)
-  const leave = (setAside: (page: ScanPage) => void) => () => {
+  const leave = (setAside: (page: ScanPage) => void, still: boolean) => () => {
     setAside(page)
+    if (still) return          // left the turn as is, but it looks tilted too: that is offered next
     if (viewing.review) next()
     else onMove(null)
   }
@@ -113,7 +99,7 @@ export function PageViewer({ viewing, pages, turns, tilts, locked, cannotTurn, o
     // starts the slider again from the scan as it is now.
     <ScanViewerWithTurn key={`${scanVersion(page)}|${tilt ?? ''}`} page={page} top={top} tilt={tilt}
       position={viewing.keys.length > 1 ? `${at + 1} of ${viewing.keys.length}` : ''} locked={locked}
-      cannotTurn={cannotTurn(key)} onTurned={next} onLeave={leave(onSetAside)} onLeaveTilt={leave(onSetAsideTilt)}
+      cannotTurn={cannotTurn(key)} onTurned={next} onLeave={leave(onSetAside, tilt !== undefined)} onLeaveTilt={leave(onSetAsideTilt, false)}
       onClose={onClose} />
   )
 }
