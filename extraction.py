@@ -21,8 +21,8 @@ UsageSink = Callable[[TokenUse], None] | None
 
 OLLAMA_MODEL = "qwen3:8b"
 #: The hosted models on offer, each its own extractor, cheapest first: Luna is what a whole batch runs
-#: on, Terra is there for the awkward ones.
-OPENAI_MODELS = ("gpt-5.6-luna", "gpt-5.6-terra")
+#: on, Sol is there for the awkward ones.
+OPENAI_MODELS = ("gpt-6-luna", "gpt-6-sol")
 
 
 class Price(BaseModel):
@@ -33,11 +33,11 @@ class Price(BaseModel):
     output: float
 
 
-#: What each hosted model charges, from OpenAI's pricing page, checked 2026-09-20. Models that run on
+#: What each hosted model charges, from OpenAI's pricing page, checked 2026-09-23. Models that run on
 #: this machine are absent: they cost time and electricity, not money.
 PRICES = {
-    "OpenAI - gpt-5.6-luna": Price(input=0.20, cached_input=0.02, output=1.20),
-    "OpenAI - gpt-5.6-terra": Price(input=2.00, cached_input=0.20, output=12.00),
+    "OpenAI - gpt-6-luna": Price(input=0.10, cached_input=0.01, output=0.50),
+    "OpenAI - gpt-6-sol": Price(input=2.00, cached_input=0.20, output=10.00),
 }
 
 EXTRACTION_PROMPT = """You are extracting structured data from OCR text of a scanned document.

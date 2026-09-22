@@ -312,15 +312,15 @@ def test_a_parse_run_on_a_billed_model_adds_up_what_it_is_spending(ingest_client
         on_usage(TokenUse(prompt=2000, cached=1024, completion=400, thinking=250))
         return _receipt("Parsed")
 
-    monkeypatch.setattr(ingest_registry, "extractors", lambda: {"OpenAI - gpt-5.6-luna": extract})
+    monkeypatch.setattr(ingest_registry, "extractors", lambda: {"OpenAI - gpt-6-luna": extract})
     monkeypatch.setattr(ingest_registry, "unload_extractor", lambda name: lambda: None)
 
-    job = ingest_client.post("/api/ingest/parse", json={"extractor": "OpenAI - gpt-5.6-luna", "reprocess": True,
+    job = ingest_client.post("/api/ingest/parse", json={"extractor": "OpenAI - gpt-6-luna", "reprocess": True,
                                                         "limit": 2}).json()
     done = _finish(job)
 
     assert done["done"] == 2
-    assert done["spent"] == pytest.approx(2 * 0.000696, abs=1e-5)     # both calls, at Luna's prices
+    assert done["spent"] == pytest.approx(2 * 0.000308, abs=1e-5)     # both calls, at Luna's prices
     assert (done["calls"], done["prompt_tokens"], done["cached_tokens"]) == (2, 4000, 2048)
     assert (done["completion_tokens"], done["thinking_tokens"]) == (800, 500)
 

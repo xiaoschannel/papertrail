@@ -140,7 +140,7 @@ def _body(tokens: int) -> dict:
                           "time": "10:00", "name": "Simulated Shop", "phone": "", "currency": "JPY",
                           "address": "", "items": [], "cost": 100.0, "field_sources": []})
     return {"id": "chatcmpl-sim", "object": "chat.completion", "created": int(time.time()),
-            "model": "gpt-5.6-luna", "system_fingerprint": "fp_sim", "service_tier": "default",
+            "model": "gpt-6-luna", "system_fingerprint": "fp_sim", "service_tier": "default",
             "choices": [{"index": 0, "finish_reason": "stop",
                          "message": {"role": "assistant", "content": content, "refusal": None}}],
             "usage": {"prompt_tokens": int(tokens * 0.8), "completion_tokens": int(tokens * 0.2),
@@ -268,8 +268,8 @@ def _run(documents: int) -> None:
     # The fixture holds a handful; a run worth watching needs hundreds, so they come round again.
     plan.documents = [plan.documents[i % len(plan.documents)] for i in range(documents)]
 
-    pipeline.run_parse(box, plan, EXTRACTORS["OpenAI - gpt-5.6-luna"], "", _Progress(),
-                       model="OpenAI - gpt-5.6-luna", workers=MAX_SLOTS, shuffle=False, save_every=1e9)
+    pipeline.run_parse(box, plan, EXTRACTORS["OpenAI - gpt-6-luna"], "", _Progress(),
+                       model="OpenAI - gpt-6-luna", workers=MAX_SLOTS, shuffle=False, save_every=1e9)
     shutil.rmtree(box.parent, ignore_errors=True)
 
 

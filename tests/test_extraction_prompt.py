@@ -103,7 +103,7 @@ def _fake_openai(monkeypatch, refuses=("reasoning_effort",)):
                 "completion_tokens_details": type("C", (), {"reasoning_tokens": 250}),
                 "model_dump": lambda self=None: USAGE_PAYLOAD})
             return type("Response", (), {"choices": [type("Choice", (), {"message": message})], "usage": usage,
-                                         "model": "gpt-5.6-terra-2026-02-01", "service_tier": "default",
+                                         "model": "gpt-6-sol-2026-09-01", "service_tier": "default",
                                          "system_fingerprint": "fp_test"})
 
     monkeypatch.setattr(extraction, "OpenAI", type("Client", (), {"chat": type("Chat", (), {"completions": Completions()})}))
@@ -113,7 +113,7 @@ def _fake_openai(monkeypatch, refuses=("reasoning_effort",)):
 def test_the_hosted_models_are_asked_to_think_only_a_little_and_for_nothing_they_refuse(monkeypatch):
     calls = _fake_openai(monkeypatch, refuses=())
 
-    extraction.EXTRACTORS["OpenAI - gpt-5.6-terra"]("text")
+    extraction.EXTRACTORS["OpenAI - gpt-6-sol"]("text")
 
     # No temperature: a reasoning model takes only its own, and asking costs a whole call to be told so.
     assert [c["reasoning_effort"] for c in calls] == ["low"]
@@ -124,25 +124,25 @@ def test_a_call_reports_what_it_read_and_wrote_to_a_caller_that_asks(monkeypatch
     _fake_openai(monkeypatch, refuses=())
     seen = []
 
-    extraction.EXTRACTORS["OpenAI - gpt-5.6-terra"]("text", on_usage=seen.append)
+    extraction.EXTRACTORS["OpenAI - gpt-6-sol"]("text", on_usage=seen.append)
 
     assert seen[0].model_dump(exclude={"raw"}) == {"prompt": 2000, "cached": 1024, "completion": 400, "thinking": 250}
     # and the provider's own payload, untouched, for when the summary above is the thing in doubt
-    assert seen[0].raw == {"model": "gpt-5.6-terra-2026-02-01", "service_tier": "default",
+    assert seen[0].raw == {"model": "gpt-6-sol-2026-09-01", "service_tier": "default",
                            "system_fingerprint": "fp_test", "usage": USAGE_PAYLOAD}
     # The cached part of the prompt bills at a tenth, and the thinking bills as output.
-    assert extraction.cost_of("OpenAI - gpt-5.6-terra", seen[0]) == pytest.approx(0.0069568)
+    assert extraction.cost_of("OpenAI - gpt-6-sol", seen[0]) == pytest.approx(0.0061568)
     assert extraction.cost_of("Ollama - qwen3:8b", seen[0]) is None      # it runs here; it bills nothing
 
 
 def test_each_hosted_model_is_its_own_extractor_and_one_refusing_a_setting_is_asked_without(monkeypatch):
     assert [name for name in extraction.EXTRACTORS if name.startswith("OpenAI")] == [
-        "OpenAI - gpt-5.6-luna", "OpenAI - gpt-5.6-terra"]     # cheapest first: it is the default
+        "OpenAI - gpt-6-luna", "OpenAI - gpt-6-sol"]     # cheapest first: it is the default
     calls = _fake_openai(monkeypatch)                          # a model that fixes its reasoning effort
 
-    result = extraction.EXTRACTORS["OpenAI - gpt-5.6-luna"]("text")
+    result = extraction.EXTRACTORS["OpenAI - gpt-6-luna"]("text")
 
     assert result.document_type == "corrupted"
-    assert [(c["model"], "reasoning_effort" in c) for c in calls] == [("gpt-5.6-luna", True),
-                                                                      ("gpt-5.6-luna", False)]
+    assert [(c["model"], "reasoning_effort" in c) for c in calls] == [("gpt-6-luna", True),
+                                                                      ("gpt-6-luna", False)]
     assert calls[1]["response_format"] is ExtractionFlat       # only the setting it refused is dropped
