@@ -121,6 +121,8 @@ Scan your documents into a folder, and follow this process:
 
    Slice and Group both point out scans that look sideways or upside down, and show each one turned upright
    to confirm before it is saved.
+   They also point out scans fed in slightly crooked; any scan can be straightened from its full-size view,
+   previewed over level guides before it is saved, and its OCR boxes move with it.
 4. **OCR** — Batch OCR across all scanned images.
 5. **Parse** — Parse OCR results into file metadata.
 6. **Review** — Review parsed metadata and manually correct if needed. Mark bad documents for re-processing.

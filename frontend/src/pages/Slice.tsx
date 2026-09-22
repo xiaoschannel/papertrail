@@ -7,6 +7,7 @@ import { ConfirmDialog } from '../components/ConfirmDialog.tsx'
 import { GridEditor } from '../components/GridEditor.tsx'
 import { useBatchHolder } from '../components/jobs.tsx'
 import { BatchSelect, Pager, RotateButtons, keyRange } from '../components/scans.tsx'
+import { TiltBadge, TiltNotice, useTiltedPages } from '../components/tilts.tsx'
 import { PageViewer, TurnNotice, useTurnedPages, type Viewing } from '../components/turns.tsx'
 import { Card, Empty, ErrorState, Loading } from '../components/ui.tsx'
 import { useGridColumnCount } from '../components/useGridColumnCount.ts'
@@ -112,6 +113,8 @@ function Sheets({ data, batchId, onBatch }: { data: Slicing; batchId: number; on
   const sheetsByKey = useMemo(() => new Map(data.sheets.map((s) => [s.key, s])), [data])
   // A sheet is turned before it is cut: its crops come out the way it faces.
   const turned = useTurnedPages(batchId, sheetsByKey)
+  // ... and squared up, for the same reason.
+  const tilted = useTiltedPages(batchId, sheetsByKey)
 
   return (
     <Card title="Sheets" className="card--full"
@@ -126,7 +129,9 @@ function Sheets({ data, batchId, onBatch }: { data: Slicing; batchId: number; on
       )}
       {rotate.error && <div className="error-banner" role="alert">{rotate.error.message}</div>}
       <TurnNotice query={turned.query} turns={turned.turns}
-        onReview={() => setViewing({ keys: data.sheets.map((s) => s.key).filter((k) => turned.turns.has(k)), at: 0, review: true })} />
+        onReview={() => setViewing({ keys: data.sheets.map((s) => s.key).filter((k) => turned.turns.has(k)), at: 0, review: 'turned' })} />
+      <TiltNotice query={tilted.query} tilts={tilted.tilts}
+        onReview={() => setViewing({ keys: data.sheets.map((s) => s.key).filter((k) => tilted.tilts.has(k)), at: 0, review: 'tilted' })} />
       {pager}
       <div className="page-grid" ref={grid}>
         {data.sheets.slice(start, start + perPage).map((sheet) => {
@@ -141,6 +146,10 @@ function Sheets({ data, batchId, onBatch }: { data: Slicing; batchId: number; on
                     {...(cut || sheet.sliced ? { title: 'Unslice the sheet to rotate it' } : {})}
                     suggested={turned.turns.get(sheet.key)}
                     onRotate={(top) => rotate.mutate({ key: sheet.key, top })} />
+                  {tilted.tilts.has(sheet.key) && (
+                    <TiltBadge degrees={tilted.tilts.get(sheet.key) ?? 0}
+                      onOpen={() => setViewing({ keys: [sheet.key], at: 0, review: false })} />
+                  )}
                   <button className={cut ? '' : 'primary'} disabled={busy || refusal !== null && !cut && !sheet.sliced}
                     title={refusal ?? (cut ? 'Change how this sheet is cut' : 'Cut this sheet into one page per receipt')}
                     onClick={() => { plan.reset(); apply.reset(); setEditing(sheet) }}>
@@ -173,7 +182,12 @@ function Sheets({ data, batchId, onBatch }: { data: Slicing; batchId: number; on
           : 'No sheets sliced in this batch.')}
       </p>
 
-      {viewing && <PageViewer viewing={viewing} pages={sheetsByKey} turns={turned.turns}
+      {viewing && <PageViewer viewing={viewing} pages={sheetsByKey} turns={turned.turns} tilts={tilted.tilts}
+        cannotTurn={(key) => {
+          const sheet = sheetsByKey.get(key)
+          return sheet && (sheet.grid || sheet.sliced) ? 'Unslice the sheet to straighten it' : null
+        }}
+        onSetAsideTilt={tilted.setAside}
         locked={holder === null ? null : `Waiting for ${holder.title}: it is using batch ${batchId}.`}
         onSetAside={turned.setAside} onMove={setViewing} onClose={() => setViewing(null)} />}
       {editing && (

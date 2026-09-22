@@ -78,23 +78,135 @@ export function RotateButtons({ disabled, title, suggested, onRotate }: {
   )
 }
 
-/** The size to show a scan at when it is turned ``turn`` degrees (a multiple of 90), to fit the viewer:
- *  its box and the scan inside it, which the turn then lays across the box. */
-function turnedFit(natural: [number, number], turn: number) {
+/** The size to show a scan at when it is turned ``turn`` degrees (a multiple of 90), to fit the viewer
+ *  (``across`` side by side): its box and the scan inside it, which the turn then lays across the box. */
+function turnedFit(natural: [number, number], turn: number, across = 1) {
   const [w, h] = natural
   const sideways = Math.abs(turn) % 180 === 90
   const [boxW, boxH] = sideways ? [h, w] : [w, h]
   const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16
-  const scale = Math.min(1, Math.min(69 * rem, window.innerWidth * 0.92) / boxW, (window.innerHeight * 0.72) / boxH)
+  const wide = (Math.min(69 * rem, window.innerWidth * 0.92) - (across - 1) * 12) / across
+  const scale = Math.min(1, wide / boxW, (window.innerHeight * 0.72) / boxH)
   return { box: { width: boxW * scale, height: boxH * scale }, scan: { width: w * scale, height: h * scale } }
+}
+
+/** How far to shrink a scan tilted ``tilt`` degrees so all of it fits where the level one did, corners
+ *  included (as straightening saves it, on a canvas grown to hold them). */
+function tiltFit(natural: [number, number] | null, tilt: number): number {
+  if (natural === null || !tilt) return 1
+  const [w, h] = natural
+  const cos = Math.abs(Math.cos((tilt * Math.PI) / 180))
+  const sin = Math.abs(Math.sin((tilt * Math.PI) / 180))
+  return Math.min(w / (w * cos + h * sin), h / (w * sin + h * cos))
+}
+
+type Size = [number, number]
+/** What straightening leaves around the ink at least, as a share of the scan's shorter side (deskew). */
+const INK_MARGIN = 0.01
+
+/** The canvas a scan is turned onto to keep every corner (deskew.grown_size, Pillow's to the pixel). */
+function grownSize([w, h]: Size, tilt: number): Size {
+  const theta = (-tilt * Math.PI) / 180
+  const cos = Math.cos(theta)
+  const sin = Math.sin(theta)
+  const corners: Size[] = [[0, 0], [w, 0], [w, h], [0, h]]
+  const xs = corners.map(([x, y]) => cos * (x - w / 2) + sin * (y - h / 2) + w / 2)
+  const ys = corners.map(([x, y]) => -sin * (x - w / 2) + cos * (y - h / 2) + h / 2)
+  return [Math.ceil(Math.max(...xs)) - Math.floor(Math.min(...xs)), Math.ceil(Math.max(...ys)) - Math.floor(Math.min(...ys))]
+}
+
+/** The page a scan holds once turned ``tilt`` degrees level, taken to be the crooked page's bounding box
+ *  (deskew.levelled_size). Null when no page fits, or for no turn. */
+function levelledSize([w, h]: Size, tilt: number): Size | null {
+  if (!tilt) return null
+  const cos = Math.abs(Math.cos((tilt * Math.PI) / 180))
+  const sin = Math.abs(Math.sin((tilt * Math.PI) / 180))
+  const det = cos * cos - sin * sin
+  const a = (w * cos - h * sin) / det
+  const b = (h * cos - w * sin) / det
+  return a < 1 || b < 1 ? null : [Math.round(a), Math.round(b)]
+}
+
+/** What straightening keeps of the grown canvas (deskew.straightened_crop): the levelled page, but never
+ *  less than the ink (``outline``, fractions of the scan) and a margin round it. Null: nothing is cropped. */
+function straightenedCrop(natural: Size, tilt: number, outline: number[][]):
+  { grown: Size; box: [number, number, number, number] } | null {
+  const page = levelledSize(natural, tilt)
+  if (page === null) return null
+  const [w, h] = natural
+  const grown = grownSize(natural, tilt)
+  let left = (grown[0] - page[0]) / 2
+  let top = (grown[1] - page[1]) / 2
+  let right = left + page[0]
+  let bottom = top + page[1]
+  const cos = Math.cos((tilt * Math.PI) / 180)
+  const sin = Math.sin((tilt * Math.PI) / 180)
+  const margin = INK_MARGIN * Math.min(w, h)
+  for (const [fx = 0, fy = 0] of outline) {
+    const dx = fx * w - w / 2
+    const dy = fy * h - h / 2
+    const x = grown[0] / 2 + dx * cos + dy * sin
+    const y = grown[1] / 2 - dx * sin + dy * cos
+    left = Math.min(left, x - margin)
+    top = Math.min(top, y - margin)
+    right = Math.max(right, x + margin)
+    bottom = Math.max(bottom, y + margin)
+  }
+  return {
+    grown,
+    box: [Math.max(0, Math.floor(left)), Math.max(0, Math.floor(top)),
+      Math.min(grown[0], Math.ceil(right)), Math.min(grown[1], Math.ceil(bottom))],
+  }
+}
+
+/** A scan as straightening ``tilt`` degrees (counter-clockwise) would save it: turned and cropped to the
+ *  levelled page, keeping all its ink (``outline``, from the server), sized to fit the viewer ``across``
+ *  side by side. Until the outline arrives, and for a scan no page fits in, it is shown whole, shrunk to
+ *  keep its corners in view. */
+export function StraightenedScan({ src, alt, tilt, outline, across = 1 }: {
+  src: string
+  alt: string
+  tilt: number
+  outline: number[][] | undefined
+  across?: number
+}) {
+  const [natural, setNatural] = useState<Size | null>(null)
+  const img = (style: object) => (
+    <img src={src} alt={alt} style={style}
+      onLoad={(e) => setNatural([e.currentTarget.naturalWidth, e.currentTarget.naturalHeight])} />
+  )
+  const crop = natural && outline && straightenedCrop(natural, tilt, outline)
+  if (natural === null || !crop) {
+    // CSS turns clockwise for positive angles; a tilt is counter-clockwise
+    return <div className="scan-viewer__frame">{img({ transform: `rotate(${-tilt}deg) scale(${tiltFit(natural, tilt)})` })}</div>
+  }
+  const [left, top, right, bottom] = crop.box
+  const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16
+  const wide = (Math.min(69 * rem, window.innerWidth * 0.92) - (across - 1) * 12) / across
+  const scale = Math.min(1, wide / (right - left), (window.innerHeight * 0.78) / (bottom - top))
+  return (
+    <div className="scan-viewer__frame scan-viewer__straightened"
+      style={{ width: (right - left) * scale, height: (bottom - top) * scale }}>
+      {img({
+        width: natural[0] * scale, height: natural[1] * scale,
+        // the scan turns about its middle, which is the grown canvas's middle
+        left: (crop.grown[0] / 2 - left) * scale, top: (crop.grown[1] / 2 - top) * scale,
+        transform: `translate(-50%, -50%) rotate(${-tilt}deg)`,
+      })}
+    </div>
+  )
 }
 
 /** A scan at full size, for deciding whether a page continues the previous document, is upright, or
  *  where to cut a sheet. The dialogs' Cancel shortcut closes it. ``turn`` previews it turned (degrees
- *  clockwise, a multiple of 90) without changing it; ``footer`` goes under the caption. ``scan`` shows
- *  something else in the scan's place (the trim rulers, which draw the scan themselves); ``children`` go in
- *  the caption. */
-export function ScanViewer({ label, filename, version, onClose, children, turn = 0, footer, scan }: {
+ *  clockwise, a multiple of 90) and ``tilt`` straightened (degrees counter-clockwise, a few) without
+ *  changing it, beside the scan as it is (cropped as straightening would, keeping the ink in ``outline``);
+ *  ``guides`` draws level and plumb lines over them to judge a tilt by; ``footer`` goes under the caption.
+ *  ``scan`` shows something else in the scan's place (the trim rulers, which draw the scan themselves)
+ *  unless a tilt is being previewed: trims are measured on the scan as it is stored, so a page is
+ *  straightened first. ``children`` go in the caption. */
+export function ScanViewer({ label, filename, version, onClose, children, turn = 0, tilt = 0, outline, guides = false,
+  footer, scan }: {
   label: string
   filename: string
   /** The file's mtime, so a rotated scan isn't shown from the browser's cache. */
@@ -103,6 +215,9 @@ export function ScanViewer({ label, filename, version, onClose, children, turn =
   scan?: ReactNode
   children?: ReactNode
   turn?: number
+  tilt?: number
+  outline?: number[][] | undefined
+  guides?: boolean
   footer?: ReactNode
 }) {
   const [natural, setNatural] = useState<[number, number] | null>(null)
@@ -116,22 +231,40 @@ export function ScanViewer({ label, filename, version, onClose, children, turn =
     return () => document.removeEventListener('keydown', onKey)
   }, [close, onClose])
 
+  /** The scan in its frame, turned ``turn`` and straightened ``by``. */
+  const frame = (by: number) => {
+    if (by && !turn) {
+      return <StraightenedScan src={inputUrl(filename, version)} alt={`Scan ${label}, straightened`} tilt={by}
+        outline={outline} across={2} />
+    }
+    // CSS turns clockwise for positive angles; a tilt is counter-clockwise
+    const tilted = by ? ` rotate(${-by}deg) scale(${tiltFit(natural, by)})` : ''
+    const img = (style?: object) => (
+      <img src={inputUrl(filename, version)} alt={`Scan ${label}`} style={style}
+        onLoad={(e) => setNatural([e.currentTarget.naturalWidth, e.currentTarget.naturalHeight])} />
+    )
+    if (!turn || natural === null) {
+      return <div className="scan-viewer__frame">{img(turn ? { visibility: 'hidden' } : undefined)}</div>
+    }
+    const fit = turnedFit(natural, turn, tilt ? 2 : 1)
+    return (
+      <div className="scan-viewer__frame">
+        <div className="scan-viewer__turned" style={fit.box}>
+          {img({ ...fit.scan, maxWidth: 'none', maxHeight: 'none', transform: `translate(-50%, -50%) rotate(${turn}deg)${tilted}` })}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="modal-backdrop scan-viewer" data-modal-open onClick={onClose} role="dialog" aria-modal="true">
-      <figure onClick={(e) => e.stopPropagation()}>
-        {scan ?? (() => {
-          const img = (style?: object) => (
-            <img src={inputUrl(filename, version)} alt={`Scan ${label}`} style={style}
-              onLoad={(e) => setNatural([e.currentTarget.naturalWidth, e.currentTarget.naturalHeight])} />
-          )
-          if (!turn || natural === null) return img(turn ? { visibility: 'hidden' } : undefined)
-          const fit = turnedFit(natural, turn)
-          return (
-            <div className="scan-viewer__turned" style={fit.box}>
-              {img({ ...fit.scan, maxWidth: 'none', maxHeight: 'none', transform: `translate(-50%, -50%) rotate(${turn}deg)` })}
-            </div>
-          )
-        })()}
+      <figure className={guides ? 'scan-viewer--guides' : undefined} onClick={(e) => e.stopPropagation()}>
+        {(scan && !tilt) ? scan : tilt ? (
+          <div className="scan-viewer__compare">
+            <div><span>As scanned</span>{frame(0)}</div>
+            <div><span>Straightened</span>{frame(tilt)}</div>
+          </div>
+        ) : frame(0)}
         <figcaption>
           <strong>{label}</strong> {filename}
           {children}

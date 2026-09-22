@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tan
 import { api } from '../api/client.ts'
 import type { TopPoints, TurnedPages } from '../api/types.ts'
 import { ARROWS, FACING, ScanViewer } from './scans.tsx'
+import { StraightenControls, useStraightening } from './tilts.tsx'
 
 /*
  * Scans that look sideways or upside down, as the Slice and Group pages point them out: a notice over the
@@ -70,8 +71,8 @@ export function TurnNotice({ query, turns, onReview }: {
   )
 }
 
-/** Pages open in the full-size viewer: one opened from its tile, or the turned ones under review. */
-export type Viewing = { keys: string[]; at: number; review: boolean }
+/** Pages open in the full-size viewer: one opened from its tile, or the turned or tilted ones under review. */
+export type Viewing = { keys: string[]; at: number; review: false | 'turned' | 'tilted' }
 
 /** What a page adds to its full-size view: something in the scan's place (Group's trim rulers), and a note
  *  in the caption. */
@@ -79,54 +80,78 @@ export type PageView = { scan?: ReactNode; caption?: ReactNode }
 
 /**
  * The page ``viewing`` is at, full size. One that looks turned is shown as it would be turned upright
- * (a checkbox shows it as scanned), with "Turn upright" and "Leave as is"; reviewing steps on to the next
- * page that still looks turned, and a page opened on its own stays open, showing the turned scan.
+ * (a checkbox shows it as scanned), with "Turn upright" and "Leave as is"; under it, any page can be
+ * straightened, starting from its detected tilt if it looks tilted. Reviewing steps on to the next page
+ * that still looks turned (or tilted), and a page opened on its own stays open, showing the saved scan.
  *
  * ``pageView`` is what the page adds when no turn is being suggested (see PageView); a page that looks
- * turned is turned first, since what it adds is measured on the scan as it is stored.
+ * turned is turned first, and a tilted one straightened first, since what it adds is measured on the scan
+ * as it is stored.
  */
-export function PageViewer({ viewing, pages, turns, locked, onSetAside, onMove, onClose, pageView }: {
+export function PageViewer({ viewing, pages, turns, tilts, locked, cannotTurn, onSetAside, onSetAsideTilt, onMove,
+  onClose, pageView }: {
   viewing: Viewing
   pages: Map<string, ScanPage>
   turns: Map<string, TopPoints>
+  tilts: Map<string, number>
   /** Why rotating has to wait (a job is using the batch), or null. */
   locked: string | null
+  /** Why a page can't be turned at all (a crop, a sliced sheet), or null. */
+  cannotTurn: (key: string) => string | null
   onSetAside: (page: ScanPage) => void
+  onSetAsideTilt: (page: ScanPage) => void
   onMove: (viewing: Viewing | null) => void
   onClose: () => void
   pageView?: ((key: string) => PageView) | undefined
 }) {
-  const key = viewing.review ? viewing.keys.slice(viewing.at).find((k) => turns.has(k)) : viewing.keys[viewing.at]
+  const flagged = viewing.review === 'tilted' ? tilts : turns
+  const key = viewing.review ? viewing.keys.slice(viewing.at).find((k) => flagged.has(k)) : viewing.keys[viewing.at]
   const page = key === undefined ? undefined : pages.get(key)
   if (key === undefined || page === undefined) return null
   const at = viewing.keys.indexOf(key)
   const next = () => onMove(viewing.review ? { ...viewing, at: at + 1 } : viewing)
   const top = turns.get(key)
+  const tilt = tilts.get(key)
+  const leave = (setAside: (page: ScanPage) => void) => () => {
+    setAside(page)
+    if (viewing.review) next()
+    else onMove(null)
+  }
   return (
-    <ScanViewerWithTurn key={scanVersion(page)} page={page} top={top} view={pageView?.(key) ?? {}}
+    // Keyed by the scan's version and its tilt: a saved turn, or a tilt measured after the viewer opened,
+    // starts the slider again from the scan as it is now.
+    <ScanViewerWithTurn key={`${scanVersion(page)}|${tilt ?? ''}`} page={page} top={top} tilt={tilt}
+      view={pageView?.(key) ?? {}}
       position={viewing.keys.length > 1 ? `${at + 1} of ${viewing.keys.length}` : ''} locked={locked}
-      onTurned={next}
-      onLeave={() => {
-        onSetAside(page)
-        if (viewing.review) next()
-        else onMove(null)
-      }}
+      cannotTurn={cannotTurn(key)} onTurned={next} onLeave={leave(onSetAside)} onLeaveTilt={leave(onSetAsideTilt)}
       onClose={onClose} />
   )
 }
 
-function ScanViewerWithTurn({ page, top, view, position, locked, onTurned, onLeave, onClose }: {
+function ScanViewerWithTurn({ page, top, tilt, view, position, locked, cannotTurn, onTurned, onLeave, onLeaveTilt,
+  onClose }: {
   page: ScanPage
   top: TopPoints | undefined
+  tilt: number | undefined
   view: PageView
   position: string
   locked: string | null
+  cannotTurn: string | null
   onTurned: () => void
   onLeave: () => void
+  onLeaveTilt: () => void
   onClose: () => void
 }) {
   const queryClient = useQueryClient()
   const [preview, setPreview] = useState(true)
+  const straightening = useStraightening(tilt)
+  // where the ink is, so the preview crops as straightening will (only asked for once a turn is previewed)
+  const outline = useQuery({
+    queryKey: ['ingest', 'ink-outline', page.key, page.image_version],
+    queryFn: () => api.ingest.inkOutline(page.key),
+    enabled: straightening.degrees !== 0,
+    staleTime: Infinity,
+  })
   const rotate = useMutation({
     mutationFn: (to: TopPoints) => api.ingest.rotate(page.key, to),
     onSuccess: async () => {
@@ -136,19 +161,20 @@ function ScanViewerWithTurn({ page, top, view, position, locked, onTurned, onLea
     },
   })
   const label = position ? `${page.key} — ${position}` : page.key
+  const straighten = (
+    <StraightenControls page={page} suggested={tilt} refusal={cannotTurn ?? locked} straightening={straightening}
+      onStraightened={onTurned} onLeave={onLeaveTilt}
+      note={view.scan && straightening.degrees ? 'The trim rulers come back once it is straightened (or the turn is reset).' : null} />
+  )
+  const viewed = { label, filename: page.filename, version: page.image_version, onClose,
+    tilt: straightening.degrees, outline: outline.data?.points, guides: straightening.guides }
   if (top === undefined) {
-    return (
-      <ScanViewer label={label} filename={page.filename} version={page.image_version} onClose={onClose}
-        scan={view.scan}>
-        {view.caption}
-      </ScanViewer>
-    )
+    return <ScanViewer {...viewed} scan={view.scan} footer={straighten}>{view.caption}</ScanViewer>
   }
   const arrow = ARROWS.find((a) => a.top === top)?.label
   return (
-    <ScanViewer label={label} filename={page.filename} version={page.image_version} onClose={onClose}
-      turn={preview ? UPRIGHT_TURN[top] : 0}
-      footer={(
+    <ScanViewer {...viewed} turn={preview ? UPRIGHT_TURN[top] : 0}
+      footer={(<>
         <div className="scan-viewer__suggest">
           <span className="scan-viewer__suggestion">Looks {FACING[top]}.</span>
           <label className="scan-viewer__check">
@@ -165,6 +191,7 @@ function ScanViewerWithTurn({ page, top, view, position, locked, onTurned, onLea
           {locked && <span className="ingest-note ingest-warning">{locked}</span>}
           {rotate.error && <span className="error-banner" role="alert">{rotate.error.message}</span>}
         </div>
-      )} />
+        {straighten}
+      </>)} />
   )
 }
