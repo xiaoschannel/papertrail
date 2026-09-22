@@ -41,16 +41,22 @@ class Shortcuts(BaseModel):
     hide_boxes: str = "b"
     # The Marked Workshop and Experiment
     hold_original: str = "r"
-    # Every confirmation dialog, and File Index's scan viewer (cancel closes it). Nothing behind a
-    # dialog listens while it is open, so these may repeat a page's keys.
+    # Every confirmation dialog, and every scan viewer (cancel closes it). Nothing behind a dialog
+    # listens while it is open, so these may repeat a page's keys.
     confirm: str = "e"
     cancel: str = "q"
+    # Fix Rotation's scan viewer, beside cancel: W E R above, D below
+    leave_as_is: str = "w"
+    turn_upright: str = "e"
+    toggle_guides: str = "r"
+    straighten: str = "d"
 
     #: Actions live at the same time, so no two of them may share a key.
     QUICK: ClassVar = ("quick_1", "quick_2", "quick_3")
     GROUPS: ClassVar = (("accept", "mark", "toss", "prev", "next", "undo", "hide_boxes", *QUICK),
                         ("accept", "toss", "prev", "next", "hold_original", "hide_boxes", *QUICK),
-                        ("confirm", "cancel"))
+                        ("confirm", "cancel"),
+                        ("leave_as_is", "turn_upright", "toggle_guides", "straighten", "cancel"))
 
     @field_validator("*", mode="before")
     @classmethod

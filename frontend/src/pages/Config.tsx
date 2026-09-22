@@ -174,7 +174,11 @@ const SHORTCUT_GROUPS: { title: string; actions: [keyof Shortcuts, string][] }[]
     ['hide_boxes', 'Hold to hide boxes (Review, Workshop, Experiment, Receipt Detail)'],
     ['hold_original', 'Hold to see the original (Workshop, Experiment)'],
   ] },
-  { title: "Dialogs, and File Index's scan viewer", actions: [['confirm', 'Confirm'], ['cancel', 'Cancel or close']] },
+  { title: 'Dialogs and scan viewers', actions: [['confirm', 'Confirm'], ['cancel', 'Cancel or close']] },
+  { title: "Fix Rotation's scan viewer", actions: [
+    ['leave_as_is', 'Leave as is'], ['turn_upright', 'Turn upright'], ['toggle_guides', 'Level guides on or off'],
+    ['straighten', 'Straighten'],
+  ] },
 ]
 
 /** Actions live on one page at once, so they can't share a key (`Shortcuts.GROUPS` in settings.py). */
@@ -182,6 +186,7 @@ const QUICK: (keyof Shortcuts)[] = ['quick_1', 'quick_2', 'quick_3']
 const LIVE_TOGETHER: (keyof Shortcuts)[][] = [
   ['accept', 'mark', 'toss', 'prev', 'next', 'undo', 'hide_boxes', ...QUICK],
   ['accept', 'toss', 'prev', 'next', 'hold_original', 'hide_boxes', ...QUICK], ['confirm', 'cancel'],
+  ['leave_as_is', 'turn_upright', 'toggle_guides', 'straighten', 'cancel'],
 ]
 
 /** The actions the server would refuse (the same rules as `Shortcuts` in settings.py). */

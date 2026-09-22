@@ -3,8 +3,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api/client.ts'
 import { setAsideChanged } from './setAside.ts'
 import type { TopPoints } from '../api/types.ts'
+import { useShortcutKeys } from '../api/config.ts'
 import { ARROWS, FACING, ScanViewer } from './scans.tsx'
 import { StraightenControls, useStraightening } from './tilts.tsx'
+import { keyLabel, useDialogKeys } from './useShortcuts.ts'
 
 /*
  * Scans that look sideways or upside down, as the Fix Rotation page points them out: the suggested arrow lit
@@ -140,32 +142,39 @@ function ScanViewerWithTurn({ page, top, tilt, position, locked, cannotTurn, onT
       onTurned()
     },
   })
+  const keys = useShortcutKeys()
+  const canTurn = top !== undefined && locked === null && !rotate.isPending
+  useDialogKeys(keys && top !== undefined ? {
+    [keys.turn_upright]: canTurn ? () => rotate.mutate(top) : undefined,
+    [keys.leave_as_is]: rotate.isPending ? undefined : onLeave,
+  } : {})
+  const kbd = (key: string | undefined) => key && <kbd>{keyLabel(key)}</kbd>
   const label = position ? `${page.key} — ${position}` : page.key
-  const straighten = (
-    <StraightenControls page={page} suggested={tilt} refusal={cannotTurn ?? locked} straightening={straightening}
-      onStraightened={onTurned} onLeave={onLeaveTilt} />
-  )
-  const viewed = { label, filename: page.filename, version: page.image_version, onClose,
-    tilt: straightening.degrees, outline: outline.data?.points, guides: straightening.guides }
-  if (top === undefined) return <ScanViewer {...viewed} footer={straighten} />
-  const arrow = ARROWS.find((a) => a.top === top)?.label
+  const arrow = top && ARROWS.find((a) => a.top === top)?.label
+  // The turn's row is laid out for every scan, so the rows under it keep their place.
+  const unused = top === undefined ? 'scan-viewer__unused' : undefined
   return (
-    <ScanViewer {...viewed} turn={UPRIGHT_TURN[top]}
+    <ScanViewer label={label} filename={page.filename} version={page.image_version} onClose={onClose}
+      turn={top ? UPRIGHT_TURN[top] : 0} tilt={straightening.degrees} outline={outline.data?.points}
+      guides={straightening.guides}
       footer={(<>
         <div className="scan-viewer__suggest">
-          <span className="scan-viewer__suggestion">Looks {FACING[top]}.</span>
+          <span className={top ? 'scan-viewer__suggestion' : undefined}>{top ? `Looks ${FACING[top]}.` : 'Looks upright.'}</span>
           <span className="scan-viewer__actions">
-            <button disabled={rotate.isPending} onClick={onLeave}>Leave as is</button>
-            <button className="primary" disabled={locked !== null || rotate.isPending}
-              title={`Save the scan turned upright, over the original: its ${arrow} arrow`}
-              onClick={() => rotate.mutate(top)}>
-              Turn upright
+            <button className={unused} disabled={top === undefined || rotate.isPending} onClick={onLeave}>
+              Leave as is {kbd(keys?.leave_as_is)}
+            </button>
+            <button className={`primary${unused ? ` ${unused}` : ''}`} disabled={!canTurn}
+              title={arrow ? `Save the scan turned upright, over the original: its ${arrow} arrow` : undefined}
+              onClick={() => top && rotate.mutate(top)}>
+              Turn upright {kbd(keys?.turn_upright)}
             </button>
           </span>
           {locked && <span className="ingest-note ingest-warning">{locked}</span>}
           {rotate.error && <span className="error-banner" role="alert">{rotate.error.message}</span>}
         </div>
-        {straighten}
+        <StraightenControls page={page} suggested={tilt} refusal={cannotTurn ?? locked} straightening={straightening}
+          onStraightened={onTurned} onLeave={onLeaveTilt} leaveKey={top === undefined} />
       </>)} />
   )
 }

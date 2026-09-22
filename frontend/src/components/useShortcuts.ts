@@ -70,6 +70,34 @@ export function useShortcuts(shortcuts: ShortcutMap, enabled = true, repeating: 
   }, [enabled])
 }
 
+/** Fields a key types into. A slider or a checkbox takes no letters, so keys still work after using one. */
+const TEXT_ENTRY = 'input:not([type=range]):not([type=checkbox]), textarea, select, [contenteditable="true"]'
+
+/**
+ * Single-key shortcuts inside a dialog (the scan viewer), which `useShortcuts` stands aside for: the same
+ * guards otherwise (typing, a modifier chord, Enter or Space on a focused button), once per press.
+ * Keys whose action is undefined are left alone.
+ */
+export function useDialogKeys(shortcuts: ShortcutMap, enabled = true) {
+  const latest = useRef(shortcuts)
+  useLayoutEffect(() => {
+    latest.current = shortcuts
+  })
+  useEffect(() => {
+    if (!enabled) return undefined
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || pressesFocused(event)) return
+      if (event.target instanceof HTMLElement && event.target.closest(TEXT_ENTRY)) return
+      const handler = latest.current[keyOf(event)]
+      if (!handler) return
+      event.preventDefault()
+      if (!event.repeat) handler()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [enabled])
+}
+
 /**
  * Whether `key` is being held right now — for a look-underneath, like lifting the boxes off a scan
  * to read the text they cover. Press and it is true, release and it is false again.

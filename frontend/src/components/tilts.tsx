@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api/client.ts'
+import { useShortcutKeys } from '../api/config.ts'
 import { setAsideChanged } from './setAside.ts'
+import { keyLabel, useDialogKeys } from './useShortcuts.ts'
 import type { ScanPage } from './turns.tsx'
 
 /*
@@ -72,8 +74,10 @@ export function useStraightening(suggested: number | undefined) {
 /**
  * Under the full-size scan: the turn slider (it turns only the preview), the guides checkbox, and
  * Straighten, which saves the scan turned. A detected tilt presets the slider and offers "Leave as is".
+ * Every row is always laid out, so nothing moves from one scan to the next. ``leaveKey`` says whether
+ * the Leave as is key is this one's (it is the turn's while a turn is suggested).
  */
-export function StraightenControls({ page, suggested, refusal, straightening, onStraightened, onLeave }: {
+export function StraightenControls({ page, suggested, refusal, straightening, onStraightened, onLeave, leaveKey }: {
   page: ScanPage
   suggested: number | undefined
   /** Why the scan can't be straightened (a crop, a sliced sheet, a job using the batch), or null. */
@@ -81,8 +85,10 @@ export function StraightenControls({ page, suggested, refusal, straightening, on
   straightening: ReturnType<typeof useStraightening>
   onStraightened: () => void
   onLeave: () => void
+  leaveKey: boolean
 }) {
   const queryClient = useQueryClient()
+  const keys = useShortcutKeys()
   const { degrees, setDegrees, guides, setGuides } = straightening
   const start = suggested ?? 0
   const save = useMutation({
@@ -93,13 +99,18 @@ export function StraightenControls({ page, suggested, refusal, straightening, on
       onStraightened()
     },
   })
+  const canSave = degrees !== 0 && refusal === null && !save.isPending
+  useDialogKeys(keys ? {
+    [keys.toggle_guides]: () => setGuides(!guides),
+    [keys.straighten]: canSave ? () => save.mutate() : undefined,
+    ...(leaveKey && suggested !== undefined && !save.isPending ? { [keys.leave_as_is]: onLeave } : {}),
+  } : {})
+  const kbd = (key: string | undefined) => key && <kbd>{keyLabel(key)}</kbd>
   return (
     <div className="scan-viewer__suggest">
-      {suggested !== undefined && (
-        <span className="scan-viewer__suggestion scan-viewer__line">
-          Looks tilted: turn {describeTurn(suggested)} to level it.
-        </span>
-      )}
+      <span className={`scan-viewer__line${suggested !== undefined ? ' scan-viewer__suggestion' : ''}`}>
+        {suggested !== undefined ? `Looks tilted: turn ${describeTurn(suggested)} to level it.` : 'Looks level.'}
+      </span>
       <span className="scan-viewer__dial">
         <label htmlFor="straighten-degrees">Straighten</label>
         <input id="straighten-degrees" type="range" min={-15} max={15} step={0.1} value={-degrees}
@@ -114,13 +125,17 @@ export function StraightenControls({ page, suggested, refusal, straightening, on
       </button>
       <label className="scan-viewer__check">
         <input type="checkbox" checked={guides} onChange={(e) => setGuides(e.target.checked)} /> Level guides
+        {kbd(keys?.toggle_guides)}
       </label>
       <span className="scan-viewer__actions">
-        {suggested !== undefined && <button disabled={save.isPending} onClick={onLeave}>Leave as is</button>}
-        <button className="primary" disabled={degrees === 0 || refusal !== null || save.isPending}
+        <button className={suggested === undefined ? 'scan-viewer__unused' : undefined}
+          disabled={suggested === undefined || save.isPending} onClick={onLeave}>
+          Leave as is{leaveKey && <> {kbd(keys?.leave_as_is)}</>}
+        </button>
+        <button className="primary" disabled={!canSave}
           title={refusal ?? 'Save the scan turned, over the original, keeping its corners'}
           onClick={() => save.mutate()}>
-          Straighten
+          Straighten {kbd(keys?.straighten)}
         </button>
       </span>
       {refusal && <span className="ingest-note ingest-warning">{refusal}</span>}

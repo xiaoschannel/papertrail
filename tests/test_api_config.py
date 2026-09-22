@@ -86,7 +86,8 @@ def test_only_pages_on_this_machine_are_served(api_client):
 def test_shortcuts_default_to_the_left_hand(api_client):
     assert api_client.get("/api/config").json()["shortcuts"] == {
         "accept": "a", "mark": "s", "toss": "d", "prev": "x", "next": "c", "undo": "z",
-        "quick_1": "1", "quick_2": "2", "quick_3": "3", "hide_boxes": "b", "hold_original": "r", "confirm": "e", "cancel": "q"}
+        "quick_1": "1", "quick_2": "2", "quick_3": "3", "hide_boxes": "b", "hold_original": "r", "confirm": "e", "cancel": "q",
+        "leave_as_is": "w", "turn_upright": "e", "toggle_guides": "r", "straighten": "d"}
 
 
 def test_shortcuts_are_saved_as_a_section(api_client):
