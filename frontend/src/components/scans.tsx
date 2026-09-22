@@ -201,12 +201,12 @@ export function StraightenedScan({ src, alt, tilt, outline, across = 1 }: {
 /** A scan at full size, for deciding whether a page continues the previous document, is upright, or
  *  where to cut a sheet, or just to read it. The dialogs' Cancel shortcut closes it. The scan is the
  *  input-folder file ``filename`` at ``version``, or ``src`` when given (an archived document's). ``turn``
- *  previews it turned (degrees clockwise, a multiple of 90) and ``tilt`` straightened (degrees
- *  counter-clockwise, a few) without changing it, beside the scan as it is (cropped as straightening would,
- *  keeping the ink in ``outline``); ``guides`` draws level and plumb lines over them to judge a tilt by;
- *  ``footer`` goes under the caption. ``scan`` shows something else in the scan's place (the trim rulers,
- *  which draw the scan themselves) unless a tilt is being previewed: trims are measured on the scan as it
- *  is stored, so a page is straightened first. ``children`` go in the caption. */
+ *  (degrees clockwise, a multiple of 90) and ``tilt`` (degrees counter-clockwise, a few) preview a fix
+ *  without changing anything: the scan as it is, beside it turned and straightened (cropped as
+ *  straightening would, keeping the ink in ``outline``); ``guides`` draws level and plumb lines over them
+ *  to judge a tilt by; ``footer`` goes under the caption. ``scan`` shows something else in the scan's place
+ *  (the trim rulers, which draw the scan themselves) unless a fix is being previewed: trims are measured
+ *  on the scan as it is stored, so a page is turned first. ``children`` go in the caption. */
 export function ScanViewer({ label, filename, version = 0, src, onClose, children, turn = 0, tilt = 0, outline,
   guides = false, footer, scan }: {
   label: ReactNode
@@ -237,9 +237,9 @@ export function ScanViewer({ label, filename, version = 0, src, onClose, childre
 
   const url = src ?? inputUrl(filename ?? '', version)
   const alt = typeof label === 'string' ? `Scan ${label}` : 'Scan'
-  /** The scan in its frame, turned ``turn`` and straightened ``by``. */
-  const frame = (by: number) => {
-    if (by && !turn) {
+  /** The scan in its frame, turned ``turnBy`` and straightened ``by``. */
+  const frame = (turnBy: number, by: number) => {
+    if (by && !turnBy) {
       return <StraightenedScan src={url} alt={`${alt}, straightened`} tilt={by} outline={outline} across={2} />
     }
     // CSS turns clockwise for positive angles; a tilt is counter-clockwise
@@ -248,14 +248,14 @@ export function ScanViewer({ label, filename, version = 0, src, onClose, childre
       <img src={url} alt={alt} style={style}
         onLoad={(e) => setNatural([e.currentTarget.naturalWidth, e.currentTarget.naturalHeight])} />
     )
-    if (!turn || natural === null) {
-      return <div className="scan-viewer__frame">{img(turn ? { visibility: 'hidden' } : undefined)}</div>
+    if (!turnBy || natural === null) {
+      return <div className="scan-viewer__frame">{img(turnBy ? { visibility: 'hidden' } : undefined)}</div>
     }
-    const fit = turnedFit(natural, turn, tilt ? 2 : 1)
+    const fit = turnedFit(natural, turnBy, 2)
     return (
       <div className="scan-viewer__frame">
         <div className="scan-viewer__turned" style={fit.box}>
-          {img({ ...fit.scan, maxWidth: 'none', maxHeight: 'none', transform: `translate(-50%, -50%) rotate(${turn}deg)${tilted}` })}
+          {img({ ...fit.scan, maxWidth: 'none', maxHeight: 'none', transform: `translate(-50%, -50%) rotate(${turnBy}deg)${tilted}` })}
         </div>
       </div>
     )
@@ -266,12 +266,13 @@ export function ScanViewer({ label, filename, version = 0, src, onClose, childre
   return createPortal(
     <div className="modal-backdrop scan-viewer" data-modal-open onClick={onClose} role="dialog" aria-modal="true">
       <figure className={guides ? 'scan-viewer--guides' : undefined} onClick={(e) => e.stopPropagation()}>
-        {(scan && !tilt) ? scan : tilt ? (
+        {turn || tilt ? (
           <div className="scan-viewer__compare">
-            <div><span>As scanned</span>{frame(0)}</div>
-            <div><span>Straightened</span>{frame(tilt)}</div>
+            <div><span>As scanned</span>{frame(0, 0)}</div>
+            <div><span>{turn && tilt ? 'Turned and straightened' : turn ? 'Turned upright' : 'Straightened'}</span>
+              {frame(turn, tilt)}</div>
           </div>
-        ) : frame(0)}
+        ) : scan ?? frame(0, 0)}
         <figcaption>
           <strong>{label}</strong> {filename}
           {children}

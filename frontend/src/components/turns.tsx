@@ -64,8 +64,8 @@ export function describeTurned(turns: TopPoints[]): string {
 export type Viewing = { keys: string[]; at: number; review: boolean }
 
 /**
- * The page ``viewing`` is at, full size. One that looks turned is shown as it would be turned upright
- * (a checkbox shows it as scanned), with "Turn upright" and "Leave as is"; under it, any page can be
+ * The page ``viewing`` is at, full size. One that looks turned is shown turned upright beside the scan
+ * as it is, with "Turn upright" and "Leave as is"; under it, any page can be
  * straightened, starting from its detected tilt if it looks tilted. Reviewing steps on to the next page
  * that still looks turned or tilted, and a page opened on its own stays open, showing the saved scan.
  */
@@ -124,7 +124,6 @@ function ScanViewerWithTurn({ page, top, tilt, position, locked, cannotTurn, onT
   onClose: () => void
 }) {
   const queryClient = useQueryClient()
-  const [preview, setPreview] = useState(true)
   const straightening = useStraightening(tilt)
   // where the ink is, so the preview crops as straightening will (only asked for once a turn is previewed)
   const outline = useQuery({
@@ -151,13 +150,10 @@ function ScanViewerWithTurn({ page, top, tilt, position, locked, cannotTurn, onT
   if (top === undefined) return <ScanViewer {...viewed} footer={straighten} />
   const arrow = ARROWS.find((a) => a.top === top)?.label
   return (
-    <ScanViewer {...viewed} turn={preview ? UPRIGHT_TURN[top] : 0}
+    <ScanViewer {...viewed} turn={UPRIGHT_TURN[top]}
       footer={(<>
         <div className="scan-viewer__suggest">
           <span className="scan-viewer__suggestion">Looks {FACING[top]}.</span>
-          <label className="scan-viewer__check">
-            <input type="checkbox" checked={preview} onChange={(e) => setPreview(e.target.checked)} /> Preview upright
-          </label>
           <span className="scan-viewer__actions">
             <button disabled={rotate.isPending} onClick={onLeave}>Leave as is</button>
             <button className="primary" disabled={locked !== null || rotate.isPending}
