@@ -15,6 +15,8 @@ export type ReviewDocument = Schemas['ReviewDocument']
 export type ReviewPage = Schemas['ReviewPage']
 export type FieldBox = Schemas['FieldBoxOut']
 export type BoxRect = Schemas['BoxRect']
+/** The band of a page scan that is the document (null wherever a page keeps all of it). */
+export type Trim = Schemas['Trim']
 export type Draft = Schemas['DraftIn']
 export type DecisionIn = Schemas['DecisionIn']
 export type Verdict = DecisionIn['verdict']

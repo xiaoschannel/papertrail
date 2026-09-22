@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { api, inputThumbUrl } from '../api/client.ts'
-import type { Grouping, GroupingPage, TopPoints } from '../api/types.ts'
+import { api, inputThumbUrl, inputUrl } from '../api/client.ts'
+import type { Grouping, GroupingPage, TopPoints, Trim } from '../api/types.ts'
 import { ConfirmDialog } from '../components/ConfirmDialog.tsx'
 import { useBatchHolder, useEverythingHolder } from '../components/jobs.tsx'
 import { BatchSelect, Pager, RotateButtons } from '../components/scans.tsx'
+import { TrimEditor } from '../components/TrimEditor.tsx'
+import { TrimmedImage } from '../components/TrimmedImage.tsx'
 import { PageViewer, TurnNotice, useTurnedPages, type Viewing } from '../components/turns.tsx'
 import { Card, Empty, ErrorState, Loading } from '../components/ui.tsx'
 import { useGridColumnCount } from '../components/useGridColumnCount.ts'
@@ -137,6 +139,13 @@ function GroupingEditor({ data, batchId, onBatch }: { data: Grouping; batchId: n
       for (const root of ['review-queue', 'review-doc']) void queryClient.invalidateQueries({ queryKey: [root] })
     },
   })
+  const trim = useMutation({
+    mutationFn: ({ key, band }: { key: string; band: Trim | null }) => api.ingest.trim(key, band),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['ingest'] })     // the tiles, and OCR's queue
+      void queryClient.invalidateQueries({ queryKey: ['review-doc'] })
+    },
+  })
   const save = useMutation({
     mutationFn: (groups: string[][]) => api.ingest.saveGrouping(batchId, groups),
     onSuccess: async (result) => {
@@ -206,7 +215,10 @@ function GroupingEditor({ data, batchId, onBatch }: { data: Grouping; batchId: n
           const group = groupOf.get(key)
           return (
             <PageTile key={key} page={pageInfo} group={group} turn={turned.turns.get(key)}
-              onZoom={() => setViewing({ keys: [key], at: 0, review: false })}
+              onZoom={() => {
+                trim.reset()
+                setViewing({ keys: [key], at: 0, review: false })
+              }}
               busy={pageAction.isPending} rotateLocked={holder !== null} tossLocked={archiving !== null}
               onRotate={(top) => pageAction.mutate({ action: 'rotate', key, top })}
               onToss={() => pageAction.mutate({ action: pageInfo.tossed ? 'recover' : 'toss', key })}
@@ -240,7 +252,25 @@ function GroupingEditor({ data, batchId, onBatch }: { data: Grouping; batchId: n
 
       {viewing && <PageViewer viewing={viewing} pages={pagesByKey} turns={turned.turns}
         locked={holder === null ? null : `Waiting for ${holder.title}: it is using batch ${batchId}.`}
-        onSetAside={turned.setAside} onMove={setViewing} onClose={() => setViewing(null)} />}
+        onSetAside={turned.setAside} onMove={setViewing} onClose={() => setViewing(null)}
+        pageView={(key) => {
+          const shown = pagesByKey.get(key)
+          if (!shown) return {}
+          if (shown.sliced) return { caption: <span className="ingest-note">Sliced into crops, which are what OCR reads: trim a crop instead.</span> }
+          return {
+            scan: (
+              <TrimEditor src={inputUrl(shown.filename, shown.image_version)} alt={`Scan ${shown.key}`}
+                value={shown.trim ?? null} saving={trim.isPending} error={trim.error?.message ?? null}
+                blockedBy={holder !== null ? holder.title : null}
+                onSave={(band) => trim.mutate({ key: shown.key, band })}
+                note={<>
+                  Trim off what OCR shouldn’t read — a coupon, a survey, a header. OCR reads only the band between
+                  the rulers, and every view shows only that part; the scan itself is never changed. A page OCR has
+                  read already is read again by its next run.
+                </>} />
+            ),
+          }
+        }} />}
 
       {confirmingSave && (
         <ConfirmDialog title="Save document groups?" confirmLabel="Save" danger busy={save.isPending}
@@ -286,8 +316,12 @@ function PageTile({ page, group, turn, link, busy, rotateLocked, tossLocked, onR
         <div className="page-tile__scan">
           {page.image_available
             ? (
-              <button className="page-tile__zoom" onClick={onZoom} title="Show this scan full size">
-                <img src={inputThumbUrl(page.filename, page.image_version)} alt={`Scan ${page.key}`} loading="lazy" />
+              <button className="page-tile__zoom" onClick={onZoom}
+                title={page.sliced ? 'Show this scan full size'
+                  : page.trim ? 'Show this scan full size (it is trimmed) and move its cuts'
+                  : 'Show this scan full size, and trim it'}>
+                <TrimmedImage fit="contain" src={inputThumbUrl(page.filename, page.image_version)} alt={`Scan ${page.key}`}
+                  trim={page.trim ?? null} />
               </button>
             )
             : <span className="ingest-note">Scan not in the input folder</span>}

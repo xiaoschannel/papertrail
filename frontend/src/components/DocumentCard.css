@@ -2,26 +2,12 @@
    This is layout rule 3 from the styles.css header. */
 
 /* --- CappedImage ------------------------------------------------------------
-   Full width at natural aspect ratio, capped at capRatio x width. The cap is an
-   explicit aspect-ratio set from JS (see CappedImage); object-fit: cover + top
-   anchoring then crops the overflow from the bottom. No CSS size container: that
-   would give the wrapper a 0 intrinsic width and collapse the image in any
-   content-sized layout.
-
-   The cut-off cue is a short fade at the bottom edge — deliberately not a dashed
-   line or torn edge, because receipts already contain both.                   */
-.capped-image img {
-  display: block;
-  width: 100%;
-  height: auto;
-  object-fit: cover;
-  object-position: top;
-  border-radius: 5px;
-  background: var(--border);   /* placeholder while loading */
-}
-.capped-image.is-cropped img {
-  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent);
-          mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent);
+   Full width at natural aspect ratio, capped at capRatio x width and cropped from
+   the bottom with a short fade: TrimmedImage does the sizing and the cues (see
+   TrimmedImage.css). Here only the card's look.                                  */
+.capped-image {
+  --scan-radius: 5px;
+  --scan-bg: var(--border);   /* placeholder while loading */
 }
 
 /* --- DocumentCard ------------------------------------------------------------ */
@@ -72,7 +58,7 @@
   border-radius: 6px;
 }
 .doc-card--compact:focus-visible { outline-offset: -2px; }
-.doc-card--compact .capped-image img { border-radius: 4px; }
+.doc-card--compact .capped-image { --scan-radius: 4px; }
 .doc-card--compact .doc-card__name { margin-top: 3px; font-size: 11.5px; }
 .doc-card--compact .doc-card__caption { margin-top: 1px; font-size: 11px; }
 

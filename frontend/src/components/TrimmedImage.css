@@ -1,0 +1,45 @@
+/* TrimmedImage: a scan showing only the band its trim keeps (see TrimmedImage.tsx).
+
+   Pages style the scan through custom properties rather than reaching into the parts:
+     --scan-radius   corner radius of the scan                       (default 4px)
+     --scan-bg       what shows before it loads, and behind it       (default white: it is paper)
+     --scan-max-h    the tallest a fit="contain" scan may be          (default none)
+
+   The cut is shown as a soft shadow along the edge, as if the paper went on under the page: not a line
+   or a torn edge, because receipts are full of both. A card that is capped fades out at the bottom
+   instead (it goes on, rather than having been cut). */
+.trimmed-scan { position: relative; line-height: 0; }
+.trimmed-scan[hidden] { display: none; }
+.trimmed-scan--width { display: block; width: 100%; }
+.trimmed-scan--contain { display: inline-block; max-width: 100%; vertical-align: top; }
+
+/* the sizer sets the box, like the scan itself would */
+.trimmed-scan__sizer, .trimmed-scan__plain, .trimmed-scan__waiting { display: block; }
+.trimmed-scan--width :is(.trimmed-scan__sizer, .trimmed-scan__plain, .trimmed-scan__waiting) { width: 100%; height: auto; }
+.trimmed-scan--contain :is(.trimmed-scan__sizer, .trimmed-scan__plain, .trimmed-scan__waiting) {
+  max-width: 100%; max-height: var(--scan-max-h, none); width: auto; height: auto;
+}
+.trimmed-scan__plain, .trimmed-scan__clip { border-radius: var(--scan-radius, 4px); background: var(--scan-bg, #fff); }
+.trimmed-scan__sizer { visibility: hidden; }
+.trimmed-scan__waiting { visibility: hidden; }
+
+.trimmed-scan__clip { position: absolute; inset: 0; overflow: hidden; }
+.trimmed-scan__scan { position: absolute; left: 0; width: 100%; max-width: none; }
+.trimmed-scan__top { position: absolute; left: 0; top: 0; width: 100%; height: auto; }
+
+.trimmed-scan.is-capped .trimmed-scan__clip {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent);
+          mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent);
+}
+
+.trimmed-scan.is-cut-top::before, .trimmed-scan.is-cut-bottom::after {
+  content: ""; position: absolute; left: 0; right: 0; height: min(14px, 12%); pointer-events: none; z-index: 1;
+}
+.trimmed-scan.is-cut-top::before {
+  top: 0; border-radius: var(--scan-radius, 4px) var(--scan-radius, 4px) 0 0;
+  background: linear-gradient(to bottom, rgb(0 0 0 / .26), rgb(0 0 0 / .08) 45%, transparent);
+}
+.trimmed-scan.is-cut-bottom::after {
+  bottom: 0; border-radius: 0 0 var(--scan-radius, 4px) var(--scan-radius, 4px);
+  background: linear-gradient(to top, rgb(0 0 0 / .26), rgb(0 0 0 / .08) 45%, transparent);
+}

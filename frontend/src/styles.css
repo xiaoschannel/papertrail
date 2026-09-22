@@ -224,10 +224,7 @@ table.fixed td, table.fixed th { overflow: hidden; text-overflow: ellipsis; whit
 .scan-full { display: grid; gap: 10px; justify-items: center; }
 .document-picker { margin-bottom: 14px; }
 .document-picker input { width: 100%; max-width: 32rem; }
-.scan-full img {
-  width: 100%; max-width: var(--scan-col); height: auto; display: block;
-  border-radius: 6px; background: #fff;
-}
+.scan-full .trimmed-scan { max-width: var(--scan-col); --scan-radius: 6px; }
 /* With its boxes drawn, the scan still fills the column: the column's width is the zoom. */
 .detail-scan { --scan-width: 100%; }
 

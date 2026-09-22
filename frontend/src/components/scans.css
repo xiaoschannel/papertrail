@@ -1,0 +1,25 @@
+/* ScanViewer: a scan at full size over the page (see scans.tsx), or the rulers that trim it.
+
+   On a short window the rulers' buttons and notes can still run past the bottom: the backdrop scrolls
+   then, and "safe" keeps the top reachable rather than centring it off the screen. */
+.scan-viewer { overflow-y: auto; place-items: safe center; padding-block: 2vh; }
+.scan-viewer figure {
+  margin: 0; max-width: min(69rem, 92vw); display: grid; gap: 8px; justify-items: center;
+  /* the rulers' scan leaves room for their buttons, the note and the caption */
+  --editor-max-h: max(18rem, calc(96vh - 13rem));
+}
+.scan-viewer figure > img { max-width: 100%; max-height: 82vh; object-fit: contain; border-radius: 6px; background: #fff; }
+/* a scan previewed turned: the box has the turned shape, and the scan is laid across it from its middle */
+.scan-viewer__turned { position: relative; justify-self: center; }
+.scan-viewer__turned img { position: absolute; left: 50%; top: 50%; background: #fff; }
+.scan-viewer figure .trim-editor__bar {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px;
+}
+.scan-viewer figcaption {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; justify-self: stretch;
+  color: var(--text); background: var(--panel); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 12px; font-size: 12.5px; overflow-wrap: anywhere;
+}
+.scan-viewer .trim-editor__note, .scan-viewer .trim-editor .error-banner {
+  background: var(--panel); border-radius: 8px; padding: 6px 10px;
+}

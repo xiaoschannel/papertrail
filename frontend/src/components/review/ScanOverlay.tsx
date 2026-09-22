@@ -1,5 +1,6 @@
 import { useShortcutKeys } from '../../api/config.ts'
-import type { BoxRect, FieldBox, ReviewPage, TopPoints } from '../../api/types.ts'
+import type { BoxRect, FieldBox, ReviewPage, TopPoints, Trim } from '../../api/types.ts'
+import { TrimmedImage } from '../TrimmedImage.tsx'
 import { Empty } from '../ui.tsx'
 import { useHeldKey } from '../useShortcuts.ts'
 import './ScanOverlay.css'
@@ -46,6 +47,10 @@ function turned(r: BoxRect, turn: Turn): BoxRect {
  * percentages and never need the image's pixel size. Hovering a box reports its first field;
  * boxes citing `activeFields` are emphasized (the form highlights the matching input).
  *
+ * Each page shows only the band its trim keeps (the server places the boxes on that band). The Workshop's
+ * previews come from the server already cut, so it says which band each image keeps with `bandOf`, and
+ * nothing is cut again here.
+ *
  * The Workshop shows a treated copy: `turn` says how that copy is turned from the file the boxes were
  * measured on, and `originalUrl` + `showOriginal` swap in the untreated file (both images stay loaded,
  * so the swap is instant).
@@ -55,7 +60,7 @@ function turned(r: BoxRect, turn: Turn): BoxRect {
  */
 export function ScanOverlay({
   pages, imageUrl, activeFields, onHoverField, turn = '', originalUrl, showOriginal = false,
-  hideBoxes = false, missing = 'is not in the input folder',
+  hideBoxes = false, bandOf, missing = 'is not in the input folder',
 }: {
   pages: ReviewPage[]
   imageUrl: (filename: string) => string
@@ -66,43 +71,62 @@ export function ScanOverlay({
   showOriginal?: boolean
   /** Hide the boxes while this is true, leaving the scan itself alone. */
   hideBoxes?: boolean
+  /** For images the server has already cut to a band: the band each one keeps (`original`: the untreated
+   *  one). Without it, each page is cut here to its own trim. */
+  bandOf?: ((page: ReviewPage, original: boolean) => Trim | null) | undefined
   /** What to say about a page whose scan isn't on disk. */
   missing?: string
 }) {
   const isActive = (box: FieldBox) => box.fields.some((f) => activeFields.includes(f))
   const original = showOriginal && originalUrl !== undefined
   const boxTurn: Turn = original ? '' : turn
+  const boxes = (page: ReviewPage) => page.boxes.map((box) => box.rects.map((rect, j) => {
+    const r = turned(rect, boxTurn)
+    return (
+      <div
+        key={`${box.index}-${j}`}
+        className={`field-box${isActive(box) ? ' active' : ''}${r.y1 < 40 ? ' label-below' : ''}`}
+        style={{
+          left: pct(r.x1), top: pct(r.y1), width: pct(r.x2 - r.x1), height: pct(r.y2 - r.y1),
+          ['--box-color' as string]: boxColor(box),
+        }}
+        title={`${boxLabel(box)}${box.text ? ` — ${box.text}` : ''}`}
+        onMouseEnter={() => onHoverField(box.fields[0] ?? null)}
+        onMouseLeave={() => onHoverField(null)}
+      >
+        <span className="field-box__label">{boxLabel(box)}</span>
+      </div>
+    )
+  }))
+  const scan = (page: ReviewPage, src: string, alt: string, untreated: boolean, shown: boolean) => (
+    <TrimmedImage src={src} alt={alt} hidden={!shown} lazy={false}
+      trim={bandOf ? bandOf(page, untreated) : page.trim} pretrimmed={bandOf !== undefined}>
+      {shown && boxes(page)}
+    </TrimmedImage>
+  )
   return (
     <div className={`scan-pages${hideBoxes ? ' boxes-hidden' : ''}`}>
       {pages.map((page, i) => (
         <figure key={page.file_key} className="scan-page">
           {page.image_available && page.filename ? (
             <div className="scan-frame">
-              <img src={imageUrl(page.filename)} alt={`Page ${i + 1}`} hidden={original} />
-              {originalUrl && <img src={originalUrl(page.filename)} alt={`Page ${i + 1}, as scanned`} hidden={!original} />}
-              {page.boxes.map((box) => box.rects.map((rect, j) => {
-                const r = turned(rect, boxTurn)
-                return (
-                  <div
-                    key={`${box.index}-${j}`}
-                    className={`field-box${isActive(box) ? ' active' : ''}${r.y1 < 40 ? ' label-below' : ''}`}
-                    style={{
-                      left: pct(r.x1), top: pct(r.y1), width: pct(r.x2 - r.x1), height: pct(r.y2 - r.y1),
-                      ['--box-color' as string]: boxColor(box),
-                    }}
-                    title={`${boxLabel(box)}${box.text ? ` — ${box.text}` : ''}`}
-                    onMouseEnter={() => onHoverField(box.fields[0] ?? null)}
-                    onMouseLeave={() => onHoverField(null)}
-                  >
-                    <span className="field-box__label">{boxLabel(box)}</span>
-                  </div>
-                )
-              }))}
+              {/* Both stay loaded, so the swap is instant; the boxes go on whichever is showing. */}
+              {originalUrl && scan(page, originalUrl(page.filename), `Page ${i + 1}, as scanned`, true, original)}
+              {scan(page, imageUrl(page.filename), `Page ${i + 1}`, false, !original)}
             </div>
           ) : (
             <Empty>{page.filename ? `${page.filename} ${missing}.` : 'No image for this page.'}</Empty>
           )}
-          <figcaption>Page {i + 1}{page.filename ? ` · ${page.filename}` : ''}</figcaption>
+          <figcaption>
+            <span>
+              Page {i + 1}{page.filename ? ` · ${page.filename}` : ''}
+              {page.retrimmed && (
+                <span className="scan-page__retrimmed" title="The text and boxes are from before the cut moved; read it again to read only the band.">
+                  {' '}· trimmed since it was read
+                </span>
+              )}
+            </span>
+          </figcaption>
         </figure>
       ))}
     </div>

@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, mediaUrl } from '../api/client.ts'
 import type { DedupeCluster, DedupeMember, Verdict } from '../api/types.ts'
 import { afterArchiveEdit } from '../api/invalidate.ts'
+import { TrimmedImage } from '../components/TrimmedImage.tsx'
 import { Card, Empty, ErrorState, Loading, Tile } from '../components/ui.tsx'
 import { money, num } from '../format.ts'
 import './curate.css'
@@ -160,9 +161,10 @@ function ClusterPanel({ cluster, busy, onToss, onKeep }: {
       <div className="dupe-scans">
         {cluster.members.map((member) => (
           <figure key={member.filename}>
-            {/* The whole scan, never cropped: on a receipt the total is at the bottom. */}
+            {/* The whole scan (the band a trim keeps), never cropped: on a receipt the total is at the bottom. */}
             <Link to={`/receipt?file=${encodeURIComponent(member.filename)}`} title="Open this document">
-              <img src={mediaUrl(member.path)} alt={member.name || member.filename} loading="lazy" />
+              <TrimmedImage fit="contain" src={mediaUrl(member.path)!} trim={member.trim}
+                alt={member.name || member.filename} />
             </Link>
             <figcaption>
               <span className="dupe-name" title={member.name}>{member.name || '(untitled)'}</span>

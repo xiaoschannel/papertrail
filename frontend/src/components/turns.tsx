@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query'
 import { api } from '../api/client.ts'
 import type { TopPoints, TurnedPages } from '../api/types.ts'
@@ -73,12 +73,19 @@ export function TurnNotice({ query, turns, onReview }: {
 /** Pages open in the full-size viewer: one opened from its tile, or the turned ones under review. */
 export type Viewing = { keys: string[]; at: number; review: boolean }
 
+/** What a page adds to its full-size view: something in the scan's place (Group's trim rulers), and a note
+ *  in the caption. */
+export type PageView = { scan?: ReactNode; caption?: ReactNode }
+
 /**
  * The page ``viewing`` is at, full size. One that looks turned is shown as it would be turned upright
  * (a checkbox shows it as scanned), with "Turn upright" and "Leave as is"; reviewing steps on to the next
  * page that still looks turned, and a page opened on its own stays open, showing the turned scan.
+ *
+ * ``pageView`` is what the page adds when no turn is being suggested (see PageView); a page that looks
+ * turned is turned first, since what it adds is measured on the scan as it is stored.
  */
-export function PageViewer({ viewing, pages, turns, locked, onSetAside, onMove, onClose }: {
+export function PageViewer({ viewing, pages, turns, locked, onSetAside, onMove, onClose, pageView }: {
   viewing: Viewing
   pages: Map<string, ScanPage>
   turns: Map<string, TopPoints>
@@ -87,6 +94,7 @@ export function PageViewer({ viewing, pages, turns, locked, onSetAside, onMove, 
   onSetAside: (page: ScanPage) => void
   onMove: (viewing: Viewing | null) => void
   onClose: () => void
+  pageView?: ((key: string) => PageView) | undefined
 }) {
   const key = viewing.review ? viewing.keys.slice(viewing.at).find((k) => turns.has(k)) : viewing.keys[viewing.at]
   const page = key === undefined ? undefined : pages.get(key)
@@ -95,7 +103,7 @@ export function PageViewer({ viewing, pages, turns, locked, onSetAside, onMove, 
   const next = () => onMove(viewing.review ? { ...viewing, at: at + 1 } : viewing)
   const top = turns.get(key)
   return (
-    <ScanViewerWithTurn key={scanVersion(page)} page={page} top={top}
+    <ScanViewerWithTurn key={scanVersion(page)} page={page} top={top} view={pageView?.(key) ?? {}}
       position={viewing.keys.length > 1 ? `${at + 1} of ${viewing.keys.length}` : ''} locked={locked}
       onTurned={next}
       onLeave={() => {
@@ -107,9 +115,10 @@ export function PageViewer({ viewing, pages, turns, locked, onSetAside, onMove, 
   )
 }
 
-function ScanViewerWithTurn({ page, top, position, locked, onTurned, onLeave, onClose }: {
+function ScanViewerWithTurn({ page, top, view, position, locked, onTurned, onLeave, onClose }: {
   page: ScanPage
   top: TopPoints | undefined
+  view: PageView
   position: string
   locked: string | null
   onTurned: () => void
@@ -128,7 +137,12 @@ function ScanViewerWithTurn({ page, top, position, locked, onTurned, onLeave, on
   })
   const label = position ? `${page.key} — ${position}` : page.key
   if (top === undefined) {
-    return <ScanViewer label={label} filename={page.filename} version={page.image_version} onClose={onClose} />
+    return (
+      <ScanViewer label={label} filename={page.filename} version={page.image_version} onClose={onClose}
+        scan={view.scan}>
+        {view.caption}
+      </ScanViewer>
+    )
   }
   const arrow = ARROWS.find((a) => a.top === top)?.label
   return (
