@@ -1,5 +1,5 @@
-"""Ingest step endpoints: File Index (batches, slicing, grouping, rotate, trim, toss, and the scans
-that look turned), OCR, Parse and Archive.
+"""Ingest step endpoints: File Index (batches, slicing, grouping, rotate, straighten, trim, toss, and the
+scans that look turned or tilted), OCR, Parse and Archive.
 
 Thin wrappers over ingest_pipeline. OCR, Parse and Archive run as background jobs (api.jobs), side by
 side when they don't collide: each holds the batches it works on (and the GPU, if it loads a model), a
@@ -25,10 +25,11 @@ from api.jobs import EVERYTHING, NOTHING_HELD, Claim, JobConflict, runner
 from api.model_manager import models
 from api.schemas import (
     ApplySliceIn, ArchiveMoveOut, ArchiveStatus, BatchFile, BatchOut, ConfirmIndexIn, GroupingOut, GroupingPageOut,
-    IndexStatus, JobOut, OcrStatus, PageIn, ParseStatus, ProposedBatch, RotateIn, SaveGroupingIn, SaveGroupingOut,
-    SliceCropOut, SliceMoveOut, SlicePlanIn, SlicePlanOut, SlicingOut, SlicingSheetOut, StartOcrIn, StartParseIn,
+    IndexStatus, InkOutlineOut, JobOut, OcrStatus, PageIn, ParseStatus, ProposedBatch, RotateIn, SaveGroupingIn,
+    SaveGroupingOut, SliceCropOut, SliceMoveOut, SlicePlanIn, SlicePlanOut, SlicingOut, SlicingSheetOut, StartOcrIn,
+    StartParseIn,
     TurnedPageOut, TurnedPagesOut,
-    TrimIn,
+    StraightenIn, TiltedPageOut, TiltedPagesOut, TrimIn,
 )
 from data import load_decisions, load_document_groups
 from indexing_schemes import SCHEMES
@@ -236,6 +237,59 @@ def trim_page(body: TrimIn, output_path: Path = Depends(get_output_path)):
     except ValueError as exc:            # a sliced sheet: its crops are what is read
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return SaveGroupingOut(changed=True)
+
+
+@router.get("/tilted", response_model=TiltedPagesOut)
+def tilted_pages(
+    batch_id: int,
+    output_path: Path = Depends(get_output_path),
+    input_path: Path = Depends(get_input_path),
+):
+    """A batch's pages whose scan looks slightly tilted, each with the turn that would level it.
+
+    Only a suggestion: nothing changes until a page is straightened.
+    """
+    try:
+        found = pipeline.tilted_pages(output_path, input_path, batch_id, estimate=store.scan_skew)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc.args[0])) from exc
+    return TiltedPagesOut(batch_id=batch_id, pages=[
+        TiltedPageOut(key=key, image_version=version, degrees=e.degrees) for key, e, version in found])
+
+
+@router.get("/pages/ink-outline", response_model=InkOutlineOut)
+def page_ink_outline(
+    key: str,
+    output_path: Path = Depends(get_output_path),
+    input_path: Path = Depends(get_input_path),
+):
+    """Where a page's ink is, so the straighten preview crops as straightening will."""
+    try:
+        path = pipeline.page_scan(output_path, input_path, key)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc.args[0])) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="the scan is not in the input folder") from exc
+    return InkOutlineOut(points=[list(p) for p in store.scan_ink_outline(path)])
+
+
+@router.post("/pages/straighten", response_model=SaveGroupingOut)
+def straighten_page(
+    body: StraightenIn,
+    output_path: Path = Depends(get_output_path),
+    input_path: Path = Depends(get_input_path),
+):
+    """Turn a page's scan in place by a few degrees, to level a tilted scan."""
+    try:
+        with no_job_running("straighten scans", claim=_page_claim(body.key)):
+            pipeline.straighten_page_image(output_path, input_path, body.key, body.degrees)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc.args[0])) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="the scan is not in the input folder") from exc
+    except ValueError as exc:   # a crop or a sliced sheet, which the Slice page owns (as for rotating)
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return SaveGroupingOut(changed=body.degrees != 0)
 
 
 # --- Slicing sheets of small receipts ------------------------------------------------------------------

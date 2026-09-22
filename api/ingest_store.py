@@ -6,8 +6,9 @@ folder: when any batch file does, or one comes or goes). ``decisions.json`` is s
 also written by other pages (File Index, Normalize, Archive), so it is always read fresh, and every
 read-modify-write goes through one lock so two requests can't lose each other's decision.
 
-Which way up each scan faces is cached the same way, per scan file: Slice and Group ask for a whole batch's
-on every visit, and a scan only changes when someone rotates it.
+Which way up each scan faces, and how far it is tilted, are cached the same way, per scan file: Slice
+and Group ask for a whole batch's on every visit, and a scan only changes when someone rotates or
+straightens it.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from pathlib import Path
 from typing import TypeVar
 
 from data import OCR_DIR, load_extractions, load_ocr_results, load_smart_match_cache, migrate_ocr_results
+from deskew import SkewEstimate, estimate_file_skew, ink_outline
 from models import load_scan_index
 from orientation import OrientationEstimate, estimate_file_orientation
 
@@ -100,7 +102,46 @@ def scan_orientation(path: Path) -> OrientationEstimate:
     return value
 
 
+_skew_cache: dict[str, tuple[tuple[int, int], SkewEstimate]] = {}
+
+
+def scan_skew(path: Path) -> SkewEstimate:
+    """The tilt estimate for one scan, recomputed when the file changes."""
+    key = str(path.resolve())
+    signature = _signature(path)
+    with _cache_lock:
+        hit = _skew_cache.get(key)
+    if hit is not None and hit[0] == signature:
+        return hit[1]
+    value = estimate_file_skew(path)
+    with _cache_lock:
+        _skew_cache[key] = (signature, value)
+    return value
+
+
+_outline_cache: dict[str, tuple[tuple[int, int], list[tuple[float, float]]]] = {}
+
+
+def scan_ink_outline(path: Path) -> list[tuple[float, float]]:
+    """Where one scan's ink is (``deskew.ink_outline``), recomputed when the file changes."""
+    from PIL import Image
+
+    key = str(path.resolve())
+    signature = _signature(path)
+    with _cache_lock:
+        hit = _outline_cache.get(key)
+    if hit is not None and hit[0] == signature:
+        return hit[1]
+    with Image.open(path) as img:
+        value = ink_outline(img)
+    with _cache_lock:
+        _outline_cache[key] = (signature, value)
+    return value
+
+
 def clear() -> None:
     with _cache_lock:
         _cache.clear()
         _orientation_cache.clear()
+        _skew_cache.clear()
+        _outline_cache.clear()

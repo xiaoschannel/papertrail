@@ -18,3 +18,8 @@ shares, built by tools/sandbox_seed.py through the real pipeline: a filed batch 
 waiting in Review, and scans not yet indexed. A feature that can be tried by hand adds its examples there,
 in the stage where they can be tried, with a comment saying what to try, in the same change; there are no
 per-feature scenarios to keep up. Invented data only.
+
+Every scan thumbnail and gallery goes through frontend/src/components/DocumentCard.tsx (CappedImage,
+DocumentCard, ReceiptCard, ReceiptGallery) - Dev and migration pages included, and code copied from an
+older page or a migration tag is no exception. Don't hand-roll image tiles: the capped, top-anchored image
+is the one way a scan is shown small.

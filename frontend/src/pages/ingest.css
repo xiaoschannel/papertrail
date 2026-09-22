@@ -83,4 +83,34 @@
 .scan-viewer__suggestion { color: var(--accent); font-weight: 600; }
 .scan-viewer__check { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); }
 .scan-viewer__actions { display: inline-flex; gap: 8px; margin-left: auto; }
-.scan-viewer__suggest .error-banner, .scan-viewer__suggest .ingest-note { flex-basis: 100%; margin: 0; }
+.scan-viewer__suggest .error-banner, .scan-viewer__suggest .ingest-note { flex-basis: 100%; max-width: none; margin: 0; }
+
+/* --- tilt: the tile badge, and straightening in the scan viewer ------------------------------------- */
+.page-tile__tools .page-tile__tilt { border-color: var(--accent); color: var(--accent); white-space: nowrap; padding: 2px 6px; }
+.scan-viewer figure:has(.scan-viewer__suggest) { min-width: min(42rem, 92vw); }   /* room for the slider's row */
+.scan-viewer__frame {
+  position: relative; display: grid; place-items: center; justify-self: center; overflow: hidden; border-radius: 6px;
+  background: #fff;
+}
+.scan-viewer__frame > img { max-width: 100%; max-height: 82vh; object-fit: contain; }
+/* straightening previewed: the scan as it is and straightened, side by side, each under its own guides */
+.scan-viewer__compare { display: flex; gap: 12px; justify-content: center; align-items: flex-start; justify-self: stretch; }
+.scan-viewer__compare > div { flex: 1 1 0; min-width: 0; display: grid; gap: 4px; justify-items: center; }
+.scan-viewer__compare > div > span { color: var(--muted); font-size: 12px; }
+.scan-viewer__compare .scan-viewer__frame > img { max-height: 78vh; }
+/* straightened as it would be saved: the turned scan laid across a frame the levelled page's size */
+.scan-viewer__straightened > img { position: absolute; left: 50%; top: 50%; max-width: none; max-height: none; }
+/* level and plumb lines to judge a tilt by, over the scan (the preview, or the trim rulers' scan): a text
+   line should run along the one, a column's edge along the other */
+.scan-viewer--guides .scan-viewer__frame::after, .scan-viewer--guides .trim-editor__stage::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background:
+    repeating-linear-gradient(to bottom, transparent 0 27px, rgb(220 40 40 / .4) 27px 28px),
+    repeating-linear-gradient(to right, transparent 0 27px, rgb(220 40 40 / .25) 27px 28px);
+}
+.scan-viewer__line { flex-basis: 100%; }
+/* fixed widths: the slider takes what is left, and must not change size while it is dragged */
+.scan-viewer__dial { flex-basis: 100%; display: flex; align-items: center; gap: 12px; }
+.scan-viewer__dial input[type='range'] { flex: 1; min-width: 0; }
+.scan-viewer__turn { width: 24ch; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.scan-viewer__unused { visibility: hidden; }

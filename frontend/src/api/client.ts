@@ -106,6 +106,12 @@ export const api = {
       unwrap(client.POST('/api/ingest/slices/plan', { body: { key, grid } })),
     applySlices: (key: string, grid: SheetGrid | null, token: string) =>
       unwrap(client.PUT('/api/ingest/slices', { body: { key, grid, token } })),
+    tilted: (batchId: number) =>
+      unwrap(client.GET('/api/ingest/tilted', { params: { query: { batch_id: batchId } } })),
+    inkOutline: (key: string) =>
+      unwrap(client.GET('/api/ingest/pages/ink-outline', { params: { query: { key } } })),
+    straighten: (key: string, degrees: number) =>
+      unwrap(client.POST('/api/ingest/pages/straighten', { body: { key, degrees } })),
     ocr: (query: OcrQuery) => unwrap(client.GET('/api/ingest/ocr', {
       params: {
         query: { provider: query.provider ?? null, batch_id: query.batchId ?? null, reprocess: query.reprocess, limit: query.limit },

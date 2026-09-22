@@ -22,6 +22,10 @@ What each stage holds for a feature today:
 * Trim: a receipt with a coupon under it at every stage. Unindexed, to trim in Group; in Review, one
   trimmed before OCR (read as the receipt alone) and one trimmed after (read again by the next OCR); in
   the archive, a filed receipt trimmed, and a marked one untrimmed (the Workshop's Trim row).
+* Tilted scans: two unindexed receipts were fed in crooked (10 a little clockwise, 13 further the other way),
+  for Slice and Group to point out; any scan can be straightened from its full-size view. The fake OCR
+  boxes each line where it lies on the crooked page, as a real one would, so straightening a page after
+  OCR shows its boxes moving with it (Review draws them).
 """
 
 from __future__ import annotations
@@ -38,6 +42,28 @@ OCR_MODEL, EXTRACTOR = "Fake OCR (sandbox)", "Fake LLM (sandbox)"
 _FONT_PATH = Path(r"C:\Windows\Fonts\meiryo.ttc")
 
 Lines = list[tuple[tuple[int, int, int, int], str]]
+
+
+def _boxed_on_tilted(lines: Lines, degrees: float, size: tuple[int, int] = (600, 1000)) -> Lines:
+    """Each line's box (0-1000) once the page is turned ``degrees`` counter-clockwise on a canvas grown to
+    hold it: the box around the turned box's corners, as OCR draws a box around a sloping line."""
+    import math
+
+    w, h = size
+    cos, sin = math.cos(math.radians(degrees)), math.sin(math.radians(degrees))
+    out_w, out_h = abs(w * cos) + abs(h * sin), abs(w * sin) + abs(h * cos)
+
+    def turned(x: float, y: float) -> tuple[float, float]:
+        dx, dy = x - w / 2, y - h / 2
+        return out_w / 2 + dx * cos + dy * sin, out_h / 2 - dx * sin + dy * cos
+
+    boxed = []
+    for (x1, y1, x2, y2), text in lines:
+        corners = [turned(x * w / 1000, y * h / 1000) for x in (x1, x2) for y in (y1, y2)]
+        xs, ys = [c[0] for c in corners], [c[1] for c in corners]
+        boxed.append(((round(min(xs) * 1000 / out_w), round(min(ys) * 1000 / out_h),
+                       round(max(xs) * 1000 / out_w), round(max(ys) * 1000 / out_h)), text))
+    return boxed
 
 
 def font(size: int):
@@ -63,12 +89,13 @@ class Sandbox(BaseModel):
         return self.root / "archive"
 
     # --- drawing --------------------------------------------------------------------------------------
-    def scan(self, name: str, lines: Lines, rotate=None) -> None:
+    def scan(self, name: str, lines: Lines, rotate=None, tilt: float = 0.0) -> None:
         """A 600 x 1000 page with these lines on it (boxes on OCR's 0-1000 scale), written if not there yet.
 
-        An existing scan is left alone: it may have been rotated since.
+        An existing scan is left alone: it may have been rotated since. ``tilt`` feeds it in crooked: turned
+        that many degrees counter-clockwise on the white scanner bed, each line then boxed where it lies.
         """
-        self.text[name] = lines
+        self.text[name] = _boxed_on_tilted(lines, tilt) if tilt else lines
         if (self.scans / name).exists():
             return
         w, h = 600, 1000
@@ -78,11 +105,15 @@ class Sandbox(BaseModel):
         for (x1, y1, x2, y2), text in lines:
             d.text((x1 / 1000 * w + 4, y1 / 1000 * h + 2), text, fill="black", font=font(30))
         self.scans.mkdir(parents=True, exist_ok=True)
-        (img.transpose(rotate) if rotate else img).save(self.scans / name)
+        img = img.transpose(rotate) if rotate else img
+        if tilt:
+            img = img.rotate(tilt, resample=Image.Resampling.BICUBIC, expand=True, fillcolor="white")
+        img.save(self.scans / name)
 
-    def receipt(self, name: str, shop: str, when: str, total: int, rotate=None, extra: Lines = ()) -> None:
+    def receipt(self, name: str, shop: str, when: str, total: int, rotate=None, extra: Lines = (),
+                tilt: float = 0.0) -> None:
         self.scan(name, [((80, 40, 880, 104), shop), ((80, 140, 470, 176), when), *extra,
-                         ((80, 300, 520, 338), f"合計 ¥{total}")], rotate)
+                         ((80, 300, 520, 338), f"合計 ¥{total}")], rotate, tilt)
 
     def coupon_receipt(self, name: str, shop: str, when: str, total: int) -> None:
         """A receipt with a coupon printed under it, whose own total extraction takes for the receipt's
@@ -163,8 +194,12 @@ def unindexed_scans(sb: Sandbox) -> None:
     sb.receipt("03012026100050_6.png", "Ramen Testya", "2026/02/26 12:45", 1100, rotate=Image.Transpose.ROTATE_180)
     sb.scan("03012026100100_7.png", [((80, 40, 880, 104), "(blank page)")])
     sb.receipt("03012026100110_8.png", "Coffee Stand Foo", "2026/02/25 09:05", 420)
+    # Tilted: 10 and 13 were fed in crooked (with item lines, so there is text to level): Group points them out.
+    tilts = {10: -4.0, 13: 7.0}
     for i in range(9, 15):
-        sb.receipt(f"030120261002{i:02d}_{i}.png", f"Shop Number {i}", f"2026/02/{i + 5:02d} 10:{i:02d}", 100 * i)
+        items = [((80, 200 + 36 * n, 700, 232 + 36 * n), f"品目 {n + 1}    ¥{50 * (n + i)}") for n in range(2)]             if i in tilts else ()
+        sb.receipt(f"030120261002{i:02d}_{i}.png", f"Shop Number {i}", f"2026/02/{i + 5:02d} 10:{i:02d}", 100 * i,
+                   extra=items, tilt=tilts.get(i, 0.0))
     # The same shop, shouted: real scans come out styled differently and smart match has to see through it.
     sb.receipt("03012026100215_15.png", "COFFEE STAND FOO", "2026/02/24 09:12", 380)
     # Slice: 16 is a 3 x 3 grid that ran out after seven; 17, five in a 2 x 3 grid, was scanned sideways and

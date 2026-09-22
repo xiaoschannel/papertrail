@@ -5,6 +5,7 @@ import type { Grouping, GroupingPage, TopPoints, Trim } from '../api/types.ts'
 import { ConfirmDialog } from '../components/ConfirmDialog.tsx'
 import { useBatchHolder, useEverythingHolder } from '../components/jobs.tsx'
 import { BatchSelect, Pager, RotateButtons } from '../components/scans.tsx'
+import { TiltBadge, TiltNotice, useTiltedPages } from '../components/tilts.tsx'
 import { TrimEditor } from '../components/TrimEditor.tsx'
 import { TrimmedImage } from '../components/TrimmedImage.tsx'
 import { PageViewer, TurnNotice, useTurnedPages, type Viewing } from '../components/turns.tsx'
@@ -160,6 +161,7 @@ function GroupingEditor({ data, batchId, onBatch }: { data: Grouping; batchId: n
   const pagesByKey = useMemo(() => new Map(data.pages.map((p) => [p.key, p])), [data])
   const tossed = useMemo(() => new Set(data.pages.filter((p) => p.tossed).map((p) => p.key)), [data])
   const turned = useTurnedPages(batchId, pagesByKey)
+  const tilted = useTiltedPages(batchId, pagesByKey)
 
   const current = rebase(draft, data)  // same as the synced draft; avoids one frame of stale links
   const activeKeys = current.keys.filter((k) => !tossed.has(k))
@@ -199,7 +201,9 @@ function GroupingEditor({ data, batchId, onBatch }: { data: Grouping; batchId: n
       </div>
       {pageAction.error && <div className="error-banner" role="alert">{pageAction.error.message}</div>}
       <TurnNotice query={turned.query} turns={turned.turns}
-        onReview={() => setViewing({ keys: current.keys.filter((k) => turned.turns.has(k)), at: 0, review: true })} />
+        onReview={() => setViewing({ keys: current.keys.filter((k) => turned.turns.has(k)), at: 0, review: 'turned' })} />
+      <TiltNotice query={tilted.query} tilts={tilted.tilts}
+        onReview={() => setViewing({ keys: current.keys.filter((k) => tilted.tilts.has(k)), at: 0, review: 'tilted' })} />
       {pager}
       <div className="page-grid" ref={grid}>
         {current.keys.slice(start, start + perPage).map((key, offset) => {
@@ -214,7 +218,7 @@ function GroupingEditor({ data, batchId, onBatch }: { data: Grouping; batchId: n
           const linked = linkable && Boolean(current.links[activeIndex])
           const group = groupOf.get(key)
           return (
-            <PageTile key={key} page={pageInfo} group={group} turn={turned.turns.get(key)}
+            <PageTile key={key} page={pageInfo} group={group} turn={turned.turns.get(key)} tilt={tilted.tilts.get(key)}
               onZoom={() => {
                 trim.reset()
                 setViewing({ keys: [key], at: 0, review: false })
@@ -250,7 +254,9 @@ function GroupingEditor({ data, batchId, onBatch }: { data: Grouping; batchId: n
         {!changed && <span className={`ingest-note${saved ? ' ok' : ''}`}>{saved || 'No unsaved changes.'}</span>}
       </div>
 
-      {viewing && <PageViewer viewing={viewing} pages={pagesByKey} turns={turned.turns}
+      {viewing && <PageViewer viewing={viewing} pages={pagesByKey} turns={turned.turns} tilts={tilted.tilts}
+        cannotTurn={(key) => { const p = pagesByKey.get(key); return p ? turnRefusal(p, 'straighten') : null }}
+        onSetAsideTilt={tilted.setAside}
         locked={holder === null ? null : `Waiting for ${holder.title}: it is using batch ${batchId}.`}
         onSetAside={turned.setAside} onMove={setViewing} onClose={() => setViewing(null)}
         pageView={(key) => {
@@ -285,11 +291,19 @@ function GroupingEditor({ data, batchId, onBatch }: { data: Grouping; batchId: n
 
 const GROUP_HUES = [210, 32, 150, 280, 350, 90]
 
-function PageTile({ page, group, turn, link, busy, rotateLocked, tossLocked, onRotate, onToss, onZoom }: {
+/** Why a page's scan can't be turned (rotated or straightened): the Slice page owns crops and sliced sheets. */
+function turnRefusal(page: GroupingPage, verb: 'rotate' | 'straighten'): string | null {
+  // Crops are cut upright from their sheet, and a sliced sheet stays as it was cut.
+  return page.crop_of ? 'A crop is turned the way its sheet is' : page.sliced ? `Unslice the sheet to ${verb} it` : null
+}
+
+function PageTile({ page, group, turn, tilt, link, busy, rotateLocked, tossLocked, onRotate, onToss, onZoom }: {
   page: GroupingPage
   group: number | undefined
   /** Where the scan's top seems to point, when it looks turned. */
   turn: TopPoints | undefined
+  /** The turn that would level the scan, when it looks tilted. */
+  tilt: number | undefined
   link: ReactNode
   busy: boolean
   rotateLocked: boolean
@@ -300,13 +314,14 @@ function PageTile({ page, group, turn, link, busy, rotateLocked, tossLocked, onR
 }) {
   const style = group === undefined ? undefined : ({ '--group-hue': GROUP_HUES[group % GROUP_HUES.length] } as CSSProperties)
   // Crops are cut upright from their sheet, and a sliced sheet stays as it was cut: the Slice page owns both.
-  const cut = page.crop_of ? 'A crop is turned the way its sheet is' : page.sliced ? 'Unslice the sheet to rotate it' : undefined
+  const cut = turnRefusal(page, 'rotate') ?? undefined
   return (
     <div className="page-cell">
       <figure className={`page-tile${page.tossed ? ' tossed' : ''}${group !== undefined ? ' grouped' : ''}`} style={style}>
         <div className="page-tile__tools">
           <RotateButtons disabled={busy || rotateLocked || !page.image_available || cut !== undefined}
             {...(cut ? { title: cut } : {})} suggested={turn} onRotate={onRotate} />
+          {tilt !== undefined && <TiltBadge degrees={tilt} onOpen={onZoom} />}
           <button className={page.tossed ? '' : 'danger-outline'} disabled={busy || tossLocked || page.sliced} onClick={onToss}
             title={page.sliced ? 'A sliced sheet stays tossed; unslice it on the Slice page'
               : page.tossed ? 'Recover this page' : 'Toss this page'}>

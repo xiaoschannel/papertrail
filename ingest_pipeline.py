@@ -29,7 +29,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, TypeVar
 
 from openai import RateLimitError
 
@@ -62,6 +62,7 @@ from data import (
     TRIMS,
     write_sidecar,
 )
+from deskew import SkewEstimate, estimate_file_skew, straighten_boxes, straighten_file, straightened_trim
 from document_grouping import build_display_state, rotate_file_upright, split_groups_at_tossed_boundaries
 import extraction
 import slicing
@@ -396,32 +397,93 @@ def trim_page(output_path: Path, key: str, band: Trim | None) -> None:
     set_trim(output_path, key, band)
 
 
-def turned_pages(output_path: Path, input_path: Path, batch_id: int,
-                 estimate: Callable[[Path], OrientationEstimate] = estimate_file_orientation,
-                 ) -> list[tuple[str, OrientationEstimate, int]]:
-    """A batch's pages whose scan looks sideways or upside down, in scan order, each with where its top
-    points and the scan version (its mtime, as the page grids' thumbnails use it) read before it was measured.
-    Raises ``orientation.ModelUnavailable`` when the model can't be had.
+def page_scan(output_path: Path, input_path: Path, key: str) -> Path:
+    """An unarchived page's scan file (KeyError for a page that isn't one, FileNotFoundError for a scan that
+    isn't in the input folder)."""
+    _, _, filename = _unarchived_page(output_path, key)
+    path = input_path / filename
+    if not path.is_file():
+        raise FileNotFoundError(path)
+    return path
 
-    Only pages the rotate arrows can turn are looked at: not tossed pages, crops (turned the way their
-    sheet is) or sliced sheets, and only scans that are in the input folder. A scan that can't be read
-    (half copied, not an image) is left out rather than failing the rest. ``estimate`` lets a caller cache
-    estimates.
+
+def straighten_page_image(output_path: Path, input_path: Path, key: str, degrees: float) -> None:
+    """Turn an unarchived page's scan ``degrees`` counter-clockwise in place, to level a slight tilt.
+
+    What is measured on the file moves with it: the page's trim (``straightened_trim``, keeping all it
+    held) and, if it has been read, its OCR boxes and the band they were read from, so the boxes still sit
+    on the words they were found on.
+    """
+    batch, serial, filename = _unarchived_page(output_path, key)
+    if serial in batch.slices:
+        raise ValueError(f"{key} is a crop; it is turned the way its sheet is. Unslice the sheet to straighten it.")
+    if _is_sliced_sheet(output_path, batch, serial, key):
+        raise ValueError(f"{key} is sliced; unslice it before straightening it, since its crops are cut upright.")
+    path = input_path / filename
+    if not path.is_file():
+        raise FileNotFoundError(path)
+    sizes = straighten_file(path, degrees)
+    if sizes is None:
+        return
+    band = load_trims(output_path).get(key)
+    if band is not None:
+        set_trim(output_path, key, straightened_trim(band, degrees, *sizes))
+    results = load_ocr_batch(output_path, batch.batch_id)
+    result = results.get(key)
+    if result is not None and (result.boxes or result.trim is not None):
+        boxes, read = straighten_boxes(result.boxes or [], degrees, *sizes, read=result.trim)
+        results[key] = result.model_copy(update={"boxes": boxes if result.boxes is not None else None, "trim": read})
+        save_ocr_batch(output_path, batch.batch_id, results)
+
+
+#: What an estimate of a scan says (a tilt, which way it faces).
+T = TypeVar("T")
+
+
+def _measure_turnable_pages(output_path: Path, input_path: Path, batch_id: int,
+                            estimate: Callable[[Path], T]) -> list[tuple[str, T, int]]:
+    """``estimate`` of each page of a batch the rotate arrows and straightening can turn, in scan order, with
+    the scan version (its mtime, as the page grids' thumbnails use it) read before it was measured.
+
+    Not tossed pages, crops (turned the way their sheet is) or sliced sheets, and only scans that are in the
+    input folder. A scan that can't be read (half copied, not an image) is left out rather than failing the
+    rest.
     """
     state = grouping_state(output_path, batch_id)
     pages = [(p.key, input_path / p.filename) for p in state.pages
              if not p.tossed and p.crop_of is None and not p.sliced and p.serial not in state.batch.grids]
     pages = [(key, path, path.stat().st_mtime_ns) for key, path in pages if path.is_file()]
 
-    def readable(path: Path) -> OrientationEstimate | None:
+    def readable(path: Path) -> T | None:
         try:
             return estimate(path)
         except UNREADABLE:
             return None
 
-    with ThreadPoolExecutor(max_workers=8) as pool:   # the estimate is numpy/OpenCV work, off the GIL
+    with ThreadPoolExecutor(max_workers=8) as pool:   # the estimates are numpy/OpenCV work, off the GIL
         estimates = list(pool.map(readable, [path for _, path, _ in pages]))
-    return [(key, e, version) for (key, _, version), e in zip(pages, estimates) if e is not None and e.needs_turning]
+    return [(key, e, version) for (key, _, version), e in zip(pages, estimates) if e is not None]
+
+
+def tilted_pages(output_path: Path, input_path: Path, batch_id: int,
+                 estimate: Callable[[Path], SkewEstimate] = estimate_file_skew,
+                 ) -> list[tuple[str, SkewEstimate, int]]:
+    """A batch's pages whose scan looks slightly tilted, in scan order, each with the turn that levels it
+    and the scan version it was measured on (see ``_measure_turnable_pages``). ``estimate`` lets a caller
+    cache estimates."""
+    return [(key, e, version) for key, e, version in _measure_turnable_pages(output_path, input_path, batch_id, estimate)
+            if e.needs_straightening]
+
+
+def turned_pages(output_path: Path, input_path: Path, batch_id: int,
+                 estimate: Callable[[Path], OrientationEstimate] = estimate_file_orientation,
+                 ) -> list[tuple[str, OrientationEstimate, int]]:
+    """A batch's pages whose scan looks sideways or upside down, in scan order, each with where its top
+    points and the scan version it was measured on (see ``_measure_turnable_pages``). Raises
+    ``orientation.ModelUnavailable`` when the model can't be had. ``estimate`` lets a caller cache estimates.
+    """
+    return [(key, e, version) for key, e, version in _measure_turnable_pages(output_path, input_path, batch_id, estimate)
+            if e.needs_turning]
 
 
 # =====================================================================================
