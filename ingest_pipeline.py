@@ -44,6 +44,7 @@ from data import (
     load_model_runs,
     load_ocr_batch,
     load_ocr_results,
+    load_trims,
     load_smart_match_cache,
     replace_groups_for_batch,
     save_decisions,
@@ -57,6 +58,8 @@ from data import (
     save_scan_index,
     save_smart_match_cache,
     scan_organized_filenames,
+    set_trim,
+    TRIMS,
     write_sidecar,
 )
 from document_grouping import build_display_state, rotate_file_upright, split_groups_at_tossed_boundaries
@@ -78,15 +81,18 @@ from models import (
     ScanBatch,
     ScanIndex,
     Sidecar,
+    Trim,
     TokenUse,
     batch_serial_key,
     filename_to_batch_serial,
     iter_indexed_files,
     load_scan_index,
     parse_batch_serial_key,
+    turned_trim,
 )
 from orientation import UNREADABLE, OrientationEstimate, estimate_file_orientation
 from organize_utils import plan_accepted_destinations, scan_existing_names
+from scan_enhance import trimmed_file
 from settings import IMAGE_EXTENSIONS
 
 
@@ -225,6 +231,7 @@ class GroupingPage:
     cell: list[int] | None = None
     #: a sheet cut into crops (tossed, and only unslicing brings it back)
     sliced: bool = False
+    trim: Trim | None = None
 
 
 @dataclass
@@ -278,13 +285,14 @@ def grouping_state(output_path: Path, batch_id: int) -> GroupingState:
     saved = _saved_batch_groups(output_path, batch, keys)
     display_keys, _, links = build_display_state(keys, saved, tossed)
     decisions = load_decisions(output_path)
+    trims = load_trims(output_path)
     pages = []
     for k, s in zip(keys, sorted(batch.files)):
         of = batch.slices.get(s)
         pages.append(GroupingPage(
             key=k, serial=s, filename=batch.files[s], tossed=k in tossed,
             crop_of=batch_serial_key(batch.batch_id, of.sheet) if of else None, cell=[of.row, of.col] if of else None,
-            sliced=bool(decisions.get(k) and decisions[k].sliced)))
+            sliced=bool(decisions.get(k) and decisions[k].sliced), trim=trims.get(k)))
     return GroupingState(batch=batch, pages=pages, display_keys=display_keys, active_links=links,
                          saved_groups=_active_saved_groups(saved, keys, tossed))
 
@@ -342,8 +350,8 @@ def set_page_tossed(output_path: Path, key: str, tossed: bool) -> None:
     save_decisions(output_path, decisions)
 
 
-def rotate_page_image(output_path: Path, input_path: Path, key: str, top_points: str) -> None:
-    """Rotate an unarchived page's scan in place given where its top currently points."""
+def _unarchived_page(output_path: Path, key: str) -> tuple[ScanBatch, int, str]:
+    """An unarchived page by key: its batch, serial and filename (KeyError for a page that isn't one)."""
     parsed = parse_batch_serial_key(key)
     if parsed is None:
         raise KeyError(f"not a page key: {key}")
@@ -351,12 +359,41 @@ def rotate_page_image(output_path: Path, input_path: Path, key: str, top_points:
     filename = batch.files.get(parsed[1])
     if filename is None:
         raise KeyError(f"no page {key}")
-    if parsed[1] in batch.slices:
-        raise ValueError(f"{key} is a crop; it is turned the way its sheet is. Unslice the sheet to rotate it.")
+    return batch, parsed[1], filename
+
+
+def _is_sliced_sheet(output_path: Path, batch: ScanBatch, serial: int, key: str) -> bool:
+    """A sheet cut into crops: it has a grid, or is tossed as sliced."""
     decision = load_decisions(output_path).get(key)
-    if parsed[1] in batch.grids or (decision is not None and decision.sliced):
+    return serial in batch.grids or (decision is not None and decision.sliced)
+
+
+def rotate_page_image(output_path: Path, input_path: Path, key: str, top_points: str) -> None:
+    """Rotate an unarchived page's scan in place given where its top currently points.
+
+    A trim is measured on the file, so it turns with it (``turned_trim``).
+    """
+    batch, serial, filename = _unarchived_page(output_path, key)
+    if serial in batch.slices:
+        raise ValueError(f"{key} is a crop; it is turned the way its sheet is. Unslice the sheet to rotate it.")
+    if _is_sliced_sheet(output_path, batch, serial, key):
         raise ValueError(f"{key} is sliced; unslice it before rotating it, since its crops are cut upright.")
     rotate_file_upright(input_path / filename, top_points)
+    band = load_trims(output_path).get(key)
+    if band is not None:
+        set_trim(output_path, key, turned_trim(band, top_points))
+
+
+def trim_page(output_path: Path, key: str, band: Trim | None) -> None:
+    """Trim an unarchived page (``None`` keeps all of it). OCR reads only the band from now on, and a
+    page it has already read is read again by its next run.
+
+    A sliced sheet is never read (its crops are), so it can't be trimmed; each crop can, like any page.
+    """
+    batch, serial, _ = _unarchived_page(output_path, key)
+    if band is not None and _is_sliced_sheet(output_path, batch, serial, key):
+        raise ValueError(f"{key} is sliced into crops, which are what OCR reads: trim a crop instead.")
+    set_trim(output_path, key, band)
 
 
 def turned_pages(output_path: Path, input_path: Path, batch_id: int,
@@ -399,6 +436,8 @@ class OcrPlan:
     items: list[tuple[str, Path]]
     #: pages that would be read but sit in a batch another job holds; the next run picks them up
     waiting: int = 0
+    #: pages read successfully, but trimmed differently since, so due to be read again
+    retrimmed: int = 0
 
     @property
     def batches(self) -> frozenset[int]:
@@ -419,19 +458,22 @@ def plan_ocr(output_path: Path, input_path: Path, batch_id: int | None, reproces
     results = load_ocr_results(output_path)
     sheets = {k for k, d in load_decisions(output_path).items() if d.sliced}
     scoped = [(b, s, fn) for b, s, fn in scoped if batch_serial_key(b, s) not in sheets]
+    trims = load_trims(output_path)
     items: list[tuple[str, Path]] = []
-    processed = failed = missing = waiting = 0
+    processed = failed = missing = waiting = retrimmed = 0
     for b, s, fn in scoped:
         key = batch_serial_key(b, s)
         result = results.get(key)
+        stale = result is not None and result.succeeded and result.trim != trims.get(key)
         if result is not None:
             processed += result.succeeded
             failed += not result.succeeded
+            retrimmed += stale
         path = input_path / fn
         if not path.exists():
             missing += 1
             continue
-        if reprocess or result is None or not result.succeeded:
+        if reprocess or result is None or not result.succeeded or stale:
             if b in held:
                 waiting += 1
             else:
@@ -439,7 +481,7 @@ def plan_ocr(output_path: Path, input_path: Path, batch_id: int | None, reproces
     if limit > 0:
         items = items[:limit]
     return OcrPlan(total=len(scoped), processed=processed, failed=failed, missing_images=missing, items=items,
-                   waiting=waiting)
+                   waiting=waiting, retrimmed=retrimmed)
 
 
 def run_ocr(output_path: Path, items: list[tuple[str, Path]], provider: OcrProvider, structured: bool,
@@ -454,6 +496,7 @@ def run_ocr(output_path: Path, items: list[tuple[str, Path]], provider: OcrProvi
         random.shuffle(work)
     progress.set_total(len(work))
     by_batch: dict[int, dict[str, OcrResult]] = {}
+    trims = load_trims(output_path)   # the run holds its batches, so their trims can't change meanwhile
     ran = failed = 0
     for key, path in work:
         if progress.cancelled:
@@ -463,13 +506,15 @@ def run_ocr(output_path: Path, items: list[tuple[str, Path]], provider: OcrProvi
         if batch_id not in by_batch:
             by_batch[batch_id] = load_ocr_batch(output_path, batch_id)
         results = by_batch[batch_id]
+        band = trims.get(key)
         try:
-            markdown = provider.run(path, structured=False)
-            boxes = parse_grounding_output(provider.run(path, structured=True)) if structured else None
-            results[key] = OcrResult(markdown=markdown, boxes=boxes)
+            with trimmed_file(path, band) as readable:
+                markdown = provider.run(readable, structured=False)
+                boxes = parse_grounding_output(provider.run(readable, structured=True)) if structured else None
+            results[key] = OcrResult(markdown=markdown, boxes=boxes, trim=band)
             ok, error = True, ""
         except Exception as exc:
-            results[key] = OcrResult(markdown=traceback.format_exc(), succeeded=False)
+            results[key] = OcrResult(markdown=traceback.format_exc(), succeeded=False, trim=band)
             ok, error = False, _short_error(exc)
         ran += 1
         failed += 0 if ok else 1
@@ -685,7 +730,8 @@ def _sleep_while_running(seconds: float, progress: Progress) -> None:
 # Archive
 # =====================================================================================
 #: The mid-ingest working files Archive deletes once every file is archived (``ocr/`` is a folder).
-CLEANUP_ARTIFACTS = (OCR_DIR, MIGRATED_OCR, "extractions.json", "decisions.json", OCR_RUNS, EXTRACTION_RUNS)
+CLEANUP_ARTIFACTS = (OCR_DIR, MIGRATED_OCR, "extractions.json", "decisions.json", OCR_RUNS, EXTRACTION_RUNS,
+                     TRIMS)
 
 
 @dataclass
@@ -806,6 +852,7 @@ def run_archive(output_path: Path, input_path: Path, progress: Progress) -> str:
     extraction_runs = load_model_runs(output_path, EXTRACTION_RUNS)
     crops = {(b.batch_id, c.serial): (batch_serial_key(b.batch_id, c.of.sheet), [c.of.row, c.of.col], c.box)
              for b in load_scan_index(output_path).batches if not b.archived for c in slicing.current_crops(b)}
+    trims = load_trims(output_path)
     progress.set_total(len(plan.moves))
 
     copied = 0
@@ -840,6 +887,7 @@ def run_archive(output_path: Path, input_path: Path, progress: Progress) -> str:
                 slice_of=of[0] if of else None,
                 slice_cell=of[1] if of else None,
                 slice_box=of[2] if of else None,
+                trim=trims.get(move.key),
             ))
             copied += 1
             progress.tick(True, item=move.filename)

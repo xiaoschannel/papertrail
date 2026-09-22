@@ -1,0 +1,53 @@
+/* TrimEditor: rulers across a whole scan (see TrimEditor.tsx).
+
+   The stage is exactly the scan's box, so the rulers and the dimmed parts are placed in percentages of
+   it. A page sets how tall the scan may be with --editor-max-h. */
+.trim-editor { display: grid; gap: 8px; justify-items: center; }
+.trim-editor__stage {
+  position: relative; display: inline-block; line-height: 0; max-width: 100%;
+  cursor: ns-resize; touch-action: none; user-select: none; -webkit-user-select: none;
+}
+.trim-editor__stage img {
+  display: block; max-width: 100%; max-height: var(--editor-max-h, 78vh); width: auto; height: auto;
+  border-radius: 6px; background: #fff;
+}
+
+/* what the cuts leave out: dimmed, so the kept band reads as the page */
+.trim-editor__off {
+  position: absolute; left: 0; right: 0; pointer-events: none;
+  background: repeating-linear-gradient(135deg, rgb(0 0 0 / .58) 0 8px, rgb(0 0 0 / .5) 8px 16px);
+}
+
+.trim-editor__ruler { position: absolute; left: 0; right: 0; height: 0; z-index: 1; pointer-events: none; }
+.trim-editor__ruler::before {
+  content: ""; position: absolute; left: 0; right: 0; top: -1px; height: 2px; background: var(--accent);
+  box-shadow: 0 0 0 1px rgb(255 255 255 / .7);
+}
+/* tick marks on the kept side, so it reads as a ruler laid on the page */
+.trim-editor__ruler::after {
+  content: ""; position: absolute; left: 0; right: 0; height: 6px;
+  background: repeating-linear-gradient(to right, var(--accent) 0 1px, transparent 1px 12px);
+  opacity: .8;
+}
+.trim-editor__ruler--top::after { top: 1px; }
+.trim-editor__ruler--bottom::after { bottom: 1px; }
+
+.trim-editor__handle {
+  position: absolute; left: 50%; transform: translateX(-50%); pointer-events: auto; cursor: grab;
+  padding: 3px 10px; border-radius: 999px; white-space: nowrap;
+  font: 600 11.5px/1.3 system-ui, sans-serif; color: #fff; background: var(--accent);
+  box-shadow: 0 1px 4px rgb(0 0 0 / .35);
+}
+/* each handle hangs on the kept side of its line, so it can be grabbed with the ruler at the very edge */
+.trim-editor__ruler--top .trim-editor__handle { top: 4px; }
+.trim-editor__ruler--bottom .trim-editor__handle { bottom: 4px; }
+.trim-editor__handle:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.trim-editor__ruler.is-dragging .trim-editor__handle, .trim-editor__stage.is-dragging { cursor: grabbing; }
+
+.trim-editor__bar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px; justify-content: flex-end;
+  width: 100%; box-sizing: border-box;
+}
+.trim-editor__kept { flex: 1; min-width: 10rem; font-size: 12.5px; color: var(--text); }
+.trim-editor__kept em { color: var(--muted); font-style: normal; }
+.trim-editor__note { justify-self: stretch; margin: 0; }

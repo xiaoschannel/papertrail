@@ -50,6 +50,7 @@ function warnings(plan: SlicePlan): string[] {
     plan.ocr && `OCR for ${plan.ocr} page(s)`,
     plan.extractions && `${plan.extractions} parse result(s)`,
     plan.decisions && `${plan.decisions} review decision(s)`,
+    plan.trims && `${plan.trims} trim(s)`,
   ].filter(Boolean)
   if (lost.length > 0) {
     const keys = plan.dropped_keys.length > 8 ? `${plan.dropped_keys.slice(0, 8).join(', ')}…` : plan.dropped_keys.join(', ')

@@ -78,6 +78,10 @@ export default function Ocr() {
               <Tile label="Scan missing" value={s.missing_images} />
               <Tile label="To process" value={s.to_process} />
             </div>
+            {s.retrimmed > 0 && <p className="ingest-note">
+              {s.retrimmed} page{s.retrimmed === 1 ? ' was' : 's were'} trimmed differently since OCR read{' '}
+              {s.retrimmed === 1 ? 'it' : 'them'}, so {s.retrimmed === 1 ? 'it is' : 'they are'} read again, band only.
+            </p>}
             {s.waiting > 0 && <p className="ingest-note">
               {s.waiting} more page{s.waiting === 1 ? ' is' : 's are'} in a batch another job is using; the next
               run picks {s.waiting === 1 ? 'it' : 'them'} up.

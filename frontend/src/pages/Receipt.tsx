@@ -3,11 +3,12 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, mediaUrl } from '../api/client.ts'
 import { useShortcutKeys } from '../api/config.ts'
-import type { DocumentType, VizRecord } from '../api/types.ts'
+import type { DocumentType, Trim, VizRecord } from '../api/types.ts'
 import { costIsInvalid, parseCost } from '../components/review/ReviewForm.tsx'
 import { ScanOverlay, useBoxesHidden } from '../components/review/ScanOverlay.tsx'
 import { keyLabel } from '../components/useShortcuts.ts'
 import { money, num, spendExactly } from '../format.ts'
+import { TrimmedImage } from '../components/TrimmedImage.tsx'
 import { Card, Empty, ErrorState, Loading, Tile } from '../components/ui.tsx'
 
 export default function Receipt() {
@@ -37,6 +38,7 @@ export default function Receipt() {
 
   const r = q.data
   const pages = r.paths.length ? r.paths : (r.path ? [r.path] : [])
+  const trims = r.paths.length ? r.trims : [r.trim]
   const items = r.items
   // Only a receipt has a merchant profile; a title of some other document isn't a shop.
   const merchantLink = r.document_type !== 'receipt' ? null
@@ -74,10 +76,10 @@ export default function Receipt() {
           )}
 
         {/* scan | details. The scan column's width sets the zoom; the scan itself
-            is never cropped or scrolled. */}
+            is never cropped or scrolled, beyond the band a trim keeps. */}
         <div className="detail-layout">
           <Card title="Scan" hint={<ScanHint pages={pages.length} />}>
-            <ReceiptScan file={r.filename} paths={pages} alt={r.name || r.filename} />
+            <ReceiptScan file={r.filename} paths={pages} trims={trims} alt={r.name || r.filename} />
           </Card>
 
           <div className="stack">
@@ -264,9 +266,15 @@ function ScanHint({ pages }: { pages: number }) {
 
 /**
  * The scans with the OCR boxes drawn on them, as Review and the Workshop draw them; hold the Hide boxes
- * key (B unless changed in Config) to read under them. Until the boxes arrive, the plain scans.
+ * key (B unless changed in Config) to read under them. Until the boxes arrive, the plain scans, trimmed
+ * already (what a trim cuts off is never shown).
  */
-function ReceiptScan({ file, paths, alt }: { file: string; paths: string[]; alt: string }) {
+function ReceiptScan({ file, paths, trims, alt }: {
+  file: string
+  paths: string[]
+  trims: (Trim | null)[]
+  alt: string
+}) {
   // Keyed by the pages' paths too: an edit re-files them, and the boxes then come from the new place.
   const drawn = useQuery({
     queryKey: ['receipt', file, 'pages', ...paths],
@@ -278,7 +286,9 @@ function ReceiptScan({ file, paths, alt }: { file: string; paths: string[]; alt:
   if (!drawn.data) {
     return (
       <div className="scan-full">
-        {paths.map((p, i) => <img key={p} src={mediaUrl(p)} alt={`${alt} — page ${i + 1}`} />)}
+        {paths.map((p, i) => (
+          <TrimmedImage key={p} src={mediaUrl(p)!} trim={trims[i] ?? null} lazy={false} alt={`${alt} — page ${i + 1}`} />
+        ))}
       </div>
     )
   }

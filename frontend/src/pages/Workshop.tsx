@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useDebounced } from '../components/useDebounced.ts'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { api, workshopScanUrl } from '../api/client.ts'
-import type { ContextScan, Enhancement, Job, MarkedDocument, ReviewDocument } from '../api/types.ts'
+import { api, mediaUrl, workshopScanUrl } from '../api/client.ts'
+import type {
+  ContextScan, Enhancement, Job, MarkedDocument, ReviewDocument, ReviewPage, TopPoints, Trim,
+} from '../api/types.ts'
 import { DocumentCard } from '../components/DocumentCard.tsx'
 import { JobPanel, useJobGate, useTrackJob } from '../components/jobs.tsx'
 import { Markdown } from '../components/Markdown.tsx'
@@ -12,6 +14,9 @@ import {
 } from '../components/review/ReviewForm.tsx'
 import { ScanOverlay, useBoxesHidden, type Turn } from '../components/review/ScanOverlay.tsx'
 import { CompareKeys, DEFAULT_ENHANCEMENT, TreatmentControls, isTreated, useHoldOriginal } from '../components/ScanTreatment.tsx'
+import { ScanViewer } from '../components/scans.tsx'
+import { TrimEditor } from '../components/TrimEditor.tsx'
+import { turnedTrim } from '../components/TrimmedImage.tsx'
 import { useGridColumnCount } from '../components/useGridColumnCount.ts'
 import { keyLabel, useShortcuts } from '../components/useShortcuts.ts'
 import { afterArchiveEdit } from '../api/invalidate.ts'
@@ -23,6 +28,10 @@ import './curate.css'
 
 /** Colors per verdict, as review_logic's VERDICT_COLORS. */
 const VERDICT_COLORS: Record<string, string> = { accepted: '#28a745', marked: '#ffc107', tossed: '#6c757d' }
+
+/** The part of a page a reread reads when it is turned from `top` (mirror of workshop.reading_trim): its
+ *  trim, or all of it under a quarter turn, where the trim would lie across the page. */
+const readingTrim = (trim: Trim | null, top: TopPoints | '') => (top === 'left' || top === 'right' ? null : trim)
 
 /** The comment review left ("why is this marked?") is part of the document, not a blank field. */
 const startForm = (doc: ReviewDocument): FormState => ({ ...initialForm(doc), comment: doc.decision?.comment ?? '' })
@@ -122,6 +131,10 @@ export default function Workshop() {
               ocrModel={workshop.data.ocr_model} extractor={workshop.data.extractor}
               blockedBy={gate.blockedBy} job={gate.job} rereadTurn={rereadTurn ?? null}
               activeFields={activeFields} onHoverField={(field) => setActiveFields(field ? [field] : [])}
+              onTrimmed={(body) => {
+                queryClient.setQueryData(['curate', 'workshop', key], body)
+                void queryClient.invalidateQueries({ queryKey: ['curate', 'workshop', 'context'] })
+              }}
               onStarted={(job) => {
                 track(job)
                 void queryClient.invalidateQueries({ queryKey: ['curate', 'workshop'] })
@@ -148,7 +161,7 @@ export default function Workshop() {
 
 function Scan({
   document, enhancement, onChange, ocrModels, extractors, ocrModel, extractor, blockedBy, job, rereadTurn,
-  activeFields, onHoverField, onStarted,
+  activeFields, onHoverField, onStarted, onTrimmed,
 }: {
   document: ReviewDocument
   enhancement: Enhancement
@@ -166,8 +179,12 @@ function Scan({
   activeFields: readonly string[]
   onHoverField: (field: string | null) => void
   onStarted: (job: Parameters<ReturnType<typeof useTrackJob>>[0]) => void
+  /** A page was trimmed: the queue as the server now has it. */
+  onTrimmed: (body: Awaited<ReturnType<typeof api.workshop.trim>>) => void
 }) {
   const [models, setModels] = useState({ ocr: ocrModel, extractor })
+  const [trimming, setTrimming] = useState<string | null>(null)       // the page whose rulers are open
+  const trimmingPage = document.pages.find((page) => page.filename === trimming) ?? null
   const saveConfig = useSaveConfig()     // the Workshop's own choices, remembered as soon as they're picked
   const boxesHidden = useBoxesHidden()
   const running = job?.status === 'running'
@@ -176,10 +193,28 @@ function Scan({
   const hasScans = document.pages.some((page) => page.image_available)
   const treated = isTreated(enhancement)
   const comparing = useHoldOriginal(treated)
-  // Stored boxes were measured on the file, so they turn with the preview. A reread's were measured on the
-  // pages turned as it read them: they line up only while the preview is turned the same way.
+  // Stored boxes were measured on the file, so they turn with the preview; but they sit on the page's band,
+  // which a quarter-turned preview doesn't cut (it reads the whole page), so on a trimmed page they don't
+  // fit that one. A reread's were measured on the pages turned as it read them: they line up only while
+  // the preview is turned the same way.
+  const quarterTurn = settled.top_points === 'left' || settled.top_points === 'right'
   const boxesFit = rereadTurn === null || (settled.top_points === rereadTurn && !(comparing && treated))
-  const pages = boxesFit ? document.pages : document.pages.map((page) => ({ ...page, boxes: [] }))
+  const pages = document.pages.map((page) =>
+    boxesFit && !(rereadTurn === null && quarterTurn && !(comparing && treated) && page.trim)
+      ? page : { ...page, boxes: [] })
+
+  const trim = useMutation({
+    mutationFn: ({ filename, band }: { filename: string; band: Trim | null }) =>
+      api.workshop.trim(document.key, filename, band),
+    onSuccess: onTrimmed,
+  })
+  // The previews come from the server already cut to each page's band, turned the way the preview is;
+  // a quarter turn reads (and so shows) the whole page.
+  const bandOf = (page: ReviewPage, untreated: boolean) => {
+    const top = untreated ? '' : settled.top_points
+    return turnedTrim(readingTrim(page.trim, top), top)
+  }
+  const trimOf = (filename: string) => document.pages.find((page) => page.filename === filename)?.trim ?? null
 
   const reprocess = useMutation({
     mutationFn: () => api.workshop.reprocess({
@@ -195,13 +230,48 @@ function Scan({
           see all of them before deciding. */}
       {document.pages.length === 0 ? <Empty>No scan on disk.</Empty> : (
         <ScanOverlay pages={pages} activeFields={activeFields} onHoverField={onHoverField}
-          imageUrl={(filename) => workshopScanUrl(filename, settled)}
-          originalUrl={(filename) => workshopScanUrl(filename, DEFAULT_ENHANCEMENT)}
+          imageUrl={(filename) => workshopScanUrl(filename, settled, trimOf(filename))}
+          originalUrl={(filename) => workshopScanUrl(filename, DEFAULT_ENHANCEMENT, trimOf(filename))}
           showOriginal={comparing && treated} turn={rereadTurn === null ? settled.top_points : ''}
-          hideBoxes={boxesHidden} missing="is not in marked/" />
+          bandOf={bandOf} hideBoxes={boxesHidden} missing="is not in marked/" />
+      )}
+      {trimmingPage?.filename && (
+        <ScanViewer label={document.key} filename={trimmingPage.filename} version={0}
+          onClose={() => setTrimming(null)} scan={
+          <TrimEditor src={mediaUrl(`marked/${trimmingPage.filename}`)!} alt={trimmingPage.filename}
+            value={trimmingPage.trim} saving={trim.isPending} error={trim.error?.message ?? null}
+            onSave={(band) => trim.mutate({ filename: trimmingPage.filename!, band })}
+            note={quarterTurn
+              ? <>The page is shown as it is stored. While the preview turns it a quarter, a reread reads all of
+                it: a trim runs along the page as stored, and would lie across it turned. Accepting it turned a
+                quarter files it whole.</>
+              : <>The page is shown as it is stored. The trim is kept as soon as it is saved: the preview and the
+                next reread read only the band between the rulers, and every view shows only that part. The
+                scan itself is never changed.</>} />
+        } />
       )}
 
       <CompareKeys treated={treated} />
+      {/* In the order a reread applies them: the trim cuts the page as stored, then it is turned and treated. */}
+      <div className="field">
+        <label>Trim</label>
+        <div className="workshop-trims">
+          {/* numbered as the document's pages are, even when one has no scan to trim */}
+          {document.pages.map((page, i) => page.image_available && page.filename && (
+            <span key={page.file_key} className="workshop-trim">
+              <button onClick={() => {
+                trim.reset()
+                setTrimming(page.filename)
+              }} title="Cut off what OCR shouldn't read: a coupon, a survey, a header">
+                ✂ Trim{document.pages.length > 1 ? ` page ${i + 1}` : ''}
+              </button>
+              <span className="config-hint">
+                {page.trim ? `${Math.round((1 - (page.trim.bottom - page.trim.top)) * 100)}% removed` : 'nothing removed'}
+              </span>
+            </span>
+          ))}
+        </div>
+      </div>
       <TreatmentControls value={enhancement} onChange={(patch) => onChange({ ...enhancement, ...patch })} />
 
       <div className="curate-grid">
@@ -237,7 +307,8 @@ function Scan({
       <p className="ingest-note">
         Reading again shows what the models make of the treated pages, and the form starts from it. Nothing is
         saved until you accept: then its text and extraction are kept and the pages are turned as it read them,
-        so its boxes line up. The treatment only helps OCR read and isn't kept.
+        so its boxes line up. The treatment only helps OCR read and isn't kept. A trim is kept as soon as you
+        save it, and OCR reads only the band.
       </p>
       {job && <JobPanel job={job} />}
     </Card>
@@ -368,6 +439,7 @@ function ContextCard({ scan }: { scan: ContextScan }) {
     scan.cost ? money(scan.cost, scan.currency) : ''].filter(Boolean).join(' · ')
   const props = {
     src: scan.image ?? undefined,
+    trim: scan.trim,
     name: <>{scan.current && '► '}{scan.name || scan.filename}</>,
     caption: <>{verdict}{detail ? ` · ${detail}` : ''}</>,
     className: scan.current ? 'context-card--current' : '',

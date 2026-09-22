@@ -5,12 +5,15 @@ decision, and the page reuses the same component. What the workshop adds is the 
 enhance the scan, then run OCR and extraction again as a background job, since it loads the models the
 ingest jobs use. A reread is held (``workshop.rereads``) until the document is decided: Accept keeps it,
 Toss or Discard drops it, and until then the page shows what it read.
+
+Trimming a page is the exception: it is kept as soon as it is made (it changes nothing but what is read
+and shown, and moves back out as easily), and the preview and the next reread read only the band.
 """
 
 from __future__ import annotations
 
 import io
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -26,12 +29,12 @@ from api.model_manager import models
 from api.schemas import (
     ContextScanOut, DecisionOut, FieldBoxOut, FormDefaultsOut, HintOut, HintsResponse, JobOut,
     MarkedDocumentOut, RereadOut, ReviewDocument, ReviewPage, SmartMatch, WorkshopContextOut, WorkshopDecisionIn,
-    WorkshopHintsIn, WorkshopOut, WorkshopReprocessIn,
+    WorkshopHintsIn, WorkshopOut, WorkshopReprocessIn, WorkshopTrimIn,
 )
-from data import build_smart_match_history, load_decisions
+from data import build_smart_match_history, load_decisions, load_trims, read_sidecar
 from document_files import MARKED
 from grounding import parse_grounding_output
-from models import OcrResult, ReviewDecision, load_scan_index
+from models import OcrResult, ReviewDecision, load_scan_index, turned_trim
 from name_similarity import get_smart_match_candidates, quick_apply_label
 from scan_enhance import Enhancement, enhance
 from settings import get_config, update_config
@@ -54,7 +57,9 @@ def _review_document(output_path: Path, document: workshop.MarkedDocument,
                      reread: workshop.Reread | None) -> ReviewDocument:
     """The marked document in Review's shape, so both pages share one form and one set of rules.
 
-    With a reread pending, the text, the form's defaults and the boxes are the reread's.
+    With a reread pending, the text, the form's defaults and the boxes are the reread's. A reread's boxes
+    are measured on the pages turned as it read them, so they are placed on the band the preview shows
+    turned that way (``workshop.reading_trim``); stored boxes, on the page's own trim.
     """
     sidecar = document.first
     extraction = _extraction(document, reread)
@@ -62,17 +67,23 @@ def _review_document(output_path: Path, document: workshop.MarkedDocument,
     defaults = rl.form_defaults(extraction) if extraction else rl.defaults_from_decision(sidecar.review)
     field_sources = getattr(extraction, "field_sources", {}) or {}
     results = reread.results if reread else [page.ocr for page in document.sidecars]
+    turn = reread.top_points if reread else ""
 
     pages = []
-    for page_number, path in enumerate(document.pages, start=1):
+    for page_number, (path, page) in enumerate(zip(document.pages, document.sidecars), start=1):
         ocr = results[page_number - 1] if page_number <= len(results) else None
         page_boxes = (ocr.boxes if ocr else None) or []
         # Every box the fields cite; with nothing cited, every box OCR found, so the scan still shows what was read.
         drawn = rl.field_boxes(page_number, page_boxes, field_sources) if field_sources \
             else rl.all_boxes(page_boxes)
+        read_now = workshop.reading_trim(page.trim, turn)
+        if ocr:
+            drawn = rl.reframed(drawn, turned_trim(ocr.trim, turn), turned_trim(read_now, turn))
         pages.append(ReviewPage(
             file_key=path.name, filename=path.name, image_available=path.is_file(),
             boxes=FieldBoxOut.all_of(drawn),
+            trim=page.trim,
+            retrimmed=bool(ocr and ocr.succeeded and ocr.trim != read_now),
         ))
 
     history = build_smart_match_history(store.extractions(output_path), load_decisions(output_path),
@@ -129,15 +140,18 @@ def enhanced_scan(
     chroma: int = Query(10, ge=1, le=80),
     output_path: Path = Depends(get_output_path),
 ):
-    """The treated scan — the same pixels a reprocess would hand to OCR, so the preview can't lie."""
+    """The treated scan — the same pixels a reprocess would hand to OCR, so the preview can't lie: only the
+    band the page is trimmed to, like the reread."""
     from PIL import Image
 
     folder = (output_path / MARKED).resolve()
     path = (folder / filename).resolve()
     if folder not in path.parents or not path.is_file():
         raise HTTPException(status_code=404, detail="no such marked scan")
+    sidecar = read_sidecar(path) if path.suffix.lower() != ".json" else None
     settings = Enhancement(top_points=top_points, treatment=treatment, clip=clip, grid=grid,  # type: ignore[arg-type]
-                           contrast=contrast, gamma=gamma, lightness=lightness, chroma=chroma)
+                           contrast=contrast, gamma=gamma, lightness=lightness, chroma=chroma,
+                           trim=workshop.reading_trim(sidecar.trim if sidecar else None, top_points))
     try:
         with Image.open(path) as image:
             treated = enhance(image, settings)
@@ -160,14 +174,15 @@ def context(key: str = Query(...), date: str = "", time: str = "", document_type
     week = None
     if document_type == "receipt":
         archived = cache.viz_records(output_path)
-        records = archived[["filename", "path", "document_type", "name", "date", "time", "cost", "currency"]] \
-            .to_dict("records") if not archived.empty else []
+        records = archived[["filename", "path", "trim", "document_type", "name", "date", "time", "cost",
+                            "currency"]].to_dict("records") if not archived.empty else []
         week = workshop.week_around(document, date, time, records, workshop.marked_documents(output_path),
-                                    load_decisions(output_path), scan_index)
+                                    load_decisions(output_path), scan_index, load_trims(output_path))
     tossed, accepted = cache.archive_state(output_path)
     # optional: without a scan folder the batch still shows what was archived, marked or tossed
     input_path = Path(get_config().input_image_path) if get_config().input_image_path else None
-    batch_id, batch = workshop.same_batch(output_path, input_path, document, scan_index, tossed, accepted)
+    batch_id, batch = workshop.same_batch(output_path, input_path, document, scan_index, tossed, accepted,
+                                          load_trims(output_path))
     return WorkshopContextOut(
         week=[ContextScanOut(**asdict(scan)) for scan in week] if week is not None else None,
         batch_id=batch_id,
@@ -216,17 +231,18 @@ def reprocess(body: WorkshopReprocessIn, output_path: Path = Depends(get_output_
 
         progress.set_total(len(document.pages) + 1)
         results: list[OcrResult] = []
-        for page in document.pages:
+        for page, sidecar in zip(document.pages, document.sidecars):
             treated_path = page.with_name(f"{page.stem}.enhanced.png")
+            band = workshop.reading_trim(sidecar.trim, body.top_points)
             try:
                 with Image.open(page) as image:
-                    enhance(image, settings).save(treated_path)
+                    enhance(image, replace(settings, trim=band)).save(treated_path)
                 models.acquire(f"ocr:{body.ocr_model}", provider.teardown)
                 markdown = provider.run(treated_path, structured=False)
                 boxes = parse_grounding_output(provider.run(treated_path, structured=True)) if structured else []
             finally:
                 treated_path.unlink(missing_ok=True)
-            results.append(OcrResult(markdown=markdown, boxes=boxes or None))
+            results.append(OcrResult(markdown=markdown, boxes=boxes or None, trim=band))
             progress.tick(item=page.name)
 
         models.acquire(f"extract:{body.extractor}", registry.unload_extractor(body.extractor))
@@ -243,6 +259,22 @@ def reprocess(body: WorkshopReprocessIn, output_path: Path = Depends(get_output_
     # couple of model calls, with nothing to stop between, so it can't be cancelled.
     with planning_a_job():
         return runner.start("workshop", f"Reprocess {document.key}", job, Claim(gpu=True), cancellable=False)
+
+
+@router.put("/trim", response_model=WorkshopOut)
+def trim_page(body: WorkshopTrimIn, key: str = Query(...), output_path: Path = Depends(get_output_path)):
+    """Keep only a band of one page of a marked document (or, with no trim, all of it), right away.
+
+    The scan is untouched. The preview and the next reread read only the band; a reread already waiting
+    keeps what it read, and its boxes are placed on the new band.
+    """
+    page = workshop.marked_page(output_path, body.filename)
+    if page is None:
+        raise HTTPException(status_code=404, detail=f"no marked scan {body.filename}")
+    with no_job_running("trim a marked scan", kind="archive"):
+        workshop.trim_page(*page, body.trim)
+    cache.clear()   # the archive's displays show the band
+    return workshop_queue(key=key, output_path=output_path)
 
 
 @router.delete("/reread", response_model=WorkshopOut)

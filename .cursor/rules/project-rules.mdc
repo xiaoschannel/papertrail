@@ -12,3 +12,9 @@ Maintain the test fixtures. A feature that reads a new kind of input (a file lay
 record) adds a synthetic example of it to tools/build_fixture.py, with tests that run against it, in the
 same change. Fixtures are generated, never hand-edited, never taken from the real archive, and must come
 out byte for byte the same on every platform: CI regenerates them and fails on any difference.
+
+Maintain the sandbox's shared state. The sandbox (tools/sandbox_server.py) starts in one state everyone
+shares, built by tools/sandbox_seed.py through the real pipeline: a filed batch (some of it marked), a batch
+waiting in Review, and scans not yet indexed. A feature that can be tried by hand adds its examples there,
+in the stage where they can be tried, with a comment saying what to try, in the same change; there are no
+per-feature scenarios to keep up. Invented data only.

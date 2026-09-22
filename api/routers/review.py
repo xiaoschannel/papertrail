@@ -14,7 +14,7 @@ from api.schemas import (
     DecisionIn, DecisionOut, DraftIn, FieldBoxOut, FormDefaultsOut, HintOut, HintsRequest,
     HintsResponse, QueueItem, ReviewDocument, ReviewPage, ReviewQueue, ReviewSummary, SmartMatch, VerdictCount,
 )
-from data import build_document_index, build_smart_match_history, load_decisions, save_decisions
+from data import build_document_index, build_smart_match_history, load_decisions, load_trims, save_decisions
 from models import (
     VERDICT_COLORS, VERDICT_LABELS, DocumentKey, ReviewDecision, batch_serial_key, iter_indexed_files,
 )
@@ -113,16 +113,20 @@ def document_endpoint(key: str = Query(...), output_path: Path = Depends(get_out
     field_sources = getattr(extraction, "field_sources", {}) or {}
     input_image_path = get_config().input_image_path
     input_dir = Path(input_image_path) if input_image_path else None
+    trims = load_trims(output_path)
     pages = []
     for page_num, file_key in enumerate(page_keys, start=1):
         filename = key_to_filename.get(file_key)
         result = ocr.get(file_key)
-        boxes = rl.field_boxes(page_num, result.boxes or [], field_sources) if result else []
+        band = trims.get(file_key)
+        boxes = rl.reframed(rl.field_boxes(page_num, result.boxes or [], field_sources), result.trim, band)             if result else []
         pages.append(ReviewPage(
             file_key=file_key,
             filename=filename,
             image_available=bool(input_dir and filename and (input_dir / filename).is_file()),
             boxes=FieldBoxOut.all_of(boxes),
+            trim=band,
+            retrimmed=bool(result and result.succeeded and result.trim != band),
         ))
 
     defaults = rl.form_defaults(extraction)

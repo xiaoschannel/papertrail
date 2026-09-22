@@ -1,11 +1,12 @@
 import {
-  useCallback, useRef, useState,
+  useRef, useState,
   type ComponentPropsWithoutRef, type ElementType, type ReactNode,
 } from 'react'
 import { Link } from 'react-router-dom'
 import { mediaUrl } from '../api/client.ts'
-import type { VizRecord } from '../api/types.ts'
+import type { Trim, VizRecord } from '../api/types.ts'
 import { money } from '../format.ts'
+import { TrimmedImage } from './TrimmedImage.tsx'
 import { useGridColumnCount } from './useGridColumnCount.ts'
 import './DocumentCard.css'
 
@@ -13,63 +14,18 @@ import './DocumentCard.css'
  *  2.6 = 390px on a ~150px gallery card. */
 export const DEFAULT_CAP_RATIO = 2.6
 
-type Measurement = { src: string; aspectRatio: string; cropped: boolean }
-
 /**
- * An image that fills the width it is given, at its natural aspect ratio, capped
- * at `capRatio` x width and cropped from the bottom (top always visible). When the
- * cap actually cuts the image off, a short fade at the bottom signals that it continues.
+ * A scan that fills the width it is given, at its natural aspect ratio, capped at `capRatio` x width and
+ * cropped from the bottom (top always visible). When the cap actually cuts the scan off, a short fade at
+ * the bottom signals that it continues. A trimmed scan shows only its band, and the cap applies to that.
  *
- * Sizing contract: it takes the inline size its parent provides. In a layout that
- * sizes to content (flex row, centred grid, button) it uses the image's natural
- * width bounded by the available space — it never collapses to 0.
- *
- * The cap is expressed as an explicit aspect-ratio computed from the image's
- * natural size (no CSS size container, which would give the wrapper a 0 intrinsic
- * width). Before the image loads, the box reserves the full cap height, so tall
- * receipts — the common case — don't shift layout when they arrive; shorter
- * documents shrink to their own height once measured.
- *
- * Cropping depends only on the image's own aspect ratio, so the check is exact at
- * any width and never needs re-measuring on resize. `capRatio` feeds both the cap
- * and the check. Measurements are keyed to the src they came from, so reusing the
- * component with a new src never shows stale sizing.
+ * Sizing contract: it takes the inline size its parent provides. Before the scan loads, the box reserves
+ * the full cap height, so tall receipts — the common case — don't shift layout when they arrive; shorter
+ * documents shrink to their own height once measured. TrimmedImage does the work.
  */
-export function CappedImage({ src, alt = '', capRatio = DEFAULT_CAP_RATIO }:
-  { src: string; alt?: string; capRatio?: number | undefined }) {
-  const [measured, setMeasured] = useState<Measurement | null>(null)
-
-  const measure = useCallback(
-    (img: HTMLImageElement) => {
-      if (img.naturalWidth <= 0) return
-      const w = img.naturalWidth
-      const h = img.naturalHeight
-      setMeasured({
-        src,
-        aspectRatio: `${w} / ${Math.min(h, w * capRatio)}`,
-        cropped: h / w > capRatio + 0.01,
-      })
-    },
-    [src, capRatio],
-  )
-  // A cached image can finish loading before onLoad is attached; check on mount too.
-  const checkIfLoaded = useCallback((img: HTMLImageElement | null) => {
-    if (img?.complete) measure(img)
-  }, [measure])
-
-  const current = measured?.src === src ? measured : null
-  return (
-    <div className={`capped-image${current?.cropped ? ' is-cropped' : ''}`}>
-      <img
-        ref={checkIfLoaded}
-        src={src}
-        alt={alt}
-        loading="lazy"
-        onLoad={(e) => measure(e.currentTarget)}
-        style={{ aspectRatio: current ? current.aspectRatio : `1 / ${capRatio}` }}
-      />
-    </div>
-  )
+export function CappedImage({ src, alt = '', capRatio = DEFAULT_CAP_RATIO, trim = null }:
+  { src: string; alt?: string; capRatio?: number | undefined; trim?: Trim | null | undefined }) {
+  return <TrimmedImage className="capped-image" src={src} alt={alt} capRatio={capRatio} trim={trim} />
 }
 
 type DocumentCardOwnProps<C extends ElementType> = {
@@ -78,6 +34,8 @@ type DocumentCardOwnProps<C extends ElementType> = {
   as?: C
   /** Image URL (omit for no image). */
   src?: string | undefined
+  /** The band of the scan to show (null: all of it). */
+  trim?: Trim | null | undefined
   /** Primary line (truncated with an ellipsis). */
   name: ReactNode
   /** Secondary line (omitted when empty). */
@@ -106,6 +64,7 @@ export type DocumentCardProps<C extends ElementType = 'div'> =
 export function DocumentCard<C extends ElementType = 'div'>({
   as,
   src,
+  trim,
   name,
   caption,
   compact = false,
@@ -118,7 +77,7 @@ export function DocumentCard<C extends ElementType = 'div'>({
   const cls = ['doc-card', compact && 'doc-card--compact', className].filter(Boolean).join(' ')
   return (
     <Root className={cls} {...rest}>
-      {src && <CappedImage src={src} capRatio={capRatio} />}
+      {src && <CappedImage src={src} capRatio={capRatio} trim={trim} />}
       <div className="doc-card__name">{name}</div>
       {caption ? <div className="doc-card__caption">{caption}</div> : null}
       {children}
@@ -127,7 +86,7 @@ export function DocumentCard<C extends ElementType = 'div'>({
 }
 
 /** The fields a receipt card needs — satisfied by full records and slim gallery rows alike. */
-export type CardDocument = Pick<VizRecord, 'filename' | 'path' | 'name' | 'date' | 'cost' | 'currency' | 'document_type'>
+export type CardDocument = Pick<VizRecord, 'filename' | 'path' | 'trim' | 'name' | 'date' | 'cost' | 'currency' | 'document_type'>
   & { brand_location?: string | null }
 
 function captionFor(rec: CardDocument, showDate: boolean, showBranch: boolean): string {
@@ -157,6 +116,7 @@ export function ReceiptCard({ rec, showDate = true, showBranch = false, ...cardP
       to={`/receipt?file=${encodeURIComponent(rec.filename)}`}
       title={name}
       src={mediaUrl(rec.path)}
+      trim={rec.trim}
       name={name}
       caption={captionFor(rec, showDate, showBranch)}
       {...cardProps}

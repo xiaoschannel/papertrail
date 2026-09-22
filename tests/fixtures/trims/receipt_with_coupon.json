@@ -1,0 +1,17 @@
+{
+  "trim": {
+    "top": 0.0,
+    "bottom": 0.645
+  },
+  "receipt_rows": [
+    0,
+    250
+  ],
+  "coupon_rows": [
+    280,
+    400
+  ],
+  "tear_row": 265,
+  "receipt_mark": 60,
+  "coupon_mark": 120
+}

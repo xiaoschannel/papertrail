@@ -56,9 +56,9 @@ def dedupe_clusters(output_path: Path = Depends(get_output_path)):
     for group in find_dedupe_clusters(reviews):
         # A cluster you have already judged ("not duplicates") stops being offered.
         members = [
-            DedupeMember(filename=key, path=rows[key]["path"], name=rows[key]["name"], date=rows[key]["date"],
-                         time=rows[key]["time"], cost=float(rows[key]["cost"]), currency=rows[key]["currency"],
-                         pages=len(rows[key]["paths"]))
+            DedupeMember(filename=key, path=rows[key]["path"], trim=rows[key]["trim"], name=rows[key]["name"],
+                         date=rows[key]["date"], time=rows[key]["time"], cost=float(rows[key]["cost"]),
+                         currency=rows[key]["currency"], pages=len(rows[key]["paths"]))
             for key in drop_confirmed_different(group, kept) if key in rows
         ]
         if len(members) >= 2:

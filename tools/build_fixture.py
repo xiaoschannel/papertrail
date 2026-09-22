@@ -24,6 +24,10 @@ Design notes
       each with the grid that cuts it and where every ticket lies, for slicing.
     * ``tests/fixtures/orientation/`` -- printed pages, upright, for telling which
       way up a scan is (the tests turn them), and the nearly blank back of a page.
+    * ``tests/fixtures/trims/`` -- a scan with a part to trim off (a coupon printed
+      under the receipt), with the trim that keeps the receipt, for trimming.
+  Trims also appear in the two archive states: a mid-ingest ``trims.json`` with an
+  OCR result read under its band, and an archived page trimmed after it was read.
 - **Edge cases are deliberate.** JP/CN/EN docs; a multi-page document group; an
   undated doc; a corrupted doc; tossed + marked docs; a dedupe pair (equal cost,
   <5 min apart); a near-duplicate merchant name for normalization; a brand-prefix
@@ -115,11 +119,17 @@ def corrupted_extraction() -> dict:
     return {"document_type": "corrupted"}
 
 
-def ocr_result(markdown: str, *, boxes=None, succeeded=True) -> dict:
+def ocr_result(markdown: str, *, boxes=None, succeeded=True, trim=None) -> dict:
     d: dict = {"markdown": markdown, "succeeded": succeeded}
     if boxes is not None:
         d["boxes"] = boxes
+    if trim is not None:
+        d["trim"] = trim           # the band of the page it was read from
     return d
+
+
+def trim(top: float, bottom: float) -> dict:
+    return {"top": top, "bottom": bottom}
 
 
 def box(ref_type: str, coords, text: str) -> dict:
@@ -150,7 +160,8 @@ def review(*, verdict, document_type, name, date, time, cost=0.0, currency="", c
     }
 
 
-def sidecar(*, original_filename, batch_id, serial, review_, extraction=None, ocr=None, document_key=None) -> dict:
+def sidecar(*, original_filename, batch_id, serial, review_, extraction=None, ocr=None, document_key=None,
+            trim_=None) -> dict:
     d: dict = {
         "original_filename": original_filename,
         "batch_id": batch_id,
@@ -163,6 +174,8 @@ def sidecar(*, original_filename, batch_id, serial, review_, extraction=None, oc
         d["ocr"] = ocr
     if extraction is not None:
         d["extraction"] = extraction
+    if trim_ is not None:
+        d["trim"] = trim_
     return d
 
 
@@ -203,7 +216,7 @@ def build_ingest(root: Path) -> None:
             ],
         ),
         "1:2": ocr_result("セブン-イレブン 品川駅前店\nお茶 ¥1,260\n合計 ¥1,260"),
-        "1:3": ocr_result("上海小笼包馆\n小笼包 ¥500\n服务费 ¥20\n合计 ¥520"),
+        "1:3": ocr_result("上海小笼包馆\n小笼包 ¥500\n服务费 ¥20\n合计 ¥520", trim=trim(0.0, 0.75)),
         "1:4": ocr_result("Tealive KLCC\nBrown Sugar Boba RM15.90\n--- page 1 ---"),
         "1:5": ocr_result("Tealive KLCC\nThank you\n--- page 2 ---"),
         "1:6": ocr_result("@@@##garbled%%%\n\n\n###", succeeded=True),
@@ -266,12 +279,15 @@ def build_ingest(root: Path) -> None:
     }
 
     documents = {"groups": [["1:4", "1:5"]]}
+    # Page 1:3 keeps its top three quarters (a survey printed below the total), and OCR read it that way.
+    trims = {"1:3": trim(0.0, 0.75)}
 
     _write_json(root / "batches.json", batches)
     _write_json(root / "ocr" / "1.json", ocr)
     _write_json(root / "extractions.json", extractions)
     _write_json(root / "decisions.json", decisions)
     _write_json(root / "documents.json", documents)
+    _write_json(root / "trims.json", trims)
 
 
 # --------------------------------------------------------------------------- #
@@ -305,10 +321,13 @@ def build_archive(root: Path) -> None:
                 review_=review(verdict="accepted", document_type="receipt",
                                name="セブン-イレブン 上野店", date="2025-01-15",
                                time="09:05:00", cost=640.0, currency="JPY"),
-                ocr=ocr_result("セブン-イレブン 上野店\n合計 ¥640"),
+                # read whole, then trimmed to its top 60% (a coupon below): the box is on the whole page
+                ocr=ocr_result("セブン-イレブン 上野店\n合計 ¥640",
+                               boxes=[box("text", [[80, 300, 470, 340]], "合計 ¥640")]),
                 extraction=receipt_extraction(language="ja", date="2025-01-15", time="09:05:00",
                                               name="セブン-イレブン 上野店", currency="JPY",
-                                              cost=640.0, items=[item("パン", 640.0)])))
+                                              cost=640.0, items=[item("パン", 640.0)]),
+                trim_=trim(0.0, 0.6)))
     add("2025/02", "2025年2月20日 18：30 セブンイレブン 目黒店",
         sidecar(original_filename="02202025183000_103.png", batch_id=5, serial=103,
                 review_=review(verdict="accepted", document_type="receipt",
@@ -598,19 +617,57 @@ def build_orientation(root: Path) -> None:
     _write_json(root / "pages.json", {"printed": sorted(pages), "blank": ["blank_back.png"]})
 
 
+#: The coupon scan's receipt and coupon markers, and the dashes of the tear line between them.
+RECEIPT_MARK, COUPON_MARK, TEAR = 60, 120, 90
+
+
+def build_trims(root: Path) -> None:
+    """A receipt with a coupon printed under it, on one strip of paper: what a trim is for.
+
+    Lines of "text" (ink bars) down the receipt, a marker square of RECEIPT_MARK grey in it, a dashed
+    tear line, then the coupon with its own lines and a COUPON_MARK marker. The JSON says the trim that
+    keeps exactly the receipt (its cut in the gap above the tear line) and where each part lies, in pixel
+    rows, so a test can check what OCR is handed holds the one and none of the other.
+    """
+    width, height = 120, 400
+    pixels = bytearray([PAPER]) * (width * height)
+
+    def fill(x1, y1, x2, y2, value):
+        for y in range(y1, y2):
+            pixels[y * width + x1:y * width + x2] = bytes([value]) * (x2 - x1)
+
+    receipt, coupon, tear = (0, 250), (280, 400), 265
+    for y in range(20, 220, 20):                       # the receipt's lines, and its marker
+        fill(10, y, 100 - (y % 60), y + 6, INK)
+    fill(90, 100, 106, 116, RECEIPT_MARK)
+    for x in range(4, width - 4, 12):                  # the tear line
+        fill(x, tear, x + 6, tear + 2, TEAR)
+    for y in range(300, 380, 20):                      # the coupon's lines, and its marker
+        fill(20, y, 110 - (y % 40), y + 6, INK)
+    fill(90, 340, 106, 356, COUPON_MARK)
+
+    _write_gray_png(root / "receipt_with_coupon.png", width, height, bytes(pixels))
+    _write_json(root / "receipt_with_coupon.json", {
+        "trim": trim(0.0, round(258 / height, 4)), "receipt_rows": list(receipt), "coupon_rows": list(coupon),
+        "tear_row": tear, "receipt_mark": RECEIPT_MARK, "coupon_mark": COUPON_MARK})
+
+
 def main() -> int:
     ingest_root = FIXTURES / "ingest"
     archive_root = FIXTURES / "archive"
     sheets_root = FIXTURES / "sheets"
     orientation_root = FIXTURES / "orientation"
+    trims_root = FIXTURES / "trims"
     build_ingest(ingest_root)
     build_archive(archive_root)
     build_sheets(sheets_root)
     build_orientation(orientation_root)
+    build_trims(trims_root)
     print(f"Wrote ingest fixture  -> {ingest_root}")
     print(f"Wrote archive fixture -> {archive_root}")
     print(f"Wrote sheet fixtures  -> {sheets_root}")
     print(f"Wrote orientation fixtures -> {orientation_root}")
+    print(f"Wrote trim fixtures   -> {trims_root}")
     return 0
 
 

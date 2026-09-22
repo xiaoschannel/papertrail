@@ -303,3 +303,64 @@ def test_a_marked_document_can_be_decided_while_parse_runs(api_client, configure
     finally:
         release.set()
     assert response.status_code == 200
+
+
+def _tall_marked_scan(archive_dir, width=40, height=100):
+    Image.new("RGB", (width, height), "white").save(archive_dir / "marked" / "08102025142000_202.png")
+
+
+def test_trimming_a_page_is_kept_at_once_and_the_preview_shows_only_the_band(api_client, configured_archive):
+    _tall_marked_scan(configured_archive)
+
+    body = api_client.put("/api/curate/workshop/trim", params={"key": "9:202"},
+                          json={"filename": "08102025142000_202.png", "trim": {"top": 0.2, "bottom": 0.7}}).json()
+
+    assert body["document"]["pages"][0]["trim"] == {"top": 0.2, "bottom": 0.7}
+    assert read_sidecar(configured_archive / "marked" / "08102025142000_202.png").trim is not None
+    plain = api_client.get("/api/curate/workshop/scan", params={"filename": "08102025142000_202.png"})
+    turned = api_client.get("/api/curate/workshop/scan",
+                            params={"filename": "08102025142000_202.png", "top_points": "down"})
+    quarter = api_client.get("/api/curate/workshop/scan",
+                             params={"filename": "08102025142000_202.png", "top_points": "left"})
+    assert Image.open(io.BytesIO(plain.content)).size == (40, 50)
+    assert Image.open(io.BytesIO(turned.content)).size == (40, 50)
+    assert Image.open(io.BytesIO(quarter.content)).size == (100, 40)       # a quarter turn reads the whole page
+    assert api_client.put("/api/curate/workshop/trim", params={"key": "9:202"},
+                          json={"filename": "nope.png", "trim": None}).status_code == 404
+
+
+def test_a_reread_reads_only_the_band_and_says_when_the_cut_moved_since(api_client, configured_archive, monkeypatch):
+    _tall_marked_scan(configured_archive)
+    seen = []
+
+    class SizingOcr:
+        grounding = True
+
+        def run(self, path, structured=False):
+            with Image.open(path) as image:
+                seen.append(image.size)
+            return "<|ref|>合計<|/ref|><|det|>[[0, 0, 1000, 500]]<|/det|>" if structured else "the band"
+
+        def teardown(self):
+            pass
+
+    def extract(text, has_boxes=False, custom_instruction=""):
+        return ReceiptResult(document_type="receipt", language="ja", date="2025-08-10", time="14:20",
+                             name="Banded", currency="JPY", address="", cost=300.0)
+
+    monkeypatch.setattr(ingest_registry, "ocr_providers", lambda: {"Fake OCR": SizingOcr()})
+    monkeypatch.setattr(ingest_registry, "extractors", lambda: {"Fake LLM": extract})
+    monkeypatch.setattr(ingest_registry, "unload_extractor", lambda name: (lambda: None))
+    trim_it = lambda band: api_client.put("/api/curate/workshop/trim", params={"key": "9:202"},  # noqa: E731
+                                           json={"filename": "08102025142000_202.png", "trim": band}).json()
+    trim_it({"top": 0.0, "bottom": 0.5})
+
+    assert _reread(api_client, top_points="")["status"] == "succeeded"
+    assert seen == [(40, 50), (40, 50)]
+    page = api_client.get("/api/curate/workshop").json()["document"]["pages"][0]
+    assert page["retrimmed"] is False and page["boxes"][0]["rects"] == [{"x1": 0, "y1": 0, "x2": 1000, "y2": 500}]
+
+    page = trim_it(None)["document"]["pages"][0]          # the whole page again, after the band was read
+
+    assert page["retrimmed"] is True
+    assert page["boxes"][0]["rects"] == [{"x1": 0, "y1": 0, "x2": 1000, "y2": 250}]   # the box, on the whole page

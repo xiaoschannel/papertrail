@@ -2,7 +2,7 @@ import createClient from 'openapi-fetch'
 import type { paths } from './schema'
 import type {
   AppConfig, BrandIn, ConfirmIndexIn, DecisionIn, Draft, ExperimentOcrIn, ExperimentParseIn, ExperimentTreatment,
-  MerchantTotals, ReceiptEditIn, SheetGrid, StartOcrIn, StartParseIn, TopPoints, Verdict, WorkshopDecisionIn,
+  MerchantTotals, ReceiptEditIn, SheetGrid, StartOcrIn, StartParseIn, TopPoints, Trim, Verdict, WorkshopDecisionIn,
   WorkshopReprocessIn,
 } from './types.ts'
 
@@ -96,6 +96,9 @@ export const api = {
     /** The batch's pages whose scan looks sideways or upside down (503 when the model can't be had). */
     turned: (batchId: number) =>
       unwrap(client.GET('/api/ingest/turned', { params: { query: { batch_id: batchId } } })),
+    /** Keep only a band of a page (null: all of it); OCR reads only the band, and reads a page it read before again. */
+    trim: (key: string, trim: Trim | null) =>
+      unwrap(client.PUT('/api/ingest/pages/trim', { body: { key, trim } })),
     slicing: (batchId?: number) =>
       unwrap(client.GET('/api/ingest/slicing', { params: { query: { batch_id: batchId ?? null } } })),
     /** What cutting `key` by `grid` (null: unslicing it) would do, to confirm before `applySlices`. */
@@ -157,6 +160,9 @@ export const api = {
   workshop: {
     queue: (key?: string) => unwrap(client.GET('/api/curate/workshop', { params: { query: { key: key ?? null } } })),
     reprocess: (body: WorkshopReprocessIn) => unwrap(client.POST('/api/curate/workshop/reprocess', { body })),
+    /** Keep only a band of one page of the open document (null: all of it), right away. */
+    trim: (key: string, filename: string, trim: Trim | null) =>
+      unwrap(client.PUT('/api/curate/workshop/trim', { params: { query: { key } }, body: { filename, trim } })),
     /** Drop a pending reread: the document goes back to what its sidecars say. */
     discardReread: (key: string) =>
       unwrap(client.DELETE('/api/curate/workshop/reread', { params: { query: { key } } })),
@@ -211,9 +217,12 @@ export const jobEventsUrl = (jobId: string): string => `/api/jobs/${encodeURICom
 const withQuery = (path: string, query: Record<string, string | number | boolean>): string =>
   `${path}?${new URLSearchParams(Object.entries(query).map(([key, value]) => [key, String(value)])).toString()}`
 
-/** A marked scan as OCR would see it, with the workshop's treatment applied by the server. */
-export const workshopScanUrl = (filename: string, enhancement: Record<string, string | number>): string =>
-  withQuery('/api/curate/workshop/scan', { filename, ...enhancement })
+/** A marked scan as OCR would see it, with the workshop's treatment applied by the server, and only the band
+ *  the page is trimmed to. The server reads the trim from the page, so `trim` only tells the browser that a
+ *  new trim is a new image. */
+export const workshopScanUrl = (filename: string, enhancement: Record<string, string | number>,
+  trim: Trim | null = null): string =>
+  withQuery('/api/curate/workshop/scan', { filename, ...enhancement, trimmed: trim ? `${trim.top}-${trim.bottom}` : '' })
 
 /** An Experiment image with a treatment applied by the server: what OCR would read with these settings. */
 export const experimentScanUrl = (runId: string, treatment: ExperimentTreatment): string =>

@@ -51,7 +51,14 @@ Then open http://127.0.0.1:5173. Both listen on this machine only.
 
 To try things without touching your archive, `tools/sandbox_server.py` runs the API on a throwaway archive of
 invented scans with fake models (port 8001); `npm --prefix frontend run dev:sandbox` serves the web app for it
-on port 5174.
+on port 5174. A new sandbox starts with something on every page: a batch already filed (some of it marked,
+for the Marked Workshop), a batch waiting in Review, and scans to walk from File Index. A restart keeps what
+you did in it. To start over, stop the sandbox API and run
+```
+.venv\Scripts\python tools\sandbox_reset.py
+```
+then start it again (or start it with `--fresh`, which does the same). `tools/sandbox_seed.py` builds that
+state, and says what is in it for which feature.
 
 ## Several checkouts at once
 

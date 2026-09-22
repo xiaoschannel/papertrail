@@ -108,3 +108,23 @@ def test_field_boxes_maps_refs_to_page_boxes():
 def test_field_boxes_skips_boxes_without_a_usable_rectangle():
     boxes = [DetectedBox(ref_type="text", coords=[[1, 2, 3]], text="bad")]
     assert rl.field_boxes(1, boxes, {"name": ["1:0"]}) == []
+
+
+# --- boxes on a trimmed page ------------------------------------------------------------------------------
+def test_boxes_read_on_one_band_are_placed_on_the_band_shown():
+    from models import Trim
+
+    boxes = [rl.FieldBox(index=0, fields=("name",), rects=((80, 40, 880, 104),), text="shop"),
+             rl.FieldBox(index=1, fields=("cost",), rects=((100, 700, 300, 760),), text="100")]
+    assert rl.reframed(boxes, None, None) is boxes
+
+    shown = rl.reframed(boxes, None, Trim(top=0.0, bottom=0.5))   # trimmed after it was read whole
+
+    assert shown == [rl.FieldBox(index=0, fields=("name",), rects=((80, 80, 880, 208),), text="shop")]   # cost is cut off
+
+
+def test_a_box_the_new_cut_runs_through_is_clipped_to_it():
+    from models import Trim
+
+    box = rl.FieldBox(index=0, fields=(), rects=((0, 400, 100, 600),), text=None)
+    assert rl.reframed([box], None, Trim(top=0.5, bottom=1.0))[0].rects == ((0, 0, 100, 200),)

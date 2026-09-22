@@ -102,6 +102,63 @@ def test_document_index_expand_decisions(ingest_dir):
     assert expanded == {"1:4": "verdict", "1:5": "verdict"}
 
 
+# --- Trim ------------------------------------------------------------------
+def test_a_trim_that_keeps_the_whole_page_is_no_trim():
+    from models import Trim, trim_of
+
+    assert trim_of(0, 1) is None
+    assert trim_of(0.2, 1) == Trim(top=0.2, bottom=1.0)
+    assert Trim(top=0.123456, bottom=0.9) == Trim(top=0.1235, bottom=0.9)   # a dragged ruler's float noise
+
+
+def test_a_trim_keeps_some_of_the_page():
+    import pytest
+    from pydantic import ValidationError
+
+    from models import Trim
+
+    for top, bottom in [(0.5, 0.5), (0.6, 0.4), (0.5, 0.51), (-0.1, 0.5), (0.2, 1.5)]:
+        with pytest.raises(ValidationError):
+            Trim(top=top, bottom=bottom)
+
+
+def test_the_thinnest_trim_the_rulers_allow_is_kept():
+    """The rulers stop 2% apart; 0.3 - 0.28 is 0.01999... in floating point, and must still pass."""
+    from models import MIN_TRIM_BAND, Trim
+
+    for top in (0.28, 0.07, 0.5, 0.0, 0.98):
+        Trim(top=top, bottom=round(top + MIN_TRIM_BAND, 4))
+
+
+def test_a_trim_as_pixel_rows_is_never_empty():
+    from models import Trim
+
+    assert Trim(top=0.25, bottom=0.75).rows(100) == (25, 75)
+    assert Trim(top=0.0, bottom=0.02).rows(10) == (0, 1)
+    assert Trim(top=0.98, bottom=1.0).rows(10) == (9, 10)
+
+
+def test_a_trim_turns_with_its_file():
+    from models import Trim, turned_trim
+
+    band = Trim(top=0.1, bottom=0.6)
+    assert turned_trim(band, "") == band
+    assert turned_trim(band, "down") == Trim(top=0.4, bottom=0.9)
+    assert turned_trim(band, "left") is None and turned_trim(band, "right") is None   # it would lie across
+    assert turned_trim(None, "down") is None
+
+
+def test_a_height_on_the_band_read_is_placed_on_the_band_shown():
+    from models import Trim, reframe_y
+
+    whole, top_half, middle = None, Trim(top=0, bottom=0.5), Trim(top=0.25, bottom=0.75)
+    assert reframe_y(300, middle, middle) == 300
+    assert reframe_y(100, whole, top_half) == 200         # read whole, shown trimmed: the band is stretched
+    assert reframe_y(200, top_half, whole) == 100
+    assert reframe_y(0, middle, top_half) == 500          # the band's top edge sits halfway down the top half
+    assert reframe_y(1000, top_half, middle) == 500
+
+
 def test_a_batch_without_sliced_sheets_is_saved_as_before(ingest_dir):
     raw = json.loads((ingest_dir / "batches.json").read_text(encoding="utf-8"))
     index = models.load_scan_index(ingest_dir)

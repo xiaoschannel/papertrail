@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from models import DocumentExtraction, ModelRun, SheetGrid, TokenUse
+from models import DocumentExtraction, ModelRun, SheetGrid, TokenUse, Trim
 
 if TYPE_CHECKING:
     from review_logic import FieldBox
@@ -50,6 +50,8 @@ class VizRecord(_Model):
     filename: str
     path: str
     paths: list[str]
+    trim: Trim | None                  # the first page's, as ``path`` is the first page
+    trims: list[Trim | None]           # each page's, beside ``paths``
     document_type: str
     name: str
     date: str
@@ -90,6 +92,7 @@ class GalleryReceipt(_Model):
 
     filename: str
     path: str
+    trim: Trim | None
     date: str
     time: str
     cost: float
@@ -276,7 +279,11 @@ class ReviewPage(_Model):
     file_key: str
     filename: str | None
     image_available: bool
+    #: the boxes are placed on the page as trimmed now, whatever it was trimmed to when read
     boxes: list[FieldBoxOut]
+    trim: Trim | None
+    #: trimmed differently since its OCR was read, so the text may still include what was cut off
+    retrimmed: bool
 
 
 class DecisionOut(_Model):
@@ -420,6 +427,7 @@ class GroupingPageOut(_Model):
     crop_of: str | None = None          # a crop: the sheet it was cut from
     cell: list[int] | None = None        # ... and its [row, col]
     sliced: bool = False                 # a sheet cut into crops: tossed until it is unsliced
+    trim: Trim | None = None             # the band of the page OCR reads and every view shows
 
 
 class GroupingOut(_Model):
@@ -498,6 +506,7 @@ class SlicePlanOut(_Model):
     ocr: int
     extractions: int
     decisions: int
+    trims: int                   # pages' trims deleted: moved crops', and the sheet's own
     replaces_decision: bool      # the sheet had a review decision, which the sliced toss replaces
     token: str
 
@@ -522,6 +531,13 @@ class RotateIn(_Model):
     top_points: Literal["left", "right", "down"]
 
 
+class TrimIn(_Model):
+    """Trim a page still being ingested; ``trim`` None keeps the whole page."""
+
+    key: str
+    trim: Trim | None
+
+
 # --- ingest: OCR / Parse / Archive -----------------------------------------------------
 class OcrStatus(_Model):
     blocker: str | None
@@ -536,6 +552,8 @@ class OcrStatus(_Model):
     to_process: int
     #: pages that need reading but are in a batch another job holds
     waiting: int
+    #: pages read already, but trimmed differently since: the next run reads them again
+    retrimmed: int
 
 
 class StartOcrIn(_Model):
@@ -627,6 +645,7 @@ class ContextScanOut(_Model):
     cost: float
     currency: str
     image: str | None          # a media URL
+    trim: Trim | None        # of the scan at ``image``
     receipt: str | None        # the archived document, for Receipt Detail
     current: bool
 
@@ -658,6 +677,13 @@ class WorkshopReprocessIn(EnhancementIn):
     extractor: str
 
 
+class WorkshopTrimIn(_Model):
+    """Trim one page of a marked document (by its file in ``marked/``); None keeps the whole page."""
+
+    filename: str
+    trim: Trim | None
+
+
 class WorkshopHintsIn(_Model):
     key: str
     draft: DraftIn
@@ -677,6 +703,7 @@ class WorkshopDecisionIn(_Model):
 class DedupeMember(_Model):
     filename: str
     path: str
+    trim: Trim | None
     name: str
     date: str
     time: str

@@ -3,17 +3,26 @@
 A marked document is usually one the model misread: too dark, washed out, upside down, or printed on
 coloured paper. The treatments are applied server-side — the browser asks for a treatment, the server
 produces the pixels that OCR actually sees, and the same function draws the preview.
+
+A page's trim (``models.Trim``) is applied here too, and first: it is measured on the file as stored,
+so it cuts before the page is turned, and the treatment then works only on what OCR will read.
 """
 
 from __future__ import annotations
 
+import os
+import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal
 
 import numpy as np
 from PIL import Image, ImageEnhance
 
 from document_grouping import ROTATIONS
+from models import Trim
 
 Treatment = Literal["none", "clahe", "contrast", "whiten"]
 
@@ -33,11 +42,42 @@ class Enhancement:
     denoise_before: bool = False         # smooth grain before the treatment, after it, or both
     denoise_after: bool = False          # (Experiment only; the Workshop doesn't offer it)
     denoise_strength: int = 6
+    trim: Trim | None = None           # the page's own trim (not a control: it is kept with the page)
+
+
+def crop_to_trim(image: Image.Image, band: Trim | None) -> Image.Image:
+    """The part of the scan a trim keeps (all of it without one)."""
+    if band is None:
+        return image
+    first, end = band.rows(image.height)
+    return image.crop((0, first, image.width, end))
+
+
+@contextmanager
+def trimmed_file(path: Path, band: Trim | None) -> Iterator[Path]:
+    """``path`` as OCR should read it: the file itself, or a temporary copy of the band a trim keeps.
+
+    The OCR models take a file, not pixels, and the scan is the only copy, so a trim is read from a
+    lossless copy that is deleted afterwards.
+    """
+    if band is None:
+        yield path
+        return
+    handle, name = tempfile.mkstemp(prefix=f"{path.stem}.", suffix=".trimmed.png")
+    os.close(handle)
+    copy = Path(name)
+    try:
+        with Image.open(path) as image:
+            crop_to_trim(image.convert("RGB"), band).save(copy, format="PNG")
+        yield copy
+    finally:
+        copy.unlink(missing_ok=True)
 
 
 def enhance(image: Image.Image, settings: Enhancement) -> Image.Image:
-    """The scan as OCR should see it: rotated upright, then the chosen treatment (denoised around it if asked)."""
-    working = image.convert("RGB")
+    """The scan as OCR should see it: trimmed, rotated upright, then the chosen treatment (denoised
+    around it if asked)."""
+    working = crop_to_trim(image.convert("RGB"), settings.trim)
     rotation = ROTATIONS.get(settings.top_points)
     if rotation is not None:
         working = working.transpose(rotation)

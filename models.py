@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Annotated, Literal, TypeVar, Union
 
-from pydantic import BaseModel, Field, TypeAdapter
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator, model_validator
 
 T = TypeVar("T")
 
@@ -46,10 +46,88 @@ class ModelRun(BaseModel):
     cost: float | None = None
 
 
+#: The thinnest band a trim may keep, as a fraction of the scan's height.
+MIN_TRIM_BAND = 0.02
+
+
+class Trim(BaseModel):
+    """The part of a page scan that is the document: the band between two horizontal cuts.
+
+    ``top`` and ``bottom`` are fractions of the scan's height as the file is stored (0 is its top
+    edge, 1 its bottom). A coupon or survey printed under a receipt, or a header above it, gives OCR
+    more to misread; a trim keeps it from being read or shown, while the scan itself is never changed,
+    so a cut can always be moved back out. OCR reads only the band, and every display shows only the
+    band, with a shadow on each edge that was cut.
+
+    A page that isn't trimmed has no ``Trim`` at all (``None``), never a band from 0 to 1: see
+    ``trim_of``. That way "trimmed the same way" is plain equality.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    top: float = Field(0.0, ge=0.0, le=1.0)
+    bottom: float = Field(1.0, ge=0.0, le=1.0)
+
+    @field_validator("top", "bottom")
+    @classmethod
+    def _rounded(cls, value: float) -> float:
+        return round(value, 4)       # a dragged ruler's float noise shouldn't count as a different cut
+
+    @model_validator(mode="after")
+    def _keeps_something(self) -> "Trim":
+        # with a little give: the rulers stop exactly MIN_TRIM_BAND apart, which in floating point can come
+        # out a hair under it (0.3 - 0.28)
+        if self.bottom - self.top < MIN_TRIM_BAND - 1e-9:
+            raise ValueError(f"a trim has to keep at least {MIN_TRIM_BAND:.0%} of the page")
+        return self
+
+    def rows(self, height: int) -> tuple[int, int]:
+        """The band as pixel rows ``[first, end)`` of a scan ``height`` pixels tall; never empty."""
+        first = min(max(0, round(self.top * height)), height - 1)
+        return first, max(first + 1, min(height, round(self.bottom * height)))
+
+    def upside_down(self) -> "Trim":
+        """The same band once the scan is turned 180°."""
+        return Trim(top=round(1 - self.bottom, 4), bottom=round(1 - self.top, 4))
+
+
+def trim_of(top: float, bottom: float) -> Trim | None:
+    """A trim from its two cuts, or None when they keep the whole page."""
+    band = Trim(top=top, bottom=bottom)
+    return None if band.top == 0 and band.bottom == 1 else band
+
+
+def turned_trim(band: Trim | None, top_points: str) -> Trim | None:
+    """A page's trim once its file is turned upright from ``top_points`` (File Index's arrows).
+
+    Upside down, the band flips. A quarter turn would lay it across the page's width, which a trim
+    can't be, so the page is left whole.
+    """
+    if band is None or top_points == "":
+        return band
+    return band.upside_down() if top_points == "down" else None
+
+
+def reframe_y(y: int, read: Trim | None, shown: Trim | None) -> int:
+    """A height on the 0-1000 scale of the band ``read`` was measured on, placed on the band ``shown``.
+
+    OCR measures its boxes on the image it was given, which is the band the page was trimmed to when it
+    was read. The page is shown trimmed as it is now; the two differ once the cut moves after the read.
+    """
+    if read == shown:
+        return y
+    read_top, read_bottom = (read.top, read.bottom) if read else (0.0, 1.0)
+    shown_top, shown_bottom = (shown.top, shown.bottom) if shown else (0.0, 1.0)
+    on_scan = read_top + y / 1000 * (read_bottom - read_top)
+    return round((on_scan - shown_top) / (shown_bottom - shown_top) * 1000)
+
+
 class OcrResult(BaseModel):
     markdown: str
     boxes: list[DetectedBox] | None = None
     succeeded: bool = True
+    #: the band of the page this was read from (None: the whole page); its boxes are measured on it
+    trim: Trim | None = None
 
 
 def ocr_page_section(page_num: int, result: OcrResult) -> str:
@@ -215,6 +293,8 @@ class Sidecar(BaseModel):
     slice_of: str | None = None
     slice_cell: Cell | None = None
     slice_box: "Box | None" = None
+    #: the part of the scan that is the document (None: all of it)
+    trim: Trim | None = None
 
 
 #: Grid coordinates are on a 0-1000 scale of the sheet image, like OCR boxes, so they never need its size.

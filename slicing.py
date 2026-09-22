@@ -15,6 +15,8 @@ The rules slicing keeps:
   ``toss_reason="sliced"``, so Archive files it under ``tossed/``. Only slicing sets or clears that toss.
 * **Crops inherit the sheet's rotation**, so a sheet is turned upright before it is sliced; neither a
   sliced sheet nor a crop can be rotated.
+* **A trim belongs to what it was drawn on.** A crop whose serial moves loses its trim with its other
+  results, and a sheet's trim goes when it is sliced: its crops are what is read, each trimmed on its own.
 * Crops are files under ``<input>/slices/``, named for their sheet, cell and box (never their serial, so
   moving a crop never renames its file, and a cell cut differently gets a file of its own). The input
   folder's own listing only reads its top level, so a crop is never offered as a new scan.
@@ -41,10 +43,12 @@ from data import (
     OCR_RUNS,
     drop_extractions,
     drop_model_runs,
+    drop_trims,
     load_decisions,
     load_document_groups,
     load_extractions,
     load_ocr_batch,
+    load_trims,
     save_decisions,
     save_ocr_batch,
     save_scan_index,
@@ -201,6 +205,8 @@ class SlicePlan:
     ocr: int
     extractions: int
     decisions: int
+    #: trims dropped: the moved crops', and the sheet's own when it is sliced
+    trims: int
     #: the sheet's own decision, when slicing replaces one a person made
     replaces_decision: bool
     token: str
@@ -266,7 +272,9 @@ def plan_slices(output_path: Path, batch_id: int, sheet: int, grid: SheetGrid | 
 
     ocr = load_ocr_batch(output_path, batch_id)
     extractions = load_extractions(output_path)
-    counts = (len(dropped & set(ocr)), len(dropped & set(extractions)), len(dropped & set(decisions)))
+    trims = load_trims(output_path)
+    counts = (len(dropped & set(ocr)), len(dropped & set(extractions)), len(dropped & set(decisions)),
+              len((dropped | ({key} if grid is not None else set())) & set(trims)))
     replaces = grid is not None and decision is not None and not decision.sliced
     token = hashlib.sha1(json.dumps([
         batch.model_dump(mode="json"), grid.model_dump(mode="json") if grid else None,
@@ -274,7 +282,7 @@ def plan_slices(output_path: Path, batch_id: int, sheet: int, grid: SheetGrid | 
     ], sort_keys=True).encode()).hexdigest()
     return SlicePlan(batch_id=batch_id, sheet=sheet, grid=grid, crops=new, kept=kept, moved=moved,
                      dropped_keys=dropped, ocr=counts[0], extractions=counts[1], decisions=counts[2],
-                     replaces_decision=replaces, token=token)
+                     trims=counts[3], replaces_decision=replaces, token=token)
 
 
 # =====================================================================================
@@ -340,6 +348,7 @@ def apply_slices(output_path: Path, input_path: Path, batch_id: int, sheet: int,
     drop_model_runs(output_path, OCR_RUNS, plan.dropped_keys)
     drop_extractions(output_path, plan.dropped_keys | {sheet_key})
     drop_model_runs(output_path, EXTRACTION_RUNS, plan.dropped_keys | {sheet_key})
+    drop_trims(output_path, plan.dropped_keys | {sheet_key})
     decisions = {k: v for k, v in load_decisions(output_path).items() if k not in plan.dropped_keys}
     if grid is None:
         decisions.pop(sheet_key, None)

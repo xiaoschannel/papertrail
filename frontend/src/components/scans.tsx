@@ -3,6 +3,7 @@ import { inputUrl } from '../api/client.ts'
 import { useShortcutKeys } from '../api/config.ts'
 import type { Batch, TopPoints } from '../api/types.ts'
 import { keyLabel, keyOf } from './useShortcuts.ts'
+import './scans.css'
 
 /** The batch picker the File Index pages (Slice, Group) share. */
 export function BatchSelect({ id, batches, value, onChange }: {
@@ -90,13 +91,16 @@ function turnedFit(natural: [number, number], turn: number) {
 
 /** A scan at full size, for deciding whether a page continues the previous document, is upright, or
  *  where to cut a sheet. The dialogs' Cancel shortcut closes it. ``turn`` previews it turned (degrees
- *  clockwise, a multiple of 90) without changing it; ``footer`` goes under the caption. */
-export function ScanViewer({ label, filename, version, onClose, children, turn = 0, footer }: {
+ *  clockwise, a multiple of 90) without changing it; ``footer`` goes under the caption. ``scan`` shows
+ *  something else in the scan's place (the trim rulers, which draw the scan themselves); ``children`` go in
+ *  the caption. */
+export function ScanViewer({ label, filename, version, onClose, children, turn = 0, footer, scan }: {
   label: string
   filename: string
   /** The file's mtime, so a rotated scan isn't shown from the browser's cache. */
   version: number
   onClose: () => void
+  scan?: ReactNode
   children?: ReactNode
   turn?: number
   footer?: ReactNode
@@ -115,7 +119,7 @@ export function ScanViewer({ label, filename, version, onClose, children, turn =
   return (
     <div className="modal-backdrop scan-viewer" data-modal-open onClick={onClose} role="dialog" aria-modal="true">
       <figure onClick={(e) => e.stopPropagation()}>
-        {(() => {
+        {scan ?? (() => {
           const img = (style?: object) => (
             <img src={inputUrl(filename, version)} alt={`Scan ${label}`} style={style}
               onLoad={(e) => setNatural([e.currentTarget.naturalWidth, e.currentTarget.naturalHeight])} />

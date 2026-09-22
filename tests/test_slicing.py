@@ -380,3 +380,49 @@ class _Progress:
     def tick(self, ok=True, item="", error=""): assert ok, error
     def say(self, message): ...
     def record(self, run): ...
+
+
+# --- trims (a band of one page) on sheets and crops ---------------------------------------------------
+def test_slicing_a_trimmed_sheet_drops_its_trim_and_the_plan_says_so(ingest_dir, scans):
+    """The grid is drawn on the whole sheet, and its crops are what is read: a trim on the sheet means nothing."""
+    from data import load_trims, set_trim
+    from models import Trim
+
+    set_trim(ingest_dir, "1:2", Trim(top=0.1, bottom=0.9))
+
+    plan = sl.plan_slices(ingest_dir, 1, 2, THREE)
+    assert plan.trims == 1
+    sl.apply_slices(ingest_dir, scans, 1, 2, THREE, plan.token)
+    assert set(load_trims(ingest_dir)) == {"1:3"}                  # the fixture's other trimmed page keeps its trim
+
+
+def test_a_crop_that_moves_loses_its_trim_with_its_other_results(ingest_dir, scans):
+    from data import load_trims, set_trim
+    from models import Trim
+
+    assert slice_(ingest_dir, scans, 3, TWO).trims == 1         # 1:9, 1:10; sheet 1:3's own trim goes
+    assert load_trims(ingest_dir) == {}
+    set_trim(ingest_dir, "1:10", Trim(top=0.0, bottom=0.5))      # drawn on sheet 3's second ticket
+
+    plan = sl.plan_slices(ingest_dir, 1, 2, THREE)               # 1:10 becomes sheet 2's second ticket
+    assert plan.trims == 1
+    sl.apply_slices(ingest_dir, scans, 1, 2, THREE, plan.token)
+    assert load_trims(ingest_dir) == {}
+
+
+def test_a_crop_can_be_trimmed_but_a_sliced_sheet_cant(ingest_dir, scans):
+    import ingest_pipeline as ip
+    from data import load_trims
+    from models import Trim
+
+    slice_(ingest_dir, scans, 2, THREE)
+    band = Trim(top=0.0, bottom=0.8)
+
+    ip.trim_page(ingest_dir, "1:9", band)
+    with pytest.raises(ValueError, match="sliced into crops"):
+        ip.trim_page(ingest_dir, "1:2", band)
+    ip.trim_page(ingest_dir, "1:2", None)                        # taking a trim off is never refused
+    assert load_trims(ingest_dir)["1:9"] == band and "1:2" not in load_trims(ingest_dir)
+    [(key, path)] = [(k, p) for k, p in ip.plan_ocr(ingest_dir, scans, None, reprocess=True, limit=0).items
+                     if k == "1:9"]
+    assert path == scans / batch(ingest_dir).files[9]            # OCR reads the crop (trimmed as it reads it)

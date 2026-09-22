@@ -53,7 +53,11 @@
    Sized from HEIGHT, not from a column count: a receipt is about 1:3, so a scan that is fully
    visible at height H is only H/3 wide. Fix the row height and the number of clusters per row
    falls out of it — on a 2560px screen that is three 2-scan clusters, each receipt whole. */
-.dedupe-page { --scan-height: 72vh; --scan-min: 9rem; }
+.dedupe-page { --scan-height: 72vh; }
+
+/* Marked Workshop: one trim button per page, beside the turn and the treatment */
+.workshop-trims { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.workshop-trim { display: inline-flex; align-items: center; gap: 6px; }
 .dupe-clusters {
   display: grid; gap: 14px;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, calc(var(--scan-height) / 3 * 2 + 3rem)), 1fr));
@@ -66,13 +70,15 @@
 .dupe-cluster header .config-hint { flex: 1; }
 .dupe-scans { display: grid; grid-template-columns: repeat(var(--members, 2), minmax(0, 1fr)); gap: 10px; }
 .dupe-scans figure { margin: 0; display: grid; gap: 6px; align-content: start; justify-items: center; }
-/* The image's own aspect sets its height, capped by --scan-height: a tall receipt fills the cap
+/* The scan's own aspect sets its height, capped by --scan-height: a tall receipt fills the cap
    (and narrows to fit), a short slip stays short instead of sitting in an empty box. */
-.dupe-scans img {
-  width: 100%; height: auto; max-height: var(--scan-height); min-width: var(--scan-min);
-  object-fit: contain; background: #fff; border: 1px solid var(--border); border-radius: 6px; display: block;
+/* No min-width here: the box has to keep the scan's proportions, and a wider one would stretch a trimmed
+   scan across it. A very narrow receipt just stays narrow, as its image did inside the old wider box. */
+.dupe-scans .trimmed-scan {
+  --scan-max-h: var(--scan-height); --scan-radius: 6px;
+  border-radius: 6px; box-shadow: 0 0 0 1px var(--border);
 }
-.dupe-scans a:hover img { border-color: var(--accent); }
+.dupe-scans a:hover .trimmed-scan { box-shadow: 0 0 0 1px var(--accent); }
 .dupe-scans figcaption { display: grid; gap: 2px; justify-items: center; text-align: center; min-width: 0; width: 100%; }
 .dupe-name { font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .dupe-scans figure button { width: 100%; }

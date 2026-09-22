@@ -18,7 +18,9 @@ from models import (
     OtherResult,
     ReceiptResult,
     ReviewDecision,
+    Trim,
     SmartMatchCandidate,
+    reframe_y,
 )
 from rules.cost_large_check import cost_large_check
 from rules.cost_zero_check import cost_zero_check
@@ -220,3 +222,20 @@ def all_boxes(boxes: list[DetectedBox]) -> list[FieldBox]:
     """Every box OCR found on a page, citing no field (for a reading nothing has cited yet)."""
     return [FieldBox(index=index, fields=(), rects=rects, text=box.text)
             for index, box in enumerate(boxes) if (rects := _rects(box))]
+
+
+def reframed(boxes: list[FieldBox], read: Trim | None, shown: Trim | None) -> list[FieldBox]:
+    """Boxes measured on the band a page was read from, placed on the band it is shown with.
+
+    The two are the same until the page is trimmed again after it was read. A box the new band cuts
+    through is clipped to it; one it cuts off entirely isn't drawn.
+    """
+    if read == shown:
+        return boxes
+    out = []
+    for box in boxes:
+        rects = tuple((x1, max(0, y1), x2, min(1000, y2)) for x1, top, x2, bottom in box.rects
+                      for y1, y2 in [(reframe_y(top, read, shown), reframe_y(bottom, read, shown))] if y1 < 1000 and y2 > 0)
+        if rects:
+            out.append(FieldBox(index=box.index, fields=box.fields, rects=rects, text=box.text))
+    return out
