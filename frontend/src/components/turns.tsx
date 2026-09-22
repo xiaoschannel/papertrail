@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api/client.ts'
+import { setAsideChanged } from './setAside.ts'
 import type { TopPoints } from '../api/types.ts'
 import { ARROWS, FACING, ScanViewer } from './scans.tsx'
 import { StraightenControls, useStraightening } from './tilts.tsx'
 
 /*
- * Scans that look sideways or upside down, as the Straighten page points them out: the suggested arrow lit
+ * Scans that look sideways or upside down, as the Fix Rotation page points them out: the suggested arrow lit
  * on each tile, and a review that shows each page turned upright in the full-size viewer before anything
  * is saved. Turning one is the page's own rotate arrow.
  */
@@ -29,6 +30,10 @@ const UPRIGHT_TURN: Record<TopPoints, number> = { left: 90, right: -90, down: 18
 const leftAsIs = new Set<string>()
 const scanVersion = (page: ScanPage) => `${page.filename}@${page.image_version}`
 
+/** Whether this version of the scan's suggestion was set aside (the sidebar's count leaves it out). */
+export const isTurnLeftAsIs = (page: { filename: string; image_version: number }) =>
+  leftAsIs.has(`${page.filename}@${page.image_version}`)
+
 /** The batch's pages that look turned and haven't been set aside, by key, with where each one's top points. */
 export function useTurnedPages(batchId: number, pages: Map<string, ScanPage>) {
   const [, setLeftCount] = useState(0)   // re-render when a suggestion is left as is
@@ -42,6 +47,7 @@ export function useTurnedPages(batchId: number, pages: Map<string, ScanPage>) {
   const setAside = (page: ScanPage) => {
     leftAsIs.add(scanVersion(page))
     setLeftCount((n) => n + 1)
+    setAsideChanged()
   }
   return { query, turns, setAside }
 }

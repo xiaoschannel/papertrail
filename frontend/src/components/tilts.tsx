@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api/client.ts'
+import { setAsideChanged } from './setAside.ts'
 import type { ScanPage } from './turns.tsx'
 
 /*
- * Scans fed in slightly crooked, as the Straighten page points them out: a badge on each tile, and, in
+ * Scans fed in slightly crooked, as the Fix Rotation page points them out: a badge on each tile, and, in
  * the full-size viewer, a turn slider over level guides that previews the scan straightened before
  * anything is saved. Any scan can be straightened there, detected or not.
  */
@@ -15,6 +16,10 @@ import type { ScanPage } from './turns.tsx'
  */
 const leftAsIs = new Set<string>()
 const scanVersion = (page: ScanPage) => `${page.filename}@${page.image_version}`
+
+/** Whether this version of the scan's suggestion was set aside (the sidebar's count leaves it out). */
+export const isTiltLeftAsIs = (page: { filename: string; image_version: number }) =>
+  leftAsIs.has(`${page.filename}@${page.image_version}`)
 
 /** The batch's pages that look tilted and haven't been set aside, by key, with the turn that levels each. */
 export function useTiltedPages(batchId: number, pages: Map<string, ScanPage>) {
@@ -29,6 +34,7 @@ export function useTiltedPages(batchId: number, pages: Map<string, ScanPage>) {
   const setAside = (page: ScanPage) => {
     leftAsIs.add(scanVersion(page))
     setLeftCount((n) => n + 1)
+    setAsideChanged()
   }
   return { query, tilts, setAside }
 }

@@ -1,4 +1,4 @@
-"""Finding scans fed in sideways or upside down (what Straighten points out).
+"""Finding scans fed in sideways or upside down (what Fix Rotation points out).
 
 Projection profiles can tell that a page's lines run up and down, but not which way is up, so this asks a
 small classifier: PaddleClas's text-image orientation model (PP-LCNet, Apache-2.0), which sorts a 224x224
@@ -15,7 +15,7 @@ The model is downloaded on first use, like the OCR models: the ONNX export ships
 rapid-orientation wheel on PyPI (a fixed, immutable file), and is checked against a pinned hash before
 it is cached under ``~/.cache/papertrail``.
 
-Only a suggestion: Straighten shows it, and a scan is turned only after someone confirms it.
+Only a suggestion: Fix Rotation shows it, and a scan is turned only after someone confirms it.
 """
 
 from __future__ import annotations
@@ -130,6 +130,21 @@ def _load_locked():
         except cv2.error as exc:
             raise ModelUnavailable(f"couldn't load the orientation model: {exc}") from exc
     return _net
+
+
+def load_cached_model() -> bool:
+    """Load the model if it is on disk already, never downloading it: whether it is loaded now.
+
+    For callers that only glance (the sidebar's counts): the download stays with the page that needs it.
+    """
+    with _lock:
+        if _net is None and not model_path().is_file():
+            return False
+    try:
+        load_model()
+    except ModelUnavailable:
+        return False
+    return True
 
 
 def load_model() -> None:

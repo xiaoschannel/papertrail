@@ -552,6 +552,26 @@ class TiltedPagesOut(_Model):
     pages: list[TiltedPageOut]
 
 
+class RotationFlagOut(_Model):
+    """A scan Fix Rotation points out, with what it looks like: the page sets aside some of these."""
+    key: str
+    filename: str
+    image_version: int
+    turned: bool
+    tilted: bool
+
+
+class PipelineCountsOut(_Model):
+    """What waits at each ingest step, for the sidebar."""
+    unindexed: int                      # scans in the input folder that aren't in a batch
+    rotation: list[RotationFlagOut]     # scans that look turned or tilted (the page counts those not set aside)
+    rotation_checked: bool              # False when the orientation model couldn't be had: tilts only
+    ocr: int                            # pages left to read, including those in a batch a job is using
+    parse: int                          # documents read and left to parse, likewise
+    review: int                         # documents parsed and not decided
+    archive: int                        # documents Archive would file now
+
+
 class InkOutlineOut(_Model):
     """Where a scan's ink is: its convex hull's corners as ``[x, y]`` fractions of the scan's width and height.
     Straightening crops nothing inside it, so a preview crops the same way."""

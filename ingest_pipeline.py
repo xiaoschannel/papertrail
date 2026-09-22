@@ -834,21 +834,42 @@ def _page_sort(index: DocumentIndex, key: str) -> tuple[int, int, int]:
     return doc.batch_id, doc.first_serial, _page_place(index, key)
 
 
+def _archive_scope(output_path: Path, scan_index: ScanIndex):
+    """What Archive works on: every unarchived page's filename by key, the decisions, the document index,
+    the unarchived batches, those whose every document is decided, and those batches' documents."""
+    indexed = iter_indexed_files(scan_index, include_archived=False)
+    key_to_filename = {batch_serial_key(b, s): fn for b, s, fn in indexed}
+    all_decisions = load_decisions(output_path)
+    index = build_document_index(output_path, set(key_to_filename))
+    unarchived = [b for b in scan_index.batches if not b.archived]
+    complete = [b for b in unarchived
+                if all(str(index.key_to_doc_key(batch_serial_key(b.batch_id, s))) in all_decisions for s in b.files)]
+    doc_keys = sorted({str(index.key_to_doc_key(batch_serial_key(b.batch_id, s))) for b in complete for s in b.files})
+    return key_to_filename, all_decisions, index, unarchived, complete, doc_keys
+
+
+def archive_ready_documents(output_path: Path) -> int:
+    """How many documents Archive would file: those of the fully reviewed batches, and only when
+    ``plan_archive`` has no blocker (every unarchived batch reviewed, no interrupted slice). Cheaper than
+    the plan: nothing in the archive is read."""
+    scan_index = _load_index(output_path)
+    if scan_index is None:
+        return 0
+    _, all_decisions, _, unarchived, complete, doc_keys = _archive_scope(output_path, scan_index)
+    if not unarchived or len(complete) != len(unarchived):
+        return 0
+    if any(slicing.mismatches(b, all_decisions) for b in unarchived):
+        return 0
+    return len(doc_keys)
+
+
 def plan_archive(output_path: Path) -> ArchivePlan:
     """Where every file of the fully reviewed batches would go, for the page to preview."""
     scan_index = _load_index(output_path)
     if scan_index is None:
         return ArchivePlan(0, 0, 0, 0, 0, 0, 0, 0, [], "Run File Index first to create batches.json.")
-    indexed = iter_indexed_files(scan_index, include_archived=False)
-    key_to_filename = {batch_serial_key(b, s): fn for b, s, fn in indexed}
-    all_decisions = load_decisions(output_path)
+    key_to_filename, all_decisions, index, unarchived, complete, doc_keys = _archive_scope(output_path, scan_index)
     organized = scan_organized_filenames(output_path)
-    index = build_document_index(output_path, set(key_to_filename))
-
-    unarchived = [b for b in scan_index.batches if not b.archived]
-    complete = [b for b in unarchived
-                if all(str(index.key_to_doc_key(batch_serial_key(b.batch_id, s))) in all_decisions for s in b.files)]
-    doc_keys = sorted({str(index.key_to_doc_key(batch_serial_key(b.batch_id, s))) for b in complete for s in b.files})
     decisions = {dk: all_decisions[dk] for dk in doc_keys if dk in all_decisions}
 
     def pages_of(doc_key: str) -> list[str]:

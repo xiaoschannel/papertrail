@@ -196,5 +196,6 @@ def test_an_interrupted_slice_blocks_archive_until_it_is_repaired(ingest_client,
     assert ingest_client.get("/api/ingest/slicing").json()["problems"] == ["1:3 is tossed as sliced but has no grid"]
     blocked = ingest_client.get("/api/ingest/archive").json()["blocker"]
     assert blocked.startswith("Fix the sliced sheets on the Slice page first")
+    assert ingest_client.get("/api/ingest/counts").json()["archive"] == 0      # the sidebar agrees
     slice_sheet(ingest_client, "1:3", grid=None)
     assert ingest_client.get("/api/ingest/archive").json()["blocker"] == "Review all files before archiving."

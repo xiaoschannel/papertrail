@@ -28,7 +28,7 @@ export default function Slice() {
       <p className="page-sub">
         Receipts too small to scan on their own (食券 and the like) can be taped onto a sheet in a grid and
         scanned together. Cut such a sheet here into one page per receipt; the sheet itself is kept, tossed.
-        <Link to="/straighten">Straighten</Link> a sheet first: its crops are cut the way it faces. Then{' '}
+        <Link to="/fix-rotation">Fix a sheet's rotation</Link> first: its crops are cut the way it faces. Then{' '}
         <Link to="/group">group</Link> the batch's pages.
       </p>
       {slicing.isPending ? <Loading what="sheets" />
@@ -108,7 +108,7 @@ function Sheets({ data, batchId, onBatch }: { data: Slicing; batchId: number; on
 
   return (
     <Card title="Sheets" className="card--full"
-      hint="Straighten a sheet before cutting it: its crops are cut the way it faces.">
+      hint="Fix a sheet's rotation before cutting it: its crops are cut the way it faces.">
       <div className="controls">
         <BatchSelect id="slice-batch" batches={data.batches} value={batchId} onChange={onBatch} />
       </div>

@@ -16,12 +16,12 @@ import './ingest.css'
 const ROWS_PER_PAGE = 6
 
 /**
- * Straighten: the one place a scan is turned. Before a sheet is cut or pages are grouped, each scan fed in
+ * Fix Rotation: the one place a scan is turned. Before a sheet is cut or pages are grouped, each scan fed in
  * sideways or upside down is turned upright, and each fed in crooked is levelled. The grid shows only the
  * scans that look so, a queue that empties as they are turned or left as they are; "Show all scans"
  * brings the rest back, since any scan can be turned from its full-size view.
  */
-export default function Straighten() {
+export default function FixRotation() {
   const [batchId, setBatchId] = useState<number | undefined>(undefined)
   // The batch's pages, as Group lists them: crops are left out here, since they are cut the way their sheet is.
   const grouping = useQuery({
@@ -31,7 +31,7 @@ export default function Straighten() {
   })
   return (
     <div className="ingest-page ingest-page--wide">
-      <h1>Straighten</h1>
+      <h1>Fix Rotation</h1>
       <p className="page-sub">
         Turn scans that were fed in sideways or upside down upright, and level the ones fed in slightly crooked,
         before a sheet is <Link to="/slice">sliced</Link> or the pages are <Link to="/group">grouped</Link>: what is
@@ -112,7 +112,7 @@ function Scans({ data, batchId, onBatch }: { data: Grouping; batchId: number; on
     <Card title="Scans" className="card--full"
       hint="The arrows say where a scan's top points now; open a scan to preview a turn before it is saved.">
       <div className="controls">
-        <BatchSelect id="straighten-batch" batches={data.batches} value={batchId} onChange={onBatch} />
+        <BatchSelect id="rotation-batch" batches={data.batches} value={batchId} onChange={onBatch} />
         <label className="scan-viewer__check">
           <input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} /> Show all scans
         </label>

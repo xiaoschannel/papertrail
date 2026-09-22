@@ -1,4 +1,5 @@
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
+import { StageCount, usePipelineCounts, type Stage } from './components/pipelineCounts.tsx'
 import Dashboard from './pages/Dashboard.tsx'
 import Merchant from './pages/Merchant.tsx'
 import CalendarPage from './pages/CalendarPage.tsx'
@@ -6,7 +7,7 @@ import TimeCapsule from './pages/TimeCapsule.tsx'
 import Receipt from './pages/Receipt.tsx'
 import Review from './pages/Review.tsx'
 import FileIndex from './pages/FileIndex.tsx'
-import Straighten from './pages/Straighten.tsx'
+import FixRotation from './pages/FixRotation.tsx'
 import Slice from './pages/Slice.tsx'
 import Group from './pages/Group.tsx'
 import Ocr from './pages/Ocr.tsx'
@@ -24,18 +25,18 @@ import { JobIndicator, JobWatcher } from './components/jobs.tsx'
 
 // Ordered the way the work runs: Ingest -> Curate -> Visualize. Settings is for
 // everyone; the Dev pages, for working on the app itself, come after it.
-const NAV = [
+const NAV: { group: string; items: { to: string; label: string; stage?: Stage }[] }[] = [
   {
     group: 'Ingest',
     items: [
-      { to: '/file-index', label: 'File Index' },
-      { to: '/straighten', label: 'Straighten' },
+      { to: '/file-index', label: 'File Index', stage: 'unindexed' },
+      { to: '/fix-rotation', label: 'Fix Rotation', stage: 'rotation' },
       { to: '/slice', label: 'Slice' },
       { to: '/group', label: 'Group' },
-      { to: '/ocr', label: 'OCR' },
-      { to: '/parse', label: 'Parse' },
-      { to: '/review', label: 'Review' },
-      { to: '/archive', label: 'Archive' },
+      { to: '/ocr', label: 'OCR', stage: 'ocr' },
+      { to: '/parse', label: 'Parse', stage: 'parse' },
+      { to: '/review', label: 'Review', stage: 'review' },
+      { to: '/archive', label: 'Archive', stage: 'archive' },
     ],
   },
   {
@@ -73,6 +74,7 @@ const NAV = [
 ]
 
 export default function App() {
+  const counts = usePipelineCounts()
   return (
     <div className="app">
       <nav className="sidebar">
@@ -90,6 +92,7 @@ export default function App() {
                 className={({ isActive }) => `navlink${isActive ? ' active' : ''}`}
               >
                 {it.label}
+                {it.stage && <StageCount counts={counts} stage={it.stage} />}
               </NavLink>
             ))}
           </div>
@@ -109,7 +112,7 @@ export default function App() {
           <Route path="/timecapsule" element={<TimeCapsule />} />
           <Route path="/receipt" element={<Receipt />} />
           <Route path="/file-index" element={<FileIndex />} />
-          <Route path="/straighten" element={<Straighten />} />
+          <Route path="/fix-rotation" element={<FixRotation />} />
           <Route path="/slice" element={<Slice />} />
           <Route path="/group" element={<Group />} />
           <Route path="/ocr" element={<Ocr />} />

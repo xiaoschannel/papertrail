@@ -34,9 +34,9 @@ npm install
 cd ..
 ```
 ---
-Straighten checks for scans that are sideways or upside down with a small model (PaddleClas's text image
-orientation classifier, 6.8 MB, run on the CPU). It is downloaded the first time they run and kept in
-`~/.cache/papertrail`.
+Fix Rotation checks for scans that are sideways or upside down with a small model (PaddleClas's text image
+orientation classifier, 6.8 MB, run on the CPU). It is downloaded the first time that page checks a batch,
+and kept in `~/.cache/papertrail`.
 
 ---
 The hosted extractors need an API key. Copy `.env.example` to `.env` and put yours in it; the file is
@@ -115,12 +115,12 @@ Scan your documents into a folder, and follow this process:
 
 ## Ingest
 1. **File Index** — Ingest new batches of scanned files.
-2. **Straighten** — Turn scans fed in sideways or upside down upright, and level the ones fed in slightly
+2. **Fix Rotation** — Turn scans fed in sideways or upside down upright, and level the ones fed in slightly
    crooked, before anything is cut or read from them. The page points out the scans that look so, and shows
    each one turned to confirm before it is saved; any scan can be straightened from its full-size view,
    previewed over level guides, and its OCR boxes move with it.
 3. **Slice** — Cut a sheet of receipts too small to scan alone (tape them onto a sheet in a grid) into one page
-   per receipt. The sheet is kept, tossed. Straighten it first: the crops are cut the way it faces.
+   per receipt. The sheet is kept, tossed. Fix its rotation first: the crops are cut the way it faces.
 4. **Group** — Link pages that belong to one document, and toss pages that don't belong in the archive. From
    a page's full-size view, trim it to the part OCR should read.
 5. **OCR** — Batch OCR across all scanned images.

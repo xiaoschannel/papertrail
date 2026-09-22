@@ -13,7 +13,7 @@ export default function FileIndex() {
     <div className="ingest-page">
       <h1>File Index</h1>
       <p className="page-sub">
-        Add newly scanned files as batches. Then <Link to="/straighten">straighten</Link> the scans that were
+        Add newly scanned files as batches. Then <Link to="/fix-rotation">fix the rotation</Link> of scans
         fed in turned or crooked, <Link to="/slice">slice</Link> sheets of small receipts into one page each,
         and <Link to="/group">group</Link> pages that belong to one document.
       </p>

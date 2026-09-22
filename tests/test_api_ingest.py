@@ -225,6 +225,64 @@ def test_tilted_pages_are_suggested_and_straightened_only_on_request(ingest_clie
     assert ingest_client.post("/api/ingest/pages/straighten", json={"key": "1:99", "degrees": 2}).status_code == 404
 
 
+def test_the_sidebar_counts_agree_with_each_step(ingest_client, configured_ingest, tmp_path):
+    scans = tmp_path / "scans"
+    printed(top_points="down").save(scans / PAGE_1)                                    # 1:1, upside down
+    tilt_fixture("receipt_crooked.png").save(scans / "01102025140000_3.png")           # 1:3, fed crooked
+    Image.new("RGB", (4, 4)).save(scans / "01112025090100_1.png")                      # not in a batch yet
+
+    counts = ingest_client.get("/api/ingest/counts").json()
+    assert counts["unindexed"] == ingest_client.get("/api/ingest/index").json()["unindexed_count"] == 1
+    assert counts["rotation_checked"]
+    assert [(r["key"], r["turned"], r["tilted"]) for r in counts["rotation"]] == [("1:1", True, False),
+                                                                               ("1:3", False, True)]
+    assert all(r["image_version"] == (scans / r["filename"]).stat().st_mtime_ns for r in counts["rotation"])
+    ocr = ingest_client.get("/api/ingest/ocr").json()
+    parse = ingest_client.get("/api/ingest/parse").json()
+    queue = ingest_client.get("/api/review/queue").json()
+    assert counts["ocr"] == ocr["to_process"] + ocr["waiting"]
+    assert counts["parse"] == parse["to_process"] + parse["waiting"]
+    assert counts["review"] == queue["summary"]["pending"]
+    archive = ingest_client.get("/api/ingest/archive").json()
+    assert archive["blocker"] is None and counts["archive"] == archive["documents"] > 0     # the batch is reviewed
+
+    assert ingest_client.post("/api/ingest/pages/rotate", json={"key": "1:1", "top_points": "down"}).status_code == 200
+    assert [r["key"] for r in ingest_client.get("/api/ingest/counts").json()["rotation"]] == ["1:3"]
+    decisions = load_decisions(configured_ingest)
+    del decisions["1:3"]
+    save_decisions(configured_ingest, decisions)
+    counts = ingest_client.get("/api/ingest/counts").json()
+    assert counts["archive"] == 0 and counts["review"] == ingest_client.get("/api/review/queue").json()["summary"]["pending"]
+
+
+def test_the_sidebar_counts_never_download_the_orientation_model(ingest_client, configured_ingest, tmp_path,
+                                                                  monkeypatch):
+    printed(top_points="down").save(tmp_path / "scans" / PAGE_1)                      # 1:1, turned
+    tilt_fixture("receipt_crooked.png").save(tmp_path / "scans" / "01102025140000_3.png")   # 1:3, tilted
+
+    def download(url=orientation.MODEL_URL):
+        pytest.fail("the sidebar downloaded the orientation model")
+    monkeypatch.setattr(orientation, "_net", None)
+    monkeypatch.setattr(orientation, "model_path", lambda: tmp_path / "not downloaded.onnx")
+    monkeypatch.setattr(orientation, "fetch_model", download)
+    counts = ingest_client.get("/api/ingest/counts")
+    assert counts.status_code == 200
+    assert counts.json()["rotation_checked"] is False                               # tilts only, until Fix Rotation
+    assert [(r["key"], r["turned"], r["tilted"]) for r in counts.json()["rotation"]] == [("1:3", False, True)]
+
+
+def test_the_sidebar_counts_tilts_when_the_orientation_model_cannot_be_loaded(ingest_client, configured_ingest,
+                                                                             tmp_path, monkeypatch):
+    printed(top_points="down").save(tmp_path / "scans" / PAGE_1)
+    broken = tmp_path / "broken.onnx"
+    broken.write_bytes(b"not a model")
+    monkeypatch.setattr(orientation, "_net", None)
+    monkeypatch.setattr(orientation, "model_path", lambda: broken)
+    counts = ingest_client.get("/api/ingest/counts")
+    assert counts.status_code == 200
+    assert counts.json()["rotation_checked"] is False and counts.json()["rotation"] == []
+
+
 def test_straightening_a_read_page_moves_its_ocr_boxes_with_it(ingest_client, configured_ingest, tmp_path):
     """The boxes stay in order, so the extraction's field sources (box numbers) still point at the same text."""
     tilt_fixture("receipt_crooked.png").save(tmp_path / "scans" / PAGE_1)

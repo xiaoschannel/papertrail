@@ -7,7 +7,7 @@ the app really produces:
 * **Batch 1, archived** — filed under ``YYYY/MM``, a few marked: the Marked Workshop, Receipt Detail, the
   Calendar and the other Visualize pages.
 * **Batch 2, parsed** — OCR'd and extracted, nothing decided yet: Review.
-* **Batch 3, indexed** — a batch not yet read: Straighten, Slice and Group, then OCR, Parse, Review and
+* **Batch 3, indexed** — a batch not yet read: Fix Rotation, Slice and Group, then OCR, Parse, Review and
   Archive from the start. Pick it in the batch picker: the ingest pages open on the oldest unarchived
   batch, which is batch 2.
 
@@ -22,12 +22,12 @@ What each stage holds for a feature today:
 
 * Slice: two sheets of meal tickets in batch 3 (one scanned sideways).
 * Turned scans: three scans in batch 3 were fed in turned (2 and 17 sideways, 6 upside down), for
-  Straighten to point out.
+  Fix Rotation to point out.
 * Trim: a receipt with a coupon under it at every stage. In batch 3, to trim in Group; in Review, one
   trimmed before OCR (read as the receipt alone) and one trimmed after (read again by the next OCR); in
   the archive, a filed receipt trimmed, and a marked one untrimmed (the Workshop's Trim row).
 * Tilted scans: two receipts in batch 3 were fed in crooked (10 a little clockwise, 13 further the other way),
-  for Straighten to point out; any scan can be straightened from its full-size view. The fake OCR
+  for Fix Rotation to point out; any scan can be straightened from its full-size view. The fake OCR
   boxes each line where it lies on the crooked page, as a real one would, so straightening a page after
   OCR shows its boxes moving with it (Review draws them).
 """
@@ -187,7 +187,7 @@ REVIEW_TRIMMED_AFTER_OCR = {2: COUPON_TRIM}
 
 
 def ingest_batch(sb: Sandbox) -> None:
-    """Indexed as batch 3 and not read yet: walk it from Straighten."""
+    """Indexed as batch 3 and not read yet: walk it from Fix Rotation."""
     sb.receipt("03012026100000_1.png", "Sandbox Bakery", "2026/02/27 08:10", 480)
     sb.receipt("03012026100010_2.png", "Kissa Example", "2026/02/27 15:30", 950, rotate=Image.Transpose.ROTATE_90)
     sb.receipt("03012026100020_3.png", "Demo Mart 駅前店", "2026/02/28 19:02", 1320)
@@ -198,7 +198,7 @@ def ingest_batch(sb: Sandbox) -> None:
     sb.receipt("03012026100050_6.png", "Ramen Testya", "2026/02/26 12:45", 1100, rotate=Image.Transpose.ROTATE_180)
     sb.scan("03012026100100_7.png", [((80, 40, 880, 104), "(blank page)")])
     sb.receipt("03012026100110_8.png", "Coffee Stand Foo", "2026/02/25 09:05", 420)
-    # Tilted: 10 and 13 were fed in crooked (with item lines, so there is text to level): Straighten points them out.
+    # Tilted: 10 and 13 were fed in crooked (with item lines, so there is text to level): Fix Rotation points them out.
     tilts = {10: -4.0, 13: 7.0}
     for i in range(9, 15):
         items = [((80, 200 + 36 * n, 700, 232 + 36 * n), f"品目 {n + 1}    ¥{50 * (n + i)}") for n in range(2)]             if i in tilts else ()
