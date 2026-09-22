@@ -10,8 +10,8 @@ own port — 8001 in the main checkout, the live API keeping 8000; a worktree's 
 
 Then open http://127.0.0.1:5174 (in a worktree, the port tools/worktree_setup.py printed). A new sandbox
 starts in one shared state with something to try on every page: a batch already filed (some of it marked,
-for the Marked Workshop), a batch waiting in Review, and scans not yet indexed, to walk from File Index.
-tools/sandbox_seed.py builds it, and says what each stage holds for which feature.
+for the Marked Workshop), a batch waiting in Review, and a batch indexed but not read yet, to walk from
+Straighten. tools/sandbox_seed.py builds it, and says what each stage holds for which feature.
 
 Everything lives under <repo>/.sandbox (gitignored). A restart keeps whatever is there, so you don't lose a
 half-finished batch when the server picks up new code. To go back to the shared state, stop the server and

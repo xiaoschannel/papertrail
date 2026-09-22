@@ -15,9 +15,10 @@ out byte for byte the same on every platform: CI regenerates them and fails on a
 
 Maintain the sandbox's shared state. The sandbox (tools/sandbox_server.py) starts in one state everyone
 shares, built by tools/sandbox_seed.py through the real pipeline: a filed batch (some of it marked), a batch
-waiting in Review, and scans not yet indexed. A feature that can be tried by hand adds its examples there,
-in the stage where they can be tried, with a comment saying what to try, in the same change; there are no
-per-feature scenarios to keep up. Invented data only.
+waiting in Review, and a batch indexed but not read yet. A feature that can be tried by hand adds its
+examples there, in the stage where its page reads them (not the earliest stage they could be walked from),
+with a comment saying what to try, in the same change; there are no per-feature scenarios to keep up.
+Invented data only.
 
 Every scan thumbnail and gallery goes through frontend/src/components/DocumentCard.tsx (CappedImage,
 DocumentCard, ReceiptCard, ReceiptGallery) - Dev and migration pages included, and code copied from an
