@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from deskew import MAX_DEGREES as MAX_TILT_DEGREES
 from models import DocumentExtraction, ModelRun, SheetGrid, TokenUse, Trim
 
 if TYPE_CHECKING:
@@ -536,6 +537,31 @@ class TrimIn(_Model):
 
     key: str
     trim: Trim | None
+
+
+class TiltedPageOut(_Model):
+    key: str
+    #: The version of the scan this was measured on (as ``GroupingPageOut.image_version``).
+    image_version: int
+    #: Degrees to turn the scan counter-clockwise to level it (negative: clockwise).
+    degrees: float
+
+
+class TiltedPagesOut(_Model):
+    batch_id: int
+    pages: list[TiltedPageOut]
+
+
+class InkOutlineOut(_Model):
+    """Where a scan's ink is: its convex hull's corners as ``[x, y]`` fractions of the scan's width and height.
+    Straightening crops nothing inside it, so a preview crops the same way."""
+    points: list[list[float]]
+
+
+class StraightenIn(_Model):
+    key: str
+    #: Degrees to turn the scan counter-clockwise (negative: clockwise); a slight tilt, not a sideways scan.
+    degrees: float = Field(ge=-MAX_TILT_DEGREES, le=MAX_TILT_DEGREES)
 
 
 # --- ingest: OCR / Parse / Archive -----------------------------------------------------

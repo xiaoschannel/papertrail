@@ -1,0 +1,42 @@
+{
+  "receipt_crooked.png": {
+    "page": "receipt",
+    "fed_at": -3.7,
+    "printed": [
+      288,
+      660
+    ]
+  },
+  "long_receipt_crooked.png": {
+    "page": "long_receipt",
+    "fed_at": 7.0,
+    "printed": [
+      288,
+      1320
+    ]
+  },
+  "flyer_crooked.png": {
+    "page": "flyer",
+    "fed_at": 2.2,
+    "printed": [
+      900,
+      510
+    ]
+  },
+  "receipt_barely.png": {
+    "page": "receipt",
+    "fed_at": 0.6,
+    "printed": [
+      288,
+      660
+    ]
+  },
+  "receipt_level.png": {
+    "page": "receipt",
+    "fed_at": 0.0,
+    "printed": [
+      288,
+      660
+    ]
+  }
+}

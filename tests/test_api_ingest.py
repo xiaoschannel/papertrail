@@ -8,7 +8,9 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
+import deskew
 import orientation
+from tilt_scans import scan as tilt_fixture
 from api import ingest_registry
 from api.jobs import EVERYTHING, FINISHED, Claim, JobConflict, JobRunner, runner
 from api.model_manager import ModelManager, models
@@ -197,6 +199,67 @@ def test_toss_recover_and_rotate(ingest_client, configured_ingest, tmp_path):
     assert ingest_client.post("/api/ingest/pages/rotate", json={"key": "1:2", "top_points": "down"}).status_code == 404
 
 
+def test_tilted_pages_are_suggested_and_straightened_only_on_request(ingest_client, configured_ingest, tmp_path):
+    scans = tmp_path / "scans"
+    tilt_fixture("receipt_crooked.png").save(scans / PAGE_1)                           # 1:1, fed crooked
+    tilt_fixture("receipt_level.png").save(scans / "01102025140000_3.png")             # 1:3, level
+    tilt_fixture("long_receipt_crooked.png").save(scans / "01102025142000_6.png")      # 1:6 is tossed
+    untouched = (scans / PAGE_1).read_bytes()
+
+    [page] = ingest_client.get("/api/ingest/tilted", params={"batch_id": 1}).json()["pages"]
+    assert page["key"] == "1:1" and page["degrees"] == pytest.approx(3.7, abs=0.2)
+    assert page["image_version"] == (scans / PAGE_1).stat().st_mtime_ns    # what it was measured on
+    assert (scans / PAGE_1).read_bytes() == untouched                                  # asking changes nothing
+    assert ingest_client.get("/api/ingest/tilted", params={"batch_id": 9}).status_code == 404
+    outline = ingest_client.get("/api/ingest/pages/ink-outline", params={"key": "1:1"}).json()["points"]
+    with Image.open(scans / PAGE_1) as img:
+        assert outline == [list(p) for p in deskew.ink_outline(img)] and len(outline) >= 3   # for the preview's crop
+    assert ingest_client.get("/api/ingest/pages/ink-outline", params={"key": "1:99"}).status_code == 404
+
+    straightened = ingest_client.post("/api/ingest/pages/straighten", json={"key": "1:1", "degrees": page["degrees"]})
+    assert straightened.status_code == 200
+    assert ingest_client.get("/api/ingest/tilted", params={"batch_id": 1}).json()["pages"] == []
+
+    assert ingest_client.post("/api/ingest/pages/straighten", json={"key": "1:1", "degrees": 90}).status_code == 422
+    assert ingest_client.post("/api/ingest/pages/straighten", json={"key": "1:2", "degrees": 2}).status_code == 404
+    assert ingest_client.post("/api/ingest/pages/straighten", json={"key": "1:99", "degrees": 2}).status_code == 404
+
+
+def test_straightening_a_read_page_moves_its_ocr_boxes_with_it(ingest_client, configured_ingest, tmp_path):
+    """The boxes stay in order, so the extraction's field sources (box numbers) still point at the same text."""
+    tilt_fixture("receipt_crooked.png").save(tmp_path / "scans" / PAGE_1)
+    everything = load_ocr_results(configured_ingest)
+    before = everything["1:1"]
+    extractions = load_extractions(configured_ingest)
+    assert before.boxes, "the fixture's page 1:1 has been read with boxes"
+
+    assert ingest_client.post("/api/ingest/pages/straighten", json={"key": "1:1", "degrees": 3.7}).status_code == 200
+    after = load_ocr_results(configured_ingest)
+    assert [b.text for b in after["1:1"].boxes] == [b.text for b in before.boxes]
+    assert [b.coords for b in after["1:1"].boxes] != [b.coords for b in before.boxes]
+    assert after["1:1"].markdown == before.markdown and load_extractions(configured_ingest) == extractions
+    assert {k: v for k, v in after.items() if k != "1:1"} == {k: v for k, v in everything.items() if k != "1:1"}
+
+
+def test_straightening_a_trimmed_page_moves_its_trim_and_the_band_it_was_read_from(ingest_client, configured_ingest,
+                                                                                    tmp_path):
+    from data import load_ocr_batch, load_trims, save_ocr_batch, set_trim
+    from models import Trim
+
+    tilt_fixture("receipt_crooked.png").save(tmp_path / "scans" / PAGE_1)
+    band = Trim(top=0.1, bottom=0.8)
+    set_trim(configured_ingest, "1:1", band)
+    results = load_ocr_batch(configured_ingest, 1)
+    results["1:1"] = results["1:1"].model_copy(update={"trim": band})
+    save_ocr_batch(configured_ingest, 1, results)
+
+    assert ingest_client.post("/api/ingest/pages/straighten", json={"key": "1:1", "degrees": 3.7}).status_code == 200
+    trim = load_trims(configured_ingest)["1:1"]
+    read = load_ocr_results(configured_ingest)["1:1"].trim
+    assert trim == read != band                                     # both moved, and the same way
+    assert trim.top < band.top + 0.05 and trim.bottom > band.bottom - 0.05
+
+
 def test_input_thumbnail(ingest_client, tmp_path):
     Image.new("RGB", (400, 800), "white").save(tmp_path / "scans" / PAGE_1)
     response = ingest_client.get(f"/api/media/input-thumb/{PAGE_1}", params={"width": 100})
@@ -283,6 +346,9 @@ def test_ocr_on_one_batch_while_parse_and_edits_run_on_another(ingest_client, co
     refused = ingest_client.post("/api/ingest/pages/rotate", json={"key": "1:1", "top_points": "left"})
     assert refused.status_code == 409 and refused.json()["detail"] == \
         "Can't rotate scans while OCR with Fake OCR is using batch 1."
+    refused = ingest_client.post("/api/ingest/pages/straighten", json={"key": "1:1", "degrees": 2})
+    assert refused.status_code == 409 and refused.json()["detail"] == \
+        "Can't straighten scans while OCR with Fake OCR is using batch 1."
     assert ingest_client.put("/api/ingest/grouping", json={"batch_id": 1, "groups": []}).status_code == 409
     assert ingest_client.post("/api/ingest/pages/toss", json={"key": "1:3"}).status_code == 200  # only Archive blocks
 

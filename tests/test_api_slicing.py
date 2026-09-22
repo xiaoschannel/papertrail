@@ -8,6 +8,7 @@ from PIL import Image
 from api import ingest_registry
 from data import load_decisions, save_decisions
 from models import load_scan_index
+from tilt_scans import scan as tilt_fixture
 
 THREE = {"frame": {"x1": 0, "y1": 0, "x2": 1000, "y2": 1000}, "row_lines": [500], "col_lines": [500],
          "cells": [[1, 1], [1, 2], [2, 1]]}
@@ -141,6 +142,18 @@ def test_only_pages_the_rotate_arrows_can_turn_are_checked_for_orientation(inges
     assert turned() == ["1:2", "1:3"]
     slice_sheet(ingest_client)                                                     # crops 1:9-1:11, cut upside down
     assert turned() == ["1:3"]
+
+
+def test_crops_and_sliced_sheets_are_neither_suggested_for_straightening_nor_straightened(ingest_client, scans):
+    slice_sheet(ingest_client)
+    for filename in ("01102025133000_2.png", CROP, "01102025140000_3.png"):   # sheet 1:2, crop 1:10, page 1:3
+        tilt_fixture("receipt_crooked.png").save(scans / filename)
+    tilted = ingest_client.get("/api/ingest/tilted", params={"batch_id": 1}).json()["pages"]
+    assert [p["key"] for p in tilted] == ["1:3"]
+    for key, why in (("1:2", "sliced"), ("1:10", "crop")):
+        refused = ingest_client.post("/api/ingest/pages/straighten", json={"key": key, "degrees": 3.7})
+        assert refused.status_code == 409 and why in refused.json()["detail"]
+    assert ingest_client.post("/api/ingest/pages/straighten", json={"key": "1:3", "degrees": 3.7}).status_code == 200
 
 
 def test_archived_tossed_and_marked_crops_are_known_by_their_scan_names(ingest_client, configured_ingest, scans):

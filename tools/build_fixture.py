@@ -26,6 +26,8 @@ Design notes
       way up a scan is (the tests turn them), and the nearly blank back of a page.
     * ``tests/fixtures/trims/`` -- a scan with a part to trim off (a coupon printed
       under the receipt), with the trim that keeps the receipt, for trimming.
+    * ``tests/fixtures/tilt/`` -- printed pages fed in slightly crooked (and one
+      barely, one level), with each one's tilt, for straightening.
   Trims also appear in the two archive states: a mid-ingest ``trims.json`` with an
   OCR result read under its band, and an archived page trimmed after it was read.
 - **Edge cases are deliberate.** JP/CN/EN docs; a multi-page document group; an
@@ -652,22 +654,96 @@ def build_trims(root: Path) -> None:
         "tear_row": tear, "receipt_mark": RECEIPT_MARK, "coupon_mark": COUPON_MARK})
 
 
+def _sin_cos(degrees: float) -> tuple[float, float]:
+    """sin and cos from their series, in plain multiplications and additions: those round the same on every
+    platform, where the C library's ``math.sin`` may differ in the last bit and move a pixel at an edge."""
+    x = degrees * 3.141592653589793 / 180
+    sin, cos, term_s, term_c = 0.0, 0.0, x, 1.0
+    for n in range(1, 30):
+        sin, cos = sin + term_s, cos + term_c
+        term_s *= -x * x / ((2 * n) * (2 * n + 1))
+        term_c *= -x * x / ((2 * n - 1) * (2 * n))
+    return sin, cos
+
+
+def _fed_crooked(img, degrees: float):
+    """A black-and-white page as a crooked feed scans it: turned ``degrees`` counter-clockwise, on a canvas
+    grown to hold it, white around. Each pixel takes the page's pixel under its centre, turned back."""
+    from PIL import Image
+
+    width, height = img.size
+    source = img.load()
+    sin, cos = _sin_cos(degrees)
+    out_w = int(abs(width * cos) + abs(height * sin)) + 1
+    out_h = int(abs(width * sin) + abs(height * cos)) + 1
+    out = Image.new("1", (out_w, out_h), 1)
+    target = out.load()
+    for y in range(out_h):
+        dy = y + 0.5 - out_h / 2
+        for x in range(out_w):
+            dx = x + 0.5 - out_w / 2
+            u, v = dx * cos - dy * sin + width / 2, dx * sin + dy * cos + height / 2
+            if 0 <= u < width and 0 <= v < height and source[int(u), int(v)] == 0:
+                target[x, y] = 0
+    return out
+
+
+#: The tilt fixtures: each page as scanned, the printed page it is, and how crooked it was fed in (degrees
+#: counter-clockwise; the turn that levels it is the opposite). Past deskew.MIN_DEGREES it is to be flagged.
+TILTED = {
+    "receipt_crooked.png": ("receipt", -3.7),
+    "long_receipt_crooked.png": ("long_receipt", 7.0),
+    "flyer_crooked.png": ("flyer", 2.2),
+    "receipt_barely.png": ("receipt", 0.6),
+    "receipt_level.png": ("receipt", 0.0),
+}
+
+
+def build_tilt(root: Path) -> None:
+    """Printed pages fed in slightly crooked, for finding a tilt and straightening it: a narrow receipt, a long
+    one and a wide flyer, turned a few degrees each way, one barely turned and one level (neither to be
+    flagged). The back of a page is ``orientation/blank_back.png``. The JSON says each page's tilt and its
+    size as printed (what straightening it should crop back to)."""
+    import random
+
+    rng = random.Random(3)
+
+    def items(rows: range):
+        return [(x, y, text) for y in rows for x, text in (
+            (8, f"{rng.choice(_WORDS)} {rng.choice(_WORDS).lower()}"), (66, f"{rng.randint(1, 999):>3}"))]
+
+    receipt = [(8, 6, "SAMPLE STORE"), *items(range(26, 200, 13)), (8, 206, f"TOTAL {rng.randint(1000, 9999)}")]
+    long_receipt = [(8, 6, "SAMPLE DEPOT"), *items(range(26, 420, 13)), (8, 426, f"TOTAL {rng.randint(1000, 9999)}")]
+    flyer = [(20, 8, "SPRING SALE THIS WEEK")]
+    flyer += [(20, y, " ".join(rng.choice(_WORDS) for _ in range(rng.randint(4, 8)))) for y in range(30, 158, 14)]
+    printed = {"receipt": _printed(96, 220, receipt), "long_receipt": _printed(96, 440, long_receipt),
+               "flyer": _printed(300, 170, flyer)}
+    for name, (page, degrees) in TILTED.items():
+        img = _fed_crooked(printed[page], degrees)
+        _write_gray_png(root / name, img.width, img.height, img.tobytes(), bit_depth=1)
+    _write_json(root / "pages.json", {name: {"page": page, "fed_at": degrees, "printed": list(printed[page].size)}
+                                      for name, (page, degrees) in TILTED.items()})
+
+
 def main() -> int:
     ingest_root = FIXTURES / "ingest"
     archive_root = FIXTURES / "archive"
     sheets_root = FIXTURES / "sheets"
     orientation_root = FIXTURES / "orientation"
     trims_root = FIXTURES / "trims"
+    tilt_root = FIXTURES / "tilt"
     build_ingest(ingest_root)
     build_archive(archive_root)
     build_sheets(sheets_root)
     build_orientation(orientation_root)
     build_trims(trims_root)
+    build_tilt(tilt_root)
     print(f"Wrote ingest fixture  -> {ingest_root}")
     print(f"Wrote archive fixture -> {archive_root}")
     print(f"Wrote sheet fixtures  -> {sheets_root}")
     print(f"Wrote orientation fixtures -> {orientation_root}")
     print(f"Wrote trim fixtures   -> {trims_root}")
+    print(f"Wrote tilt fixtures   -> {tilt_root}")
     return 0
 
 
