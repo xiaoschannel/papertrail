@@ -181,6 +181,23 @@ export const api = {
 
   dev: {
     sanity: () => unwrap(client.GET('/api/dev/sanity')),
+    // the one-off Straighten Archive migration
+    straightenArchive: () => unwrap(client.GET('/api/dev/straighten-archive')),
+    scanStraightenArchive: () => unwrap(client.POST('/api/dev/straighten-archive/scan')),
+    straightenArchived: (body: { rel_path: string; degrees: number }) =>
+      unwrap(client.POST('/api/dev/straighten-archive/straighten', { body })),
+    undoStraightenArchived: (body: { rel_path: string }) =>
+      unwrap(client.POST('/api/dev/straighten-archive/undo', { body })),
+    finalizeStraightenArchive: () => unwrap(client.POST('/api/dev/straighten-archive/finalize')),
+    redoStraightenArchive: () => unwrap(client.POST('/api/dev/straighten-archive/redo')),
+    straightenArchiveThumb: (relPath: string, version: number) =>
+      `/api/dev/straighten-archive/thumb/${relPath.split('/').map(encodeURIComponent).join('/')}?width=360&v=${version}`,
+    straightenArchiveInkOutline: (relPath: string) =>
+      unwrap(client.GET('/api/dev/straighten-archive/ink-outline/{rel_path}', { params: { path: { rel_path: relPath } } })),
+    straightenArchiveBackupUrl: (relPath: string) =>
+      `/api/dev/straighten-archive/backup/${relPath.split('/').map(encodeURIComponent).join('/')}`,
+    archivedUrl: (relPath: string, version: number) =>
+      `/api/media/archived/${relPath.split('/').map(encodeURIComponent).join('/')}?v=${version}`,
     indexAudit: () => unwrap(client.GET('/api/dev/index-audit')),
     experiment: () => unwrap(client.GET('/api/dev/experiment')),
     run: (runId: string) => unwrap(client.GET('/api/dev/experiment/{run_id}', { params: { path: { run_id: runId } } })),

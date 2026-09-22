@@ -19,6 +19,7 @@ import Config from './pages/Config.tsx'
 import Experiment from './pages/Experiment.tsx'
 import SanityCheck from './pages/SanityCheck.tsx'
 import IndexAudit from './pages/IndexAudit.tsx'
+import StraightenArchive from './pages/StraightenArchive.tsx'
 import { JobIndicator, JobWatcher } from './components/jobs.tsx'
 
 // Ordered the way the work runs: Ingest -> Curate -> Visualize. Settings is for
@@ -66,6 +67,7 @@ const NAV = [
       { to: '/experiment', label: 'Experiment' },
       { to: '/sanity-check', label: 'Sanity Check' },
       { to: '/index-audit', label: 'Index Audit' },
+      { to: '/straighten-archive', label: 'Straighten Archive' },
     ],
   },
 ]
@@ -120,6 +122,7 @@ export default function App() {
           <Route path="/experiment" element={<Experiment />} />
           <Route path="/sanity-check" element={<SanityCheck />} />
           <Route path="/index-audit" element={<IndexAudit />} />
+          <Route path="/straighten-archive" element={<StraightenArchive />} />
           <Route path="/config" element={<Config />} />
         </Routes>
       </main>

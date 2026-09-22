@@ -114,3 +114,7 @@
 .scan-viewer__dial input[type='range'] { flex: 1; min-width: 0; }
 .scan-viewer__turn { width: 24ch; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .scan-viewer__unused { visibility: hidden; }
+
+/* --- the one-off Straighten Archive migration page (cards are DocumentCard, in a .receipt-gallery) --- */
+.straighten-archive-actions { display: grid; gap: 4px; margin-top: 8px; }
+.straighten-archive-actions button { padding: 2px 8px; font-size: 12px; }

@@ -161,7 +161,9 @@ def archived_batch(sb: Sandbox) -> None:
     # Trim: marked untrimmed, read with its coupon (so its cost is the coupon's): try the Workshop's Trim row.
     sb.coupon_receipt("02152026090030_4.png", "Sandbox Drugstore", "2026/02/12 19:15", 1680)
     sb.receipt("02152026090040_5.png", "Ramen Testya", "2026/02/13 12:45", 1100)
-    sb.receipt("02152026090050_6.png", "Coffee Stand Foo", "2026/02/14 09:05", 420)
+    # Straighten Archive (the one-off migration, not shipped): filed fed in crooked, for it to find and fix.
+    sb.receipt("02152026090050_6.png", "Coffee Stand Foo", "2026/02/14 09:05", 420,
+               extra=[((80, 200, 700, 232), "品目 1    ¥420")], tilt=5.0)
 
 
 ARCHIVED_TRIMMED_BEFORE_OCR = {3: COUPON_TRIM}

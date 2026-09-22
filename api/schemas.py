@@ -1060,3 +1060,47 @@ class ExperimentOut(_Model):
     latest: str | None
     #: per extractor that bills by the token, so a run can be priced on the others too
     prices: dict[str, PriceOut]
+
+
+# --- dev: the one-off Straighten Archive migration (kept as a git tag, not shipped) -------------------------
+class StraightenArchiveFoundOut(_Model):
+    rel_path: str
+    #: Degrees to turn it counter-clockwise to level it (negative: clockwise).
+    degrees: float
+    #: The batch it was scanned in, from its sidecar (None when that isn't known).
+    batch_id: int | None
+
+
+class StraightenArchiveOut(_Model):
+    """How far the look through the archive has got, what looks tilted, and what has been straightened
+    (and can still be put back until Finalize)."""
+    running: bool
+    done: int
+    total: int
+    unreadable: int
+    error: str | None
+    #: The tilt below which the detector wouldn't flag a scan; milder ones are listed behind a switch.
+    flag_degrees: float
+    found: list[StraightenArchiveFoundOut]
+    straightened: list[str]
+
+
+class StraightenArchiveIn(_Model):
+    rel_path: str
+    degrees: float = Field(ge=-MAX_TILT_DEGREES, le=MAX_TILT_DEGREES)
+
+
+class UndoStraightenArchiveIn(_Model):
+    rel_path: str
+
+
+class RedoStraightenArchiveOut(_Model):
+    #: The straightened scans made again from their backups, the way scans are straightened now.
+    redone: list[str]
+    #: Those whose turn couldn't be told, left as they were (Undo them and straighten them again).
+    skipped: list[str]
+
+
+class FinalizeStraightenArchiveOut(_Model):
+    #: How many scans' backups were deleted.
+    removed: int

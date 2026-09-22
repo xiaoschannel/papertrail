@@ -15,24 +15,28 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, UploadFile
+from fastapi.responses import FileResponse
 
 import experiment_runs as runs
 import review_logic as rl
-from api import ingest_registry as registry
+import straighten_migration as straighten_archive
+from api import cache, ingest_registry as registry, ingest_store
 from api.deps import get_output_path
-from api.guards import planning_a_job
+from api.guards import no_job_running, planning_a_job
 from api.jobs import NOTHING_HELD, Claim, runner
 from api.model_manager import models
 from api.schemas import (
     BatchSanityOut, BatchStatOut, DuplicateFilenameOut, ExperimentOcrIn, ExperimentOcrOut, ExperimentOut,
     ExperimentParseIn, ExperimentParseOut, ExperimentPromptIn, ExperimentPromptOut, ExperimentRunOut,
-    ExperimentTreatmentIn, FieldBoxOut, IndexAuditOut, IndexFileOut, InputComparisonOut, JobOut, PriceOut, SanityOut,
-    SidecarMismatchOut,
+    ExperimentTreatmentIn, FieldBoxOut, FinalizeStraightenArchiveOut, IndexAuditOut, IndexFileOut, InkOutlineOut,
+    InputComparisonOut, JobOut, PriceOut, RedoStraightenArchiveOut, SanityOut, SidecarMismatchOut,
+    StraightenArchiveFoundOut, StraightenArchiveIn, StraightenArchiveOut, UndoStraightenArchiveIn,
 )
 from archive_audit import (
     batch_coverage, batch_statistics, check_archive_sidecars, count_duplicate_filenames, disk_vs_index_delta,
 )
 from data import scan_organized_filenames
+from deskew import MIN_DEGREES
 from extraction import PRICES, call_extractor, cost_of, extraction_messages
 from grounding import parse_grounding_output
 from models import TokenUse, iter_indexed_files, load_scan_index
@@ -46,6 +50,109 @@ router = APIRouter(prefix="/api/dev", tags=["dev"])
 def _input_folder() -> Path | None:
     configured = get_config().input_image_path
     return Path(configured) if configured and Path(configured).is_dir() else None
+
+
+# --- Straighten Archive (one-off migration, kept as a git tag) ------------------------------------------
+def _straighten_archive_state(output_path: Path) -> StraightenArchiveOut:
+    scan = straighten_archive.scan_state()
+    return StraightenArchiveOut(
+        running=scan.running, done=scan.done, total=scan.total, unreadable=scan.unreadable, error=scan.error,
+        flag_degrees=MIN_DEGREES, straightened=straighten_archive.straightened(output_path),
+        found=[StraightenArchiveFoundOut(rel_path=f.rel_path, degrees=f.degrees, batch_id=f.batch_id)
+               for f in scan.found])
+
+
+@router.get("/straighten-archive", response_model=StraightenArchiveOut)
+def straighten_archive_state(output_path: Path = Depends(get_output_path)):
+    """Archived scans that look tilted, as far as the look through the archive has got."""
+    return _straighten_archive_state(output_path)
+
+
+@router.post("/straighten-archive/scan", response_model=StraightenArchiveOut)
+def straighten_archive_scan(output_path: Path = Depends(get_output_path)):
+    """Look through every archived scan again, in the background."""
+    straighten_archive.start_scan(output_path)
+    return _straighten_archive_state(output_path)
+
+
+@router.post("/straighten-archive/straighten", response_model=StraightenArchiveOut)
+def straighten_archive_straighten(body: StraightenArchiveIn, output_path: Path = Depends(get_output_path)):
+    """Straighten one archived scan (and move its OCR boxes), keeping a backup to undo it."""
+    try:
+        with no_job_running("straighten archived scans"):
+            straighten_archive.straighten(output_path, body.rel_path, body.degrees)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc.args[0])) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    cache.clear()
+    return _straighten_archive_state(output_path)
+
+
+@router.post("/straighten-archive/undo", response_model=StraightenArchiveOut)
+def straighten_archive_undo(body: UndoStraightenArchiveIn, output_path: Path = Depends(get_output_path)):
+    """Put a straightened archived scan and its sidecar back as they were."""
+    try:
+        with no_job_running("put back archived scans"):
+            straighten_archive.undo(output_path, body.rel_path)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc.args[0])) from exc
+    cache.clear()
+    return _straighten_archive_state(output_path)
+
+
+@router.post("/straighten-archive/redo", response_model=RedoStraightenArchiveOut)
+def straighten_archive_redo(output_path: Path = Depends(get_output_path)):
+    """Make every straightened scan again from its backup, the way scans are straightened now."""
+    with no_job_running("straighten archived scans"):
+        result = straighten_archive.redo(output_path)
+    cache.clear()
+    return RedoStraightenArchiveOut(redone=result.redone, skipped=result.skipped)
+
+
+@router.get("/straighten-archive/ink-outline/{rel_path:path}", response_model=InkOutlineOut)
+def straighten_archive_ink_outline(rel_path: str, output_path: Path = Depends(get_output_path)):
+    """Where an archived scan's ink is, so the straighten preview crops as straightening will."""
+    try:
+        path = straighten_archive._archived(output_path, rel_path)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="not found") from exc
+    return InkOutlineOut(points=[list(p) for p in ingest_store.scan_ink_outline(path)])
+
+
+@router.get("/straighten-archive/backup/{rel_path:path}", response_class=FileResponse)
+def straighten_archive_backup(rel_path: str, output_path: Path = Depends(get_output_path)):
+    """A straightened scan as it was before, from its backup."""
+    try:
+        return FileResponse(straighten_archive.backup_of(output_path, rel_path), headers={"Cache-Control": "no-cache"})
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="not found") from exc
+
+
+@router.post("/straighten-archive/finalize", response_model=FinalizeStraightenArchiveOut)
+def straighten_archive_finalize(output_path: Path = Depends(get_output_path)):
+    """Delete the backups: what has been straightened stays so, and can't be undone any more."""
+    with no_job_running("finalize the straightened archive"):
+        return FinalizeStraightenArchiveOut(removed=straighten_archive.finalize(output_path))
+
+
+@router.get("/straighten-archive/thumb/{rel_path:path}", response_class=Response)
+def straighten_archive_thumb(rel_path: str, width: int = Query(360, ge=16, le=1600),
+                             output_path: Path = Depends(get_output_path)):
+    """An archived scan scaled down, for the page's tiles (the archive serves only full size)."""
+    from PIL import Image
+
+    try:
+        path = straighten_archive._archived(output_path, rel_path)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="not found") from exc
+    with Image.open(path) as img:
+        img.draft("RGB", (width, width * 4))
+        img = img.convert("RGB")
+        img.thumbnail((width, width * 4))
+        buffer = io.BytesIO()
+        img.save(buffer, "JPEG", quality=85)
+    return Response(buffer.getvalue(), media_type="image/jpeg", headers={"Cache-Control": "no-cache"})
 
 
 # --- Sanity Check ---------------------------------------------------------------------------------------

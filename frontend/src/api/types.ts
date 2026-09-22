@@ -33,6 +33,8 @@ export type TopPoints = Schemas['RotateIn']['top_points']
 /** The pages whose scan looks sideways or upside down; each `top_points` names the arrow that turns it upright. */
 export type TurnedPages = Schemas['TurnedPagesOut']
 export type TiltedPages = Schemas['TiltedPagesOut']
+/** The one-off Straighten Archive migration's state (kept as a git tag, not shipped). */
+export type StraightenArchive = Schemas['StraightenArchiveOut']
 export type Slicing = Schemas['SlicingOut']
 export type SlicingSheet = Schemas['SlicingSheetOut']
 export type SheetGrid = Schemas['SheetGrid']
