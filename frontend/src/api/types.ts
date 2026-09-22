@@ -63,6 +63,9 @@ export type Enhancement = Omit<WorkshopReprocessIn, 'key' | 'ocr_model' | 'extra
 export type SanityReport = Schemas['SanityOut']
 export type BatchSanity = Schemas['BatchSanityOut']
 export type IndexAudit = Schemas['IndexAuditOut']
+/** The one-off Page Order Archive migration's state (kept as a git tag, not shipped). */
+export type PageOrderArchive = Schemas['PageOrderArchiveOut']
+export type PageOrderDocument = Schemas['PageOrderDocumentOut']
 export type ExperimentOptions = Schemas['ExperimentOut']
 export type ExperimentRun = Schemas['ExperimentRunOut']
 /** The Workshop's treatment plus denoising, which only the Experiment bench offers. */

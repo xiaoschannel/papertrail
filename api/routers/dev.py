@@ -1,4 +1,5 @@
-"""The Dev pages: Sanity Check, Index Audit and the Experiment bench.
+"""The Dev pages: Sanity Check, Index Audit and the Experiment bench (and the one-off Page Order
+Archive migration, kept as a git tag).
 
 Sanity Check and Index Audit are read-only views of ``archive_audit``. Experiment runs one uploaded
 image through OCR and Parse as background jobs — they load the same models as ingest — and keeps what
@@ -17,17 +18,19 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, UploadFile
 
 import experiment_runs as runs
+import page_order_migration as page_order_archive
 import review_logic as rl
-from api import ingest_registry as registry
+from api import cache, ingest_registry as registry
 from api.deps import get_output_path
-from api.guards import planning_a_job
+from api.guards import no_job_running, planning_a_job
 from api.jobs import NOTHING_HELD, Claim, runner
 from api.model_manager import models
 from api.schemas import (
     BatchSanityOut, BatchStatOut, DuplicateFilenameOut, ExperimentOcrIn, ExperimentOcrOut, ExperimentOut,
     ExperimentParseIn, ExperimentParseOut, ExperimentPromptIn, ExperimentPromptOut, ExperimentRunOut,
-    ExperimentTreatmentIn, FieldBoxOut, IndexAuditOut, IndexFileOut, InputComparisonOut, JobOut, PriceOut, SanityOut,
-    SidecarMismatchOut,
+    ExperimentTreatmentIn, FieldBoxOut, FinalizePageOrderArchiveOut, IndexAuditOut, IndexFileOut, InputComparisonOut,
+    JobOut, PageOrderAllIn, PageOrderArchiveOut, PageOrderDocumentIn, PageOrderDocumentOut, PageOrderPageOut, PriceOut,
+    RedoPageOrderArchiveOut, SanityOut, SidecarMismatchOut,
 )
 from archive_audit import (
     batch_coverage, batch_statistics, check_archive_sidecars, count_duplicate_filenames, disk_vs_index_delta,
@@ -46,6 +49,91 @@ router = APIRouter(prefix="/api/dev", tags=["dev"])
 def _input_folder() -> Path | None:
     configured = get_config().input_image_path
     return Path(configured) if configured and Path(configured).is_dir() else None
+
+
+# --- Page Order Archive (one-off migration, kept as a git tag) -----------------------------------------
+def _page_order_document(document: page_order_archive.Document, before: list[str] | None = None) -> PageOrderDocumentOut:
+    return PageOrderDocumentOut(key=document.key, renames=document.renames, before=before or [], slots=document.slots, pages=[
+        PageOrderPageOut(rel_path=p.rel_path, serial=p.serial, page=p.page, target=p.target) for p in document.pages])
+
+
+def _page_order_state(output_path: Path) -> PageOrderArchiveOut:
+    planned = page_order_archive.plan(output_path)
+    return PageOrderArchiveOut(
+        to_do=[_page_order_document(d) for d in planned.documents], problems=planned.problems,
+        done=[_page_order_document(d, page_order_archive.before(output_path, d))
+              for d in page_order_archive.put_in_order_documents(output_path)])
+
+
+@router.get("/page-order-archive", response_model=PageOrderArchiveOut)
+def page_order_state(output_path: Path = Depends(get_output_path)):
+    """Archived multi-page documents not yet in the page order they were grouped in."""
+    return _page_order_state(output_path)
+
+
+def _put_in_order(output_path: Path, orders: dict[str, list[int] | None]) -> PageOrderArchiveOut:
+    try:
+        with no_job_running("reorder archived pages"):
+            for key, order in orders.items():
+                page_order_archive.put_in_order(output_path, key, order)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc.args[0])) from exc
+    except (ValueError, OSError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    finally:
+        cache.clear()
+    return _page_order_state(output_path)
+
+
+@router.post("/page-order-archive/apply", response_model=PageOrderArchiveOut)
+def page_order_apply(body: PageOrderDocumentIn, output_path: Path = Depends(get_output_path)):
+    """Put one archived document's pages in page order (the grouped one, or ``order``), keeping a backup."""
+    return _put_in_order(output_path, {body.key: body.order})
+
+
+@router.post("/page-order-archive/apply-all", response_model=PageOrderArchiveOut)
+def page_order_apply_all(body: PageOrderAllIn | None = None, output_path: Path = Depends(get_output_path)):
+    """Put every archived document still in scan order in page order (the grouped one, or the one given),
+    each with a backup."""
+    orders = body.orders if body else {}
+    return _put_in_order(output_path, {d.key: orders.get(d.key) for d in page_order_archive.plan(output_path).documents})
+
+
+@router.post("/page-order-archive/undo", response_model=PageOrderArchiveOut)
+def page_order_undo(body: PageOrderDocumentIn, output_path: Path = Depends(get_output_path)):
+    """Put a document's pages back as they were."""
+    try:
+        with no_job_running("put back archived pages"):
+            page_order_archive.undo(output_path, body.key)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc.args[0])) from exc
+    except (ValueError, OSError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    finally:
+        cache.clear()
+    return _page_order_state(output_path)
+
+
+@router.post("/page-order-archive/redo-all", response_model=RedoPageOrderArchiveOut)
+def page_order_redo_all(output_path: Path = Depends(get_output_path)):
+    """Put every document done so far back from its backup and do it again, with the code as it is now."""
+    try:
+        with no_job_running("redo the page order migration"):
+            redone = page_order_archive.redo_all(output_path)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc.args[0])) from exc
+    except (ValueError, OSError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    finally:
+        cache.clear()
+    return RedoPageOrderArchiveOut(redone=redone, state=_page_order_state(output_path))
+
+
+@router.post("/page-order-archive/finalize", response_model=FinalizePageOrderArchiveOut)
+def page_order_finalize(output_path: Path = Depends(get_output_path)):
+    """Delete the backups: what has been put in order stays so, and can't be undone any more."""
+    with no_job_running("finalize the page order migration"):
+        return FinalizePageOrderArchiveOut(removed=page_order_archive.finalize(output_path))
 
 
 # --- Sanity Check ---------------------------------------------------------------------------------------

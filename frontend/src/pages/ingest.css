@@ -114,3 +114,11 @@
 .scan-viewer__dial input[type='range'] { flex: 1; min-width: 0; }
 .scan-viewer__turn { width: 24ch; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .scan-viewer__unused { visibility: hidden; }
+
+/* --- the one-off Page Order Archive migration page (pages are DocumentCard, in a .receipt-gallery) --- */
+.page-order-document + .page-order-document { margin-top: 18px; }
+.page-order-document .start-bar { margin: 0 0 8px; }
+.page-order-pages { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.page-order-page { display: flex; align-items: center; gap: 8px; }
+.page-order-page .doc-card { width: 11rem; }
+.page-order-swap { padding: 4px 8px; }

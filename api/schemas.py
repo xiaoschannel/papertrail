@@ -1060,3 +1060,57 @@ class ExperimentOut(_Model):
     latest: str | None
     #: per extractor that bills by the token, so a run can be priced on the others too
     prices: dict[str, PriceOut]
+
+
+# --- dev: the one-off Page Order migration (kept as a git tag, not shipped) -----------------------------------
+class PageOrderPageOut(_Model):
+    #: where the page is now, under the output folder
+    rel_path: str
+    serial: int
+    #: its place in its document, from 1
+    page: int
+    #: where it goes (the same as ``rel_path`` when only its sidecar changes)
+    target: str
+
+
+class PageOrderDocumentOut(_Model):
+    key: str
+    #: in page order
+    pages: list[PageOrderPageOut]
+    #: whether any of its files change names (otherwise only their sidecars change)
+    renames: bool
+    #: for one put in order here: its backed-up pages, in the order the archive showed them before
+    before: list[str] = []
+    #: a filed document's names in their numbered order, handed to its pages in page order (empty for one in
+    #: marked/ or tossed/, whose pages keep their names)
+    slots: list[str] = []
+
+
+class PageOrderArchiveOut(_Model):
+    """Archived multi-page documents still in scan order, and those put in order here (which can still be
+    put back until Finalize)."""
+    to_do: list[PageOrderDocumentOut]
+    problems: list[str]
+    done: list[PageOrderDocumentOut]
+
+
+class PageOrderDocumentIn(_Model):
+    key: str
+    #: its scans' serials, page 1 first, where the grouped order is wrong (None: the grouped order)
+    order: list[int] | None = None
+
+
+class PageOrderAllIn(_Model):
+    #: by document key: the page order to use instead of the grouped one, as in PageOrderDocumentIn
+    orders: dict[str, list[int]] = {}
+
+
+class RedoPageOrderArchiveOut(_Model):
+    #: How many documents were redone from their backups.
+    redone: int
+    state: PageOrderArchiveOut
+
+
+class FinalizePageOrderArchiveOut(_Model):
+    #: How many documents' backups were deleted.
+    removed: int

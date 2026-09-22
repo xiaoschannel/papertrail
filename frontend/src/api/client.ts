@@ -181,6 +181,15 @@ export const api = {
 
   dev: {
     sanity: () => unwrap(client.GET('/api/dev/sanity')),
+    // the one-off Page Order Archive migration
+    pageOrderArchive: () => unwrap(client.GET('/api/dev/page-order-archive')),
+    putInPageOrder: (body: { key: string; order: number[] | null }) =>
+      unwrap(client.POST('/api/dev/page-order-archive/apply', { body })),
+    putAllInPageOrder: (orders: Record<string, number[]>) =>
+      unwrap(client.POST('/api/dev/page-order-archive/apply-all', { body: { orders } })),
+    undoPageOrder: (key: string) => unwrap(client.POST('/api/dev/page-order-archive/undo', { body: { key } })),
+    redoAllPageOrder: () => unwrap(client.POST('/api/dev/page-order-archive/redo-all')),
+    finalizePageOrder: () => unwrap(client.POST('/api/dev/page-order-archive/finalize')),
     indexAudit: () => unwrap(client.GET('/api/dev/index-audit')),
     experiment: () => unwrap(client.GET('/api/dev/experiment')),
     run: (runId: string) => unwrap(client.GET('/api/dev/experiment/{run_id}', { params: { path: { run_id: runId } } })),
