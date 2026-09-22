@@ -691,7 +691,7 @@ def _fed_crooked(img, degrees: float):
 
 
 #: The tilt fixtures: each page as scanned, the printed page it is, and how crooked it was fed in (degrees
-#: counter-clockwise; the turn that levels it is the opposite). Past deskew.MIN_DEGREES it is to be flagged.
+#: counter-clockwise; the turn that levels it is the opposite). Flagged when the tilt shows: see deskew.DEFAULT_TILT_SHARE.
 TILTED = {
     "receipt_crooked.png": ("receipt", -3.7),
     "long_receipt_crooked.png": ("long_receipt", 7.0),

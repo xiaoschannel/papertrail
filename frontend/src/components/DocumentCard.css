@@ -48,6 +48,20 @@
   color: var(--muted);
 }
 
+/* The zoom button over the scan's corner (see DocumentCard.tsx): shown while the card is hovered or has
+   focus, so a gallery isn't a field of buttons; a keyboard reaches it after the card. It is drawn above
+   the card, whose root may itself be a link. */
+.doc-card-wrap { position: relative; min-width: 0; }
+.doc-card__zoom {
+  position: absolute; top: 12px; right: 12px; z-index: 1;
+  padding: 1px 7px; font-size: 13px; line-height: 1.4; border-radius: 6px; opacity: 0;
+  background: color-mix(in srgb, var(--panel) 88%, transparent); transition: opacity .12s ease;
+}
+.doc-card-wrap:hover .doc-card__zoom, .doc-card-wrap:focus-within .doc-card__zoom { opacity: 1; }
+.doc-card-wrap--compact .doc-card__zoom { top: 8px; right: 8px; }
+/* a card's scan full size: as tall as the viewer allows, showing only its band, like the card */
+.scan-viewer__frame--band { --scan-max-h: 82vh; --scan-radius: 6px; }
+
 /* compact: frameless, for tight spots (calendar cells). The border stays but is
    transparent, so the hover outline appears without shifting layout. The focus
    ring is drawn inside because tight scroll containers clip outside it. */

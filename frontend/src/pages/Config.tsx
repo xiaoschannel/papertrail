@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api/client.ts'
 import type { AppConfig, ConfigOptions, Shortcuts } from '../api/types.ts'
+import { TiltDemo } from '../components/TiltDemo.tsx'
 import { Card, ErrorState, Loading } from '../components/ui.tsx'
 import { keyLabel, keyOf } from '../components/useShortcuts.ts'
 import './config.css'
@@ -103,6 +104,18 @@ function ConfigForm({ saved, options }: { saved: AppConfig; options: ConfigOptio
         </div>
       </Card>
 
+      <Card title="Fix Rotation" hint="When a scan counts as tilted">
+        <Slider label="Tilt worth fixing" value={draft.tilt_share}
+          min={options.tilt_share_range[0] ?? 0.005} max={options.tilt_share_range[1] ?? 0.1} step={0.001}
+          format={(v) => `${(v * 100).toFixed(1)}% of the short side`} onChange={(v) => set('tilt_share', v)} />
+        <p className="config-note">
+          A crooked feed leaves an empty wedge along the page's long side. A scan counts as tilted once that
+          wedge is this wide against the page's short side, so a long receipt counts at a smaller angle than a
+          short one. Under {options.tilt_min_degrees}° no scan counts: that is too small to measure.
+        </p>
+        <TiltDemo share={draft.tilt_share} minDegrees={options.tilt_min_degrees} maxDegrees={options.tilt_max_degrees} />
+      </Card>
+
       <Card title="Brand prefix suggestions" hint="Where Brand registry's suggestions start">
         <label className="config-check">
           <input type="checkbox" checked={draft.prefix_suggestion_boundary_only}
@@ -174,7 +187,11 @@ const SHORTCUT_GROUPS: { title: string; actions: [keyof Shortcuts, string][] }[]
     ['hide_boxes', 'Hold to hide boxes (Review, Workshop, Experiment, Receipt Detail)'],
     ['hold_original', 'Hold to see the original (Workshop, Experiment)'],
   ] },
-  { title: "Dialogs, and File Index's scan viewer", actions: [['confirm', 'Confirm'], ['cancel', 'Cancel or close']] },
+  { title: 'Dialogs and scan viewers', actions: [['confirm', 'Confirm'], ['cancel', 'Cancel or close']] },
+  { title: "Fix Rotation's scan viewer", actions: [
+    ['leave_as_is', 'Leave as is'], ['turn_upright', 'Turn upright'], ['toggle_guides', 'Level guides on or off'],
+    ['straighten', 'Straighten'],
+  ] },
 ]
 
 /** Actions live on one page at once, so they can't share a key (`Shortcuts.GROUPS` in settings.py). */
@@ -182,6 +199,7 @@ const QUICK: (keyof Shortcuts)[] = ['quick_1', 'quick_2', 'quick_3']
 const LIVE_TOGETHER: (keyof Shortcuts)[][] = [
   ['accept', 'mark', 'toss', 'prev', 'next', 'undo', 'hide_boxes', ...QUICK],
   ['accept', 'toss', 'prev', 'next', 'hold_original', 'hide_boxes', ...QUICK], ['confirm', 'cancel'],
+  ['leave_as_is', 'turn_upright', 'toggle_guides', 'straighten', 'cancel'],
 ]
 
 /** The actions the server would refuse (the same rules as `Shortcuts` in settings.py). */

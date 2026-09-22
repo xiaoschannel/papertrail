@@ -121,6 +121,13 @@ body {
   text-decoration: none; font-size: 13.5px;
 }
 .navlink:hover { background: var(--panel-2); }
+/* an ingest step's count of what waits there, at the end of its link (components/pipelineCounts.tsx) */
+.navlink:has(.nav-count) { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.nav-count {
+  min-width: 1.6em; padding: 0 6px; border-radius: 999px; text-align: center;
+  font-size: 11px; font-weight: 650; line-height: 1.6; font-variant-numeric: tabular-nums;
+  background: var(--accent); color: #fff;
+}
 .navlink.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 
 /* No inner wrapper and no cap: the scroll container IS the page (see WIDTH). */
@@ -255,7 +262,7 @@ table.fixed td, table.fixed th { overflow: hidden; text-overflow: ellipsis; whit
    enough for each column to stay >= ~120px (2 x 120 + gap = 248px).
    On a 2560px window that's two ~150px columns; at 1920px and below days stay
    single so receipts don't shrink. CSS columns balance by actual rendered height. */
-.cal-items > .doc-card { margin-bottom: 3px; break-inside: avoid; }
+.cal-items > .doc-card-wrap { margin-bottom: 3px; break-inside: avoid; }
 @container (min-width: 248px) {
   .cal-items.split { columns: 2; column-gap: 3px; }
 }

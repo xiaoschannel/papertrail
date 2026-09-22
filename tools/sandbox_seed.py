@@ -7,25 +7,29 @@ the app really produces:
 * **Batch 1, archived** — filed under ``YYYY/MM``, a few marked: the Marked Workshop, Receipt Detail, the
   Calendar and the other Visualize pages.
 * **Batch 2, parsed** — OCR'd and extracted, nothing decided yet: Review.
-* **Unindexed scans** — in the scan folder, not yet a batch: File Index, then Slice, Group, OCR, Parse,
-  Review and Archive from the start.
+* **Batch 3, indexed** — a batch not yet read: Fix Rotation, Slice and Group, then OCR, Parse, Review and
+  Archive from the start. Pick it in the batch picker: the ingest pages open on the oldest unarchived
+  batch, which is batch 2.
 
-There is one state, not one per feature: **a feature adds its examples to the stage where they can be
-tried** (a scan to ``unindexed_scans``, a page to review to ``review_batch``, a filed or marked document to
+No scans are left unindexed: nothing needs them yet (File Index's scheme check would). A feature that does
+adds a stage of them, drawn after the last ``index()`` in ``build``.
+
+There is one state, not one per feature: **a feature adds its examples to the stage where its page reads
+them** (a scan to ``ingest_batch``, a page to review to ``review_batch``, a filed or marked document to
 ``archived_batch``), and says in a comment what to try. Everything is invented; the repo is public.
 
 What each stage holds for a feature today:
 
-* Slice: two sheets of meal tickets among the unindexed scans (one scanned sideways).
-* Turned scans: three unindexed scans were fed in turned (2 and 17 sideways, 6 upside down), for Slice
-  and Group to point out.
-* Trim: a receipt with a coupon under it at every stage. Unindexed, to trim in Group; in Review, one
+* Slice: two sheets of meal tickets in batch 3 (one scanned sideways).
+* Turned scans: three scans in batch 3 were fed in turned (2 and 17 sideways, 6 upside down), for
+  Fix Rotation to point out.
+* Trim: a receipt with a coupon under it at every stage. In batch 3, to trim in Group; in Review, one
   trimmed before OCR (read as the receipt alone) and one trimmed after (read again by the next OCR); in
   the archive, a filed receipt trimmed, and a marked one untrimmed (the Workshop's Trim row).
-* Tilted scans: two unindexed receipts were fed in crooked (10 a little clockwise, 13 further the other way),
-  for Slice and Group to point out; any scan can be straightened from its full-size view. The fake OCR
-  boxes each line where it lies on the crooked page, as a real one would, so straightening a page after
-  OCR shows its boxes moving with it (Review draws them).
+* Tilted scans: two receipts in batch 3 were fed in crooked (10 a little clockwise, 13 further the other way),
+  for Fix Rotation to point out; any scan can be straightened from its full-size view. The fake OCR
+  boxes each line where it lies on the crooked page, as a real one would. Turning or straightening a page
+  after OCR sends it back to OCR and Parse.
 """
 
 from __future__ import annotations
@@ -182,8 +186,8 @@ REVIEW_TRIMMED_BEFORE_OCR = {1: COUPON_TRIM}
 REVIEW_TRIMMED_AFTER_OCR = {2: COUPON_TRIM}
 
 
-def unindexed_scans(sb: Sandbox) -> None:
-    """In the scan folder, not a batch yet: walk them from File Index."""
+def ingest_batch(sb: Sandbox) -> None:
+    """Indexed as batch 3 and not read yet: walk it from Fix Rotation."""
     sb.receipt("03012026100000_1.png", "Sandbox Bakery", "2026/02/27 08:10", 480)
     sb.receipt("03012026100010_2.png", "Kissa Example", "2026/02/27 15:30", 950, rotate=Image.Transpose.ROTATE_90)
     sb.receipt("03012026100020_3.png", "Demo Mart 駅前店", "2026/02/28 19:02", 1320)
@@ -194,7 +198,7 @@ def unindexed_scans(sb: Sandbox) -> None:
     sb.receipt("03012026100050_6.png", "Ramen Testya", "2026/02/26 12:45", 1100, rotate=Image.Transpose.ROTATE_180)
     sb.scan("03012026100100_7.png", [((80, 40, 880, 104), "(blank page)")])
     sb.receipt("03012026100110_8.png", "Coffee Stand Foo", "2026/02/25 09:05", 420)
-    # Tilted: 10 and 13 were fed in crooked (with item lines, so there is text to level): Group points them out.
+    # Tilted: 10 and 13 were fed in crooked (with item lines, so there is text to level): Fix Rotation points them out.
     tilts = {10: -4.0, 13: 7.0}
     for i in range(9, 15):
         items = [((80, 200 + 36 * n, 700, 232 + 36 * n), f"品目 {n + 1}    ¥{50 * (n + i)}") for n in range(2)]             if i in tilts else ()
@@ -316,7 +320,7 @@ def draw(sb: Sandbox) -> None:
     """Every stage's scans: drawn where missing, and registered so the fake OCR can read them."""
     archived_batch(sb)
     review_batch(sb)
-    unindexed_scans(sb)
+    ingest_batch(sb)
 
 
 def prepare(root: Path, fresh: bool = False) -> Sandbox:
@@ -400,6 +404,7 @@ def build(sb: Sandbox) -> None:
         trim(second, REVIEW_TRIMMED_BEFORE_OCR)
         read_and_parse(second, REVIEW_TRIMMED_AFTER_OCR)
 
-        unindexed_scans(sb)
+        ingest_batch(sb)
+        index()
     finally:
         sb.ocr_delay, sb.extract_delay = delays

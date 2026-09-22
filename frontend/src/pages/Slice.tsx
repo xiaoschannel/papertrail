@@ -1,14 +1,13 @@
-import { useMemo, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { api, inputThumbUrl } from '../api/client.ts'
-import type { SheetGrid, SlicePlan, Slicing, SlicingSheet, TopPoints } from '../api/types.ts'
+import type { SheetGrid, SlicePlan, Slicing, SlicingSheet } from '../api/types.ts'
 import { ConfirmDialog } from '../components/ConfirmDialog.tsx'
+import { CappedImage } from '../components/DocumentCard.tsx'
 import { GridEditor } from '../components/GridEditor.tsx'
 import { useBatchHolder } from '../components/jobs.tsx'
-import { BatchSelect, Pager, RotateButtons, keyRange } from '../components/scans.tsx'
-import { TiltBadge, TiltNotice, useTiltedPages } from '../components/tilts.tsx'
-import { PageViewer, TurnNotice, useTurnedPages, type Viewing } from '../components/turns.tsx'
+import { BatchSelect, Pager, ScanViewer, keyRange } from '../components/scans.tsx'
 import { Card, Empty, ErrorState, Loading } from '../components/ui.tsx'
 import { useGridColumnCount } from '../components/useGridColumnCount.ts'
 import './ingest.css'
@@ -29,7 +28,8 @@ export default function Slice() {
       <p className="page-sub">
         Receipts too small to scan on their own (食券 and the like) can be taped onto a sheet in a grid and
         scanned together. Cut such a sheet here into one page per receipt; the sheet itself is kept, tossed.
-        Then <Link to="/group">group</Link> the batch's pages.
+        <Link to="/fix-rotation">Fix a sheet's rotation</Link> first: its crops are cut the way it faces. Then{' '}
+        <Link to="/group">group</Link> the batch's pages.
       </p>
       {slicing.isPending ? <Loading what="sheets" />
         : slicing.error ? <ErrorState error={slicing.error} />
@@ -67,7 +67,7 @@ function Sheets({ data, batchId, onBatch }: { data: Slicing; batchId: number; on
   const queryClient = useQueryClient()
   const holder = useBatchHolder(batchId)
   const [editing, setEditing] = useState<SlicingSheet | null>(null)
-  const [viewing, setViewing] = useState<Viewing | null>(null)
+  const [viewing, setViewing] = useState<SlicingSheet | null>(null)
   const [confirming, setConfirming] = useState<Pending | null>(null)
   const [done, setDone] = useState('')
   const [page, setPage] = useState(0)
@@ -96,11 +96,6 @@ function Sheets({ data, batchId, onBatch }: { data: Slicing; batchId: number; on
       else apply.mutate(pending)
     },
   })
-  const rotate = useMutation({
-    mutationFn: ({ key, top }: { key: string; top: TopPoints }) => api.ingest.rotate(key, top),
-    onSuccess: refresh,
-  })
-
   const perPage = ROWS_PER_PAGE * Math.max(1, columns)
   const pageCount = Math.max(1, Math.ceil(data.sheets.length / perPage))
   const shownPage = Math.min(page, pageCount - 1)
@@ -110,15 +105,10 @@ function Sheets({ data, batchId, onBatch }: { data: Slicing; batchId: number; on
   const editError = holder ? `Waiting for ${holder.title}: it is using batch ${batchId}.`
     : (plan.error ?? apply.error)?.message ?? null
   const sliced = data.sheets.filter((s) => s.grid)
-  const sheetsByKey = useMemo(() => new Map(data.sheets.map((s) => [s.key, s])), [data])
-  // A sheet is turned before it is cut: its crops come out the way it faces.
-  const turned = useTurnedPages(batchId, sheetsByKey)
-  // ... and squared up, for the same reason.
-  const tilted = useTiltedPages(batchId, sheetsByKey)
 
   return (
     <Card title="Sheets" className="card--full"
-      hint="Turn a sheet upright first: its crops are cut the way it faces.">
+      hint="Fix a sheet's rotation before cutting it: its crops are cut the way it faces.">
       <div className="controls">
         <BatchSelect id="slice-batch" batches={data.batches} value={batchId} onChange={onBatch} />
       </div>
@@ -127,11 +117,6 @@ function Sheets({ data, batchId, onBatch }: { data: Slicing; batchId: number; on
           A slice was interrupted: {data.problems.join('; ')}. Open the sheet and save or unslice it to put it right.
         </div>
       )}
-      {rotate.error && <div className="error-banner" role="alert">{rotate.error.message}</div>}
-      <TurnNotice query={turned.query} turns={turned.turns}
-        onReview={() => setViewing({ keys: data.sheets.map((s) => s.key).filter((k) => turned.turns.has(k)), at: 0, review: 'turned' })} />
-      <TiltNotice query={tilted.query} tilts={tilted.tilts}
-        onReview={() => setViewing({ keys: data.sheets.map((s) => s.key).filter((k) => tilted.tilts.has(k)), at: 0, review: 'tilted' })} />
       {pager}
       <div className="page-grid" ref={grid}>
         {data.sheets.slice(start, start + perPage).map((sheet) => {
@@ -142,14 +127,7 @@ function Sheets({ data, batchId, onBatch }: { data: Slicing; batchId: number; on
               <figure className={`page-tile${refusal && !cut ? ' tossed' : ''}${cut ? ' grouped' : ''}`}
                 style={cut ? { ['--group-hue' as string]: 210 } : undefined}>
                 <div className="page-tile__tools">
-                  <RotateButtons disabled={rotate.isPending || holder !== null || !sheet.image_available || cut || sheet.sliced}
-                    {...(cut || sheet.sliced ? { title: 'Unslice the sheet to rotate it' } : {})}
-                    suggested={turned.turns.get(sheet.key)}
-                    onRotate={(top) => rotate.mutate({ key: sheet.key, top })} />
-                  {tilted.tilts.has(sheet.key) && (
-                    <TiltBadge degrees={tilted.tilts.get(sheet.key) ?? 0}
-                      onOpen={() => setViewing({ keys: [sheet.key], at: 0, review: false })} />
-                  )}
+                  <span className="page-tile__key"><strong>{sheet.key}</strong></span>
                   <button className={cut ? '' : 'primary'} disabled={busy || refusal !== null && !cut && !sheet.sliced}
                     title={refusal ?? (cut ? 'Change how this sheet is cut' : 'Cut this sheet into one page per receipt')}
                     onClick={() => { plan.reset(); apply.reset(); setEditing(sheet) }}>
@@ -159,14 +137,13 @@ function Sheets({ data, batchId, onBatch }: { data: Slicing; batchId: number; on
                 <div className="page-tile__scan">
                   {sheet.image_available
                     ? (
-                      <button className="page-tile__zoom" onClick={() => setViewing({ keys: [sheet.key], at: 0, review: false })} title="Show this scan full size">
-                        <img src={inputThumbUrl(sheet.filename, sheet.image_version)} alt={`Scan ${sheet.key}`} loading="lazy" />
+                      <button className="page-tile__zoom" onClick={() => setViewing(sheet)} title="Show this scan full size">
+                        <CappedImage src={inputThumbUrl(sheet.filename, sheet.image_version)} alt={`Scan ${sheet.key}`} />
                       </button>
                     )
                     : <span className="ingest-note">Scan not in the input folder</span>}
                 </div>
                 <figcaption>
-                  <strong>{sheet.key}</strong>{' '}
                   {cut && <span className="page-badge">→ {keyRange(sheet.crops.map((c) => c.key))}</span>}{' '}
                   {sheet.filename}
                 </figcaption>
@@ -182,14 +159,8 @@ function Sheets({ data, batchId, onBatch }: { data: Slicing; batchId: number; on
           : 'No sheets sliced in this batch.')}
       </p>
 
-      {viewing && <PageViewer viewing={viewing} pages={sheetsByKey} turns={turned.turns} tilts={tilted.tilts}
-        cannotTurn={(key) => {
-          const sheet = sheetsByKey.get(key)
-          return sheet && (sheet.grid || sheet.sliced) ? 'Unslice the sheet to straighten it' : null
-        }}
-        onSetAsideTilt={tilted.setAside}
-        locked={holder === null ? null : `Waiting for ${holder.title}: it is using batch ${batchId}.`}
-        onSetAside={turned.setAside} onMove={setViewing} onClose={() => setViewing(null)} />}
+      {viewing && <ScanViewer label={viewing.key} filename={viewing.filename} version={viewing.image_version}
+        onClose={() => setViewing(null)} />}
       {editing && (
         <GridEditor sheetKey={editing.key} filename={editing.filename} version={editing.image_version}
           initial={editing.grid}

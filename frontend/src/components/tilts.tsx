@@ -1,21 +1,27 @@
 import { useState } from 'react'
-import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api/client.ts'
-import type { TiltedPages } from '../api/types.ts'
+import { useShortcutKeys } from '../api/config.ts'
+import { setAsideChanged } from './setAside.ts'
+import { keyLabel, useDialogKeys } from './useShortcuts.ts'
 import type { ScanPage } from './turns.tsx'
 
 /*
- * Scans fed in slightly crooked, as the Slice and Group pages point them out: a notice over the grid, a
- * badge on each tile, and, in the full-size viewer, a turn slider over level guides that previews the
- * scan straightened before anything is saved. Any scan can be straightened there, detected or not.
+ * Scans fed in slightly crooked, as the Fix Rotation page points them out: a badge on each tile, and, in
+ * the full-size viewer, a turn slider over level guides that previews the scan straightened before
+ * anything is saved. Any scan can be straightened there, detected or not.
  */
 
 /**
- * Suggestions set aside with "Leave as is" while the app is open, by scan and version (so on Slice and
- * Group alike): straightening or rotating the scan makes a new version, which is judged afresh.
+ * Suggestions set aside with "Leave as is" while the app is open, by scan and version: straightening or
+ * rotating the scan makes a new version, which is judged afresh.
  */
 const leftAsIs = new Set<string>()
 const scanVersion = (page: ScanPage) => `${page.filename}@${page.image_version}`
+
+/** Whether this version of the scan's suggestion was set aside (the sidebar's count leaves it out). */
+export const isTiltLeftAsIs = (page: { filename: string; image_version: number }) =>
+  leftAsIs.has(`${page.filename}@${page.image_version}`)
 
 /** The batch's pages that look tilted and haven't been set aside, by key, with the turn that levels each. */
 export function useTiltedPages(batchId: number, pages: Map<string, ScanPage>) {
@@ -30,25 +36,9 @@ export function useTiltedPages(batchId: number, pages: Map<string, ScanPage>) {
   const setAside = (page: ScanPage) => {
     leftAsIs.add(scanVersion(page))
     setLeftCount((n) => n + 1)
+    setAsideChanged()
   }
   return { query, tilts, setAside }
-}
-
-/** Says how many scans look tilted, once the batch has been checked, with the way to go through them. */
-export function TiltNotice({ query, tilts, onReview }: {
-  query: UseQueryResult<TiltedPages>
-  tilts: Map<string, number>
-  onReview: () => void
-}) {
-  if (query.isPending) return <p className="ingest-note">Checking the scans for tilt…</p>
-  if (query.error) return <p className="ingest-note ingest-warning">Couldn’t check the scans for tilt: {query.error.message}</p>
-  if (tilts.size === 0) return null
-  return (
-    <div className="suggestion-notice">
-      <span>{tilts.size === 1 ? '1 scan looks' : `${tilts.size} scans look`} slightly tilted.</span>
-      <button onClick={onReview}>Review {tilts.size === 1 ? 'it' : 'them'}</button>
-    </div>
-  )
 }
 
 /** A tile's mark for a scan that looks tilted; it opens the scan to straighten it. */
@@ -84,8 +74,10 @@ export function useStraightening(suggested: number | undefined) {
 /**
  * Under the full-size scan: the turn slider (it turns only the preview), the guides checkbox, and
  * Straighten, which saves the scan turned. A detected tilt presets the slider and offers "Leave as is".
+ * Every row is always laid out, so nothing moves from one scan to the next. ``leaveKey`` says whether
+ * the Leave as is key is this one's (it is the turn's while a turn is suggested).
  */
-export function StraightenControls({ page, suggested, refusal, straightening, onStraightened, onLeave, note = null }: {
+export function StraightenControls({ page, suggested, refusal, straightening, onStraightened, onLeave, leaveKey }: {
   page: ScanPage
   suggested: number | undefined
   /** Why the scan can't be straightened (a crop, a sliced sheet, a job using the batch), or null. */
@@ -93,10 +85,10 @@ export function StraightenControls({ page, suggested, refusal, straightening, on
   straightening: ReturnType<typeof useStraightening>
   onStraightened: () => void
   onLeave: () => void
-  /** A word on what the preview hides meanwhile (the trim rulers), or null. */
-  note?: string | null
+  leaveKey: boolean
 }) {
   const queryClient = useQueryClient()
+  const keys = useShortcutKeys()
   const { degrees, setDegrees, guides, setGuides } = straightening
   const start = suggested ?? 0
   const save = useMutation({
@@ -107,13 +99,18 @@ export function StraightenControls({ page, suggested, refusal, straightening, on
       onStraightened()
     },
   })
+  const canSave = degrees !== 0 && refusal === null && !save.isPending
+  useDialogKeys(keys ? {
+    [keys.toggle_guides]: () => setGuides(!guides),
+    [keys.straighten]: canSave ? () => save.mutate() : undefined,
+    ...(leaveKey && suggested !== undefined && !save.isPending ? { [keys.leave_as_is]: onLeave } : {}),
+  } : {})
+  const kbd = (key: string | undefined) => key && <kbd>{keyLabel(key)}</kbd>
   return (
     <div className="scan-viewer__suggest">
-      {suggested !== undefined && (
-        <span className="scan-viewer__suggestion scan-viewer__line">
-          Looks tilted: turn {describeTurn(suggested)} to level it.
-        </span>
-      )}
+      <span className={`scan-viewer__line${suggested !== undefined ? ' scan-viewer__suggestion' : ''}`}>
+        {suggested !== undefined ? `Looks tilted: turn ${describeTurn(suggested)} to level it.` : 'Looks level.'}
+      </span>
       <span className="scan-viewer__dial">
         <label htmlFor="straighten-degrees">Straighten</label>
         <input id="straighten-degrees" type="range" min={-15} max={15} step={0.1} value={-degrees}
@@ -128,16 +125,19 @@ export function StraightenControls({ page, suggested, refusal, straightening, on
       </button>
       <label className="scan-viewer__check">
         <input type="checkbox" checked={guides} onChange={(e) => setGuides(e.target.checked)} /> Level guides
+        {kbd(keys?.toggle_guides)}
       </label>
       <span className="scan-viewer__actions">
-        {suggested !== undefined && <button disabled={save.isPending} onClick={onLeave}>Leave as is</button>}
-        <button className="primary" disabled={degrees === 0 || refusal !== null || save.isPending}
+        <button className={suggested === undefined ? 'scan-viewer__unused' : undefined}
+          disabled={suggested === undefined || save.isPending} onClick={onLeave}>
+          Leave as is{leaveKey && <> {kbd(keys?.leave_as_is)}</>}
+        </button>
+        <button className="primary" disabled={!canSave}
           title={refusal ?? 'Save the scan turned, over the original, keeping its corners'}
           onClick={() => save.mutate()}>
-          Straighten
+          Straighten {kbd(keys?.straighten)}
         </button>
       </span>
-      {note && <span className="ingest-note">{note}</span>}
       {refusal && <span className="ingest-note ingest-warning">{refusal}</span>}
       {save.error && <span className="error-banner" role="alert">{save.error.message}</span>}
     </div>

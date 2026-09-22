@@ -12,6 +12,8 @@ log = logging.getLogger(__name__)
 CONFIG_PATH = Path(__file__).resolve().parent / "config.json"
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
+#: The tilt share the Config page offers (``AppConfig.tilt_share``).
+TILT_SHARE_RANGE = (0.005, 0.1)
 
 
 #: Keys a shortcut can be besides one character: the names `KeyboardEvent.key` gives them (" " is Space).
@@ -41,16 +43,22 @@ class Shortcuts(BaseModel):
     hide_boxes: str = "b"
     # The Marked Workshop and Experiment
     hold_original: str = "r"
-    # Every confirmation dialog, and File Index's scan viewer (cancel closes it). Nothing behind a
-    # dialog listens while it is open, so these may repeat a page's keys.
+    # Every confirmation dialog, and every scan viewer (cancel closes it). Nothing behind a dialog
+    # listens while it is open, so these may repeat a page's keys.
     confirm: str = "e"
     cancel: str = "q"
+    # Fix Rotation's scan viewer, beside cancel: W E R above, D below
+    leave_as_is: str = "w"
+    turn_upright: str = "e"
+    toggle_guides: str = "r"
+    straighten: str = "d"
 
     #: Actions live at the same time, so no two of them may share a key.
     QUICK: ClassVar = ("quick_1", "quick_2", "quick_3")
     GROUPS: ClassVar = (("accept", "mark", "toss", "prev", "next", "undo", "hide_boxes", *QUICK),
                         ("accept", "toss", "prev", "next", "hold_original", "hide_boxes", *QUICK),
-                        ("confirm", "cancel"))
+                        ("confirm", "cancel"),
+                        ("leave_as_is", "turn_upright", "toggle_guides", "straighten", "cancel"))
 
     @field_validator("*", mode="before")
     @classmethod
@@ -91,9 +99,18 @@ class AppConfig(BaseModel):
     prefix_suggestion_max_length: int = 24
     prefix_suggestion_min_length: int = 3
     prefix_suggestion_min_count: int = 2
+    #: A tilt worth fixing on Fix Rotation, as a share of the page's short side (deskew.DEFAULT_TILT_SHARE).
+    tilt_share: float = 0.03
     calendar_period: str = "week"
     calendar_date: str = ""
     shortcuts: Shortcuts = Shortcuts()
+
+    @field_validator("tilt_share")
+    @classmethod
+    def _a_share_the_page_can_show(cls, value: float) -> float:
+        if not TILT_SHARE_RANGE[0] <= value <= TILT_SHARE_RANGE[1]:
+            raise ValueError(f"a tilt share must be between {TILT_SHARE_RANGE[0]} and {TILT_SHARE_RANGE[1]}")
+        return value
 
 
 def get_config() -> AppConfig:

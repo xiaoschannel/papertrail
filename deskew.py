@@ -1,11 +1,11 @@
-"""Finding and fixing a scan fed in at a slight angle (the "looks tilted" suggestions on Slice and Group).
+"""Finding and fixing a scan fed in at a slight angle (the "looks tilted" suggestions on Fix Rotation).
 
 A receipt that went through the feeder a few degrees off comes out with its text lines sloping. The
 estimate is a projection profile: rotate the page's ink through candidate angles and keep the one whose
 row sums change most sharply from row to row, which is when every text line lies on one row band. It
 needs no model and runs on the CPU in well under a tenth of a second a page.
 
-Only a suggestion: Slice and Group show it, and the scan is rewritten only after someone confirms it.
+Only a suggestion: Fix Rotation shows it, and the scan is rewritten only after someone confirms it.
 """
 
 from __future__ import annotations
@@ -18,13 +18,17 @@ from PIL import Image
 from pydantic import BaseModel, ConfigDict
 
 from document_grouping import replace_image
-from models import DetectedBox, Trim, trim_of
+from models import Trim, trim_of
 
 #: The steepest tilt looked for either way. A page further off than this is a sideways scan, not a
 #: slightly crooked one, and the rotate arrows are the fix for that.
 MAX_DEGREES = 15.0
-#: Tilts smaller than this aren't worth rewriting a scan for.
-MIN_DEGREES = 0.8
+#: A tilt worth fixing, unless the Config page says otherwise: how far the page's long edge wanders
+#: sideways along its length, as a share of its short edge. That is the empty wedge a crooked feed leaves
+#: along the long side, so the same angle counts for more on a long receipt than on a short one.
+DEFAULT_TILT_SHARE = 0.03
+#: Under this the estimate can't place a tilt reliably, whatever the page's shape.
+MIN_DEGREES = 0.3
 #: How much sharper the rows must be at the best angle than as scanned: a nearly blank page scores
 #: about the same at every angle, and its "best" angle is noise.
 MIN_GAIN = 1.3
@@ -49,10 +53,22 @@ class SkewEstimate(BaseModel):
     gain: float
     #: False when the best angle sat at the edge of the search, so the true one may lie beyond it.
     within_range: bool
+    #: The size of the ink's area in scan pixels, specks left out: the page's shape as printed, without the
+    #: scanner bed or margins round it, which says how far the tilt shows (``drift``).
+    width: int = 0
+    height: int = 0
 
     @property
-    def needs_straightening(self) -> bool:
-        return self.within_range and abs(self.degrees) >= MIN_DEGREES and self.gain >= MIN_GAIN
+    def drift(self) -> float:
+        """How far the long edge wanders sideways along its length, as a share of the short edge."""
+        long, short = max(self.width, self.height), min(self.width, self.height)
+        return abs(math.sin(math.radians(self.degrees))) * (long / short if short else 1.0)
+
+    def needs_straightening(self, share: float = DEFAULT_TILT_SHARE) -> bool:
+        """Whether the tilt is worth fixing: it shows (``drift`` at least ``share``), it is big enough to be
+        measured, and the text really is sharper levelled."""
+        return (self.within_range and self.gain >= MIN_GAIN and abs(self.degrees) >= MIN_DEGREES
+                and self.drift >= share)
 
 
 def _ink(image: Image.Image) -> np.ndarray:
@@ -78,6 +94,21 @@ def _sharpness(ink: np.ndarray, degrees: float) -> float:
     return float(np.square(np.diff(rows)).sum())
 
 
+def _ink_extent(ink: np.ndarray, image: Image.Image) -> tuple[int, int]:
+    """The width and height of the area the ink covers, specks left out, in the scan's own pixels."""
+    import cv2
+
+    _, _, stats, _ = cv2.connectedComponentsWithStats((ink > 0).astype(np.uint8), connectivity=8)
+    marks = stats[1:][stats[1:, cv2.CC_STAT_AREA] >= _SPECK]
+    if len(marks) == 0:
+        return image.width, image.height
+    left, top = marks[:, cv2.CC_STAT_LEFT].min(), marks[:, cv2.CC_STAT_TOP].min()
+    right = (marks[:, cv2.CC_STAT_LEFT] + marks[:, cv2.CC_STAT_WIDTH]).max()
+    bottom = (marks[:, cv2.CC_STAT_TOP] + marks[:, cv2.CC_STAT_HEIGHT]).max()
+    scale = image.width / ink.shape[1]
+    return round((right - left) * scale), round((bottom - top) * scale)
+
+
 def estimate_skew(image: Image.Image) -> SkewEstimate:
     """How far the scan's text lines slope, as the turn that levels them."""
     import cv2
@@ -86,7 +117,7 @@ def estimate_skew(image: Image.Image) -> SkewEstimate:
     # Too small to have lines to level (a placeholder, a sliver): halving it for the wide search would leave
     # nothing, which OpenCV refuses.
     if not ink.any() or min(ink.shape) < _MIN_SIDE:
-        return SkewEstimate(degrees=0.0, gain=1.0, within_range=True)
+        return SkewEstimate(degrees=0.0, gain=1.0, within_range=True, width=image.width, height=image.height)
     # The wide search runs at half size, where a text line still spans rows; the fine one at full size, two
     # steps either side: as scanned (0°) is the one angle not blurred by turning, so the wide search leans to
     # it, and a tilt just under a degree can come out there.
@@ -98,8 +129,9 @@ def estimate_skew(image: Image.Image) -> SkewEstimate:
     degrees = float(np.clip(fine[int(np.argmax(scores))], -MAX_DEGREES, MAX_DEGREES))
     as_scanned = _sharpness(ink, 0.0)
     gain = max(scores) / as_scanned if as_scanned > 0 else 1.0
+    width, height = _ink_extent(ink, image)
     return SkewEstimate(degrees=round(degrees, 2) + 0.0, gain=round(gain, 2),   # + 0.0: no -0.0
-                        within_range=abs(best) < MAX_DEGREES)
+                        within_range=abs(best) < MAX_DEGREES, width=width, height=height)
 
 
 def estimate_file_skew(path: Path) -> SkewEstimate:
@@ -217,7 +249,7 @@ def straighten(image: Image.Image, degrees: float) -> Image.Image:
 
 def straighten_file(path: Path, degrees: float) -> tuple[Size, Size, Shift] | None:
     """Straighten the scan at ``path`` in place. Returns its size before and after, and where what was kept
-    lies (``Shift``), which placing its OCR boxes again needs; or None when a turn of 0 left it alone."""
+    lies (``Shift``), which moving its trim with it needs; or None when a turn of 0 left it alone."""
     if not -MAX_DEGREES <= degrees <= MAX_DEGREES:
         raise ValueError(f"a tilt of {degrees}° is beyond the {MAX_DEGREES}° this corrects")
     if not degrees:
@@ -234,41 +266,6 @@ def straighten_file(path: Path, degrees: float) -> tuple[Size, Size, Shift] | No
 
 
 #: OCR box coordinates are on this scale of the page image, whatever its size.
-_SCALE = 1000
-
-
-def straighten_box(coords: list[int], degrees: float, before: Size, after: Size,
-                    shift: Shift = (0.0, 0.0)) -> list[int]:
-    """A box measured on a scan (``[x1, y1, x2, y2]`` on the 0-1000 scale), placed on the scan straightened
-    by ``degrees``.
-
-    Its centre turns with the page. Its size is what it enclosed, levelled: a box around a line of text
-    sloping at ``degrees`` is taller than the line (it holds the slope), and solving ``w = L·cos + t·sin``,
-    ``h = L·sin + t·cos`` for the line's length ``L`` and thickness ``t`` gives the box that fits the line
-    once level. A box that isn't one sloping rectangle (the solve comes out non-positive) keeps its size,
-    and one drawn tighter than the slope isn't levelled below a quarter of its height, so a box never
-    shrinks to nothing (a little loose still shows where the text is).
-    """
-    if len(coords) != 4:
-        return coords
-    (w0, h0), (w1, h1) = before, after
-    x1, y1, x2, y2 = (coords[0] * w0 / _SCALE, coords[1] * h0 / _SCALE,
-                      coords[2] * w0 / _SCALE, coords[3] * h0 / _SCALE)
-    # Turning the page counter-clockwise on screen (y down): a point right of centre moves up.
-    cx, cy = _turned_point((x1 + x2) / 2, (y1 + y2) / 2, degrees, before, after, shift)
-    theta = np.radians(degrees)
-    cos, sin = float(np.cos(theta)), float(np.sin(theta))
-    width, height = abs(x2 - x1), abs(y2 - y1)
-    a, b = abs(cos), abs(sin)
-    det = a * a - b * b
-    length, thickness = (width * a - height * b) / det, (height * a - width * b) / det
-    if length > 0 and thickness > 0:
-        width, height = length, max(thickness, height / 4)
-    left, right = (cx - width / 2) * _SCALE / w1, (cx + width / 2) * _SCALE / w1
-    top, bottom = (cy - height / 2) * _SCALE / h1, (cy + height / 2) * _SCALE / h1
-    return [int(round(min(max(v, 0), _SCALE))) for v in (left, top, right, bottom)]
-
-
 def _turned_point(x: float, y: float, degrees: float, before: Size, after: Size,
                   shift: Shift = (0.0, 0.0)) -> tuple[float, float]:
     """A point on the scan (pixels), where it lands on the scan straightened by ``degrees``."""
@@ -291,27 +288,3 @@ def straightened_trim(band: Trim | None, degrees: float, before: Size, after: Si
     top = 0.0 if band.top == 0 else max(0.0, min(ends(band.top)))
     bottom = 1.0 if band.bottom == 1 else min(1.0, max(ends(band.bottom)))
     return trim_of(top, bottom)
-
-
-def straighten_boxes(boxes: list[DetectedBox], degrees: float, before: Size, after: Size,
-                     shift: Shift = (0.0, 0.0), read: Trim | None = None) -> tuple[list[DetectedBox], Trim | None]:
-    """OCR boxes placed on the straightened scan, in the same order, so references to them by number (the
-    extraction's field sources) still point at the same text; and the band they are now measured on.
-
-    Boxes are measured on the band OCR ``read`` (the page as trimmed then; None: the whole page). That band
-    moves with the scan like a trim does, and the boxes are measured on the moved band.
-    """
-    moved = straightened_trim(read, degrees, before, after, shift)
-    top0, height0 = (read.top, read.bottom - read.top) if read else (0.0, 1.0)
-    top1, height1 = (moved.top, moved.bottom - moved.top) if moved else (0.0, 1.0)
-
-    def one(coords: list[int]) -> list[int]:
-        if len(coords) != 4:
-            return coords
-        x1, y1, x2, y2 = coords
-        on_scan = [x1, round((top0 + y1 / _SCALE * height0) * _SCALE), x2, round((top0 + y2 / _SCALE * height0) * _SCALE)]
-        x1, y1, x2, y2 = straighten_box(on_scan, degrees, before, after, shift)
-        on_band = lambda y: int(round(min(max((y / _SCALE - top1) / height1 * _SCALE, 0), _SCALE)))
-        return [x1, on_band(y1), x2, on_band(y2)]
-
-    return [box.model_copy(update={"coords": [one(c) for c in box.coords]}) for box in boxes], moved

@@ -34,9 +34,9 @@ npm install
 cd ..
 ```
 ---
-Slice and Group check for scans that are sideways or upside down with a small model (PaddleClas's text image
-orientation classifier, 6.8 MB, run on the CPU). It is downloaded the first time they run and kept in
-`~/.cache/papertrail`.
+Fix Rotation checks for scans that are sideways or upside down with a small model (PaddleClas's text image
+orientation classifier, 6.8 MB, run on the CPU). It is downloaded the first time that page checks a batch,
+and kept in `~/.cache/papertrail`.
 
 ---
 The hosted extractors need an API key. Copy `.env.example` to `.env` and put yours in it; the file is
@@ -115,18 +115,18 @@ Scan your documents into a folder, and follow this process:
 
 ## Ingest
 1. **File Index** — Ingest new batches of scanned files.
-2. **Slice** — Cut a sheet of receipts too small to scan alone (tape them onto a sheet in a grid) into one page
-   per receipt. The sheet is kept, tossed. Turn it upright first: the crops are cut the way it faces.
-3. **Group** — Link pages that belong to one document, and toss pages that don't belong in the archive.
-
-   Slice and Group both point out scans that look sideways or upside down, and show each one turned upright
-   to confirm before it is saved.
-   They also point out scans fed in slightly crooked; any scan can be straightened from its full-size view,
-   previewed over level guides before it is saved, and its OCR boxes move with it.
-4. **OCR** — Batch OCR across all scanned images.
-5. **Parse** — Parse OCR results into file metadata.
-6. **Review** — Review parsed metadata and manually correct if needed. Mark bad documents for re-processing.
-7. **Archive** — Organize files into date-based folders and clean up.
+2. **Fix Rotation** — Turn scans fed in sideways or upside down upright, and level the ones fed in slightly
+   crooked, before anything is cut or read from them. The page points out the scans that look so, and shows
+   each one turned to confirm before it is saved; any scan can be straightened from its full-size view,
+   previewed over level guides, and its OCR boxes move with it.
+3. **Slice** — Cut a sheet of receipts too small to scan alone (tape them onto a sheet in a grid) into one page
+   per receipt. The sheet is kept, tossed. Fix its rotation first: the crops are cut the way it faces.
+4. **Group** — Link pages that belong to one document, and toss pages that don't belong in the archive. From
+   a page's full-size view, trim it to the part OCR should read.
+5. **OCR** — Batch OCR across all scanned images.
+6. **Parse** — Parse OCR results into file metadata.
+7. **Review** — Review parsed metadata and manually correct if needed. Mark bad documents for re-processing.
+8. **Archive** — Organize files into date-based folders and clean up.
 
 ## Curate
 1. **Marked Workshop** — Reprocess marked files with image enhancement, and contextual aids.

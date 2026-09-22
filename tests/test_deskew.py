@@ -1,15 +1,25 @@
 """Tilt detection and straightening, on the tilt fixtures (tests/fixtures/tilt, from tools/build_fixture.py)."""
 
+import math
+
 import pytest
 from PIL import Image
 
 import deskew
-from models import DetectedBox, Trim
+from models import Trim
 from tilt_scans import BLANK_BACK, PAGES, scan, tilt
 
-CROOKED = [name for name, page in PAGES.items() if abs(page["fed_at"]) >= deskew.MIN_DEGREES]
+def shows(page: dict, share: float = deskew.DEFAULT_TILT_SHARE) -> bool:
+    """Whether a fixture's tilt shows: its long edge wanders at least ``share`` of its short edge."""
+    long, short = max(page["printed"]), min(page["printed"])
+    return abs(math.sin(math.radians(page["fed_at"]))) * long / short >= share
+
+
+CROOKED = [name for name, page in PAGES.items() if shows(page)]
 #: A page of each kind to turn further while a test runs: the level receipt, and the crooked ones levelled.
 LEVEL = ["receipt_level.png", *CROOKED]
+#: Those no more than about twice as long as wide, where a tilt under half a degree doesn't show.
+SHORT = [name for name in LEVEL if not name.startswith("long")]
 
 
 def level(name: str) -> Image.Image:
@@ -22,51 +32,69 @@ def test_each_fixture_is_found_as_it_was_fed_in(name):
     fed_at = PAGES[name]["fed_at"]
     estimate = deskew.estimate_skew(scan(name))
     assert estimate.degrees == pytest.approx(-fed_at, abs=0.15)
-    assert estimate.needs_straightening == (abs(fed_at) >= deskew.MIN_DEGREES)
+    assert estimate.needs_straightening() == shows(PAGES[name])
 
 
 @pytest.mark.parametrize("name", LEVEL)
 @pytest.mark.parametrize("fed_at", [-10.0, -5.0, -1.8, -1.1, 1.1, 1.6, 8.3, 12.0])
 def test_a_crooked_feed_is_found_with_the_turn_that_levels_it(name, fed_at):
+    """At a share every page here shows 1.1° by: the flyer is barely longer than wide."""
     estimate = deskew.estimate_skew(tilt(level(name), fed_at))
     assert estimate.degrees == pytest.approx(-fed_at, abs=0.2)
-    assert estimate.needs_straightening
+    assert estimate.needs_straightening(share=0.02)
 
 
-@pytest.mark.parametrize("name", LEVEL)
+@pytest.mark.parametrize("name", SHORT)
 @pytest.mark.parametrize("fed_at", [0.0, 0.4, -0.5])
 def test_a_level_or_barely_tilted_scan_is_left_alone(name, fed_at):
     """Under half a degree the fixtures are too small to place the lines exactly; only the verdict counts."""
     estimate = deskew.estimate_skew(tilt(level(name), fed_at))
-    assert abs(estimate.degrees) < deskew.MIN_DEGREES
-    assert not estimate.needs_straightening
+    assert abs(estimate.degrees) < 0.8
+    assert not estimate.needs_straightening()
 
+
+@pytest.mark.parametrize("fed_at", [1.0, -1.0])
+def test_the_same_tilt_shows_on_a_long_receipt_and_not_on_a_short_one(fed_at):
+    """The long receipt is twice the short one's length at its width: the wedge a tilt leaves along its side
+    is twice as wide against it, so the same tilt is worth fixing on the one and not the other. Its shape is
+    the ink's, not the scan's: the margins round a page (here, the white a turn adds) don't count."""
+    short = deskew.estimate_skew(tilt(level("receipt_crooked.png"), fed_at))
+    long = deskew.estimate_skew(tilt(level("long_receipt_crooked.png"), fed_at))
+    assert long.drift == pytest.approx(2 * short.drift, rel=0.2)
+    assert long.needs_straightening(share=0.06) and not short.needs_straightening(share=0.06)
+
+
+def test_a_tilt_too_small_to_measure_is_never_flagged():
+    """However long the page, under deskew.MIN_DEGREES the estimate is noise."""
+    tiny = deskew.SkewEstimate(degrees=0.25, gain=2.0, within_range=True, width=100, height=5000)
+    assert tiny.drift > 0.2 and not tiny.needs_straightening()
 
 @pytest.mark.parametrize("fed_at", [0.0, -3.7, 7.0])
 def test_a_blank_page_is_never_flagged(fed_at):
     """Specks have no lines to level: whatever angle scores best, it is no better than as scanned."""
     with Image.open(BLANK_BACK) as back:
-        assert not deskew.estimate_skew(tilt(back, fed_at)).needs_straightening
+        assert not deskew.estimate_skew(tilt(back, fed_at)).needs_straightening()
 
 
 @pytest.mark.parametrize("size", [(1, 1), (2, 40), (400, 10)])
 def test_a_scan_too_small_to_measure_has_no_tilt(size):
     """A placeholder or a sliver, even all ink, has no lines to level (and mustn't make OpenCV refuse)."""
-    assert deskew.estimate_skew(Image.new("L", size, 0)) == deskew.SkewEstimate(degrees=0.0, gain=1.0, within_range=True)
+    assert deskew.estimate_skew(Image.new("L", size, 0)) == \
+        deskew.SkewEstimate(degrees=0.0, gain=1.0, within_range=True, width=size[0], height=size[1])
 
 
 def test_an_empty_page_has_no_tilt():
-    assert deskew.estimate_skew(Image.new("L", (300, 600), 255)) ==         deskew.SkewEstimate(degrees=0.0, gain=1.0, within_range=True)
+    assert deskew.estimate_skew(Image.new("L", (300, 600), 255)) ==         deskew.SkewEstimate(degrees=0.0, gain=1.0, within_range=True, width=300, height=600)
 
 
 @pytest.mark.parametrize("name", LEVEL)
 def test_a_sideways_scan_is_for_the_rotate_arrows_not_straightening(name):
-    assert not deskew.estimate_skew(tilt(level(name), 90)).needs_straightening
+    assert not deskew.estimate_skew(tilt(level(name), 90)).needs_straightening()
 
 
 def test_a_best_angle_at_the_edge_of_the_search_is_not_trusted():
     at_edge = deskew.estimate_skew(tilt(level("receipt_level.png"), -deskew.MAX_DEGREES - 3))
-    assert not at_edge.within_range and not at_edge.needs_straightening
+    assert not at_edge.within_range and not at_edge.needs_straightening()
 
 
 @pytest.mark.parametrize("name", CROOKED)
@@ -98,14 +126,6 @@ def test_straightening_keeps_the_page_to_its_corners_and_drops_the_background_ar
     assert all(210 <= straight.getpixel(xy) <= 245 for xy in [(w - 8, 8), (8, h - 8), (w - 8, h - 8)])   # page, not bed
 
 
-def _first_line_box(img: Image.Image, side: str) -> list[int]:
-    """The box around the first text line on the side the scan was cut, as OCR would draw it."""
-    part = img.convert("L")
-    part.paste(255, (0, round(0.075 * img.height), img.width, img.height))
-    part.paste(255, (img.width // 2, 0, img.width, img.height) if side == "left" else (0, 0, img.width // 2, img.height))
-    return _ink_box(part)
-
-
 def _black(img: Image.Image) -> int:
     return sum(1 for v in img.convert("L").getdata() if v < 128)
 
@@ -115,7 +135,7 @@ def _black(img: Image.Image) -> int:
 def test_a_scan_cut_through_its_page_keeps_all_its_ink(tmp_path, fed_at, cut):
     """A receipt wider than the scanner took: the scan cuts through the page, so it isn't the page's bounding
     box, and the page it seems to hold is narrower than the ink. The crop stops at the ink, whatever the
-    boxes and trim then have to follow."""
+    trim then has to follow."""
     page = Image.new("L", (480, 1000), 255)
     for y in range(40, 960, 40):
         page.paste(0, (4, y, 200, y + 14))              # text from the page's very edge, both sides
@@ -126,14 +146,10 @@ def test_a_scan_cut_through_its_page_keeps_all_its_ink(tmp_path, fed_at, cut):
     path = tmp_path / "scan.png"
     crooked.save(path)
     ink = _black(crooked)
-    first_line = _first_line_box(crooked, cut)
-    before, after, shift = deskew.straighten_file(path, -fed_at)
+    _, _, shift = deskew.straighten_file(path, -fed_at)
     with Image.open(path) as img:
         assert _black(img) >= 0.97 * ink                     # nothing cut off (resampling blurs a little)
-        truth = _first_line_box(img, cut)
     assert shift != (0.0, 0.0)                               # held back on one side: not centred
-    moved = deskew.straighten_box(first_line, -fed_at, before, after, shift)
-    assert moved == pytest.approx(truth, abs=8)             # and a box follows the uncentred crop
 
 
 def test_the_ink_outline_holds_the_ink_and_leaves_out_specks():
@@ -179,43 +195,6 @@ def test_straighten_file_refuses_a_sideways_turn_and_skips_a_zero_one(tmp_path):
     assert path.read_bytes() == before
 
 
-def _ink_box(img: Image.Image) -> list[int]:
-    """The box around a scan's ink, as OCR would draw it: ``[x1, y1, x2, y2]`` on the 0-1000 scale."""
-    left, top, right, bottom = Image.eval(img.convert("L"), lambda v: 255 if v < 128 else 0).getbbox()
-    w, h = img.size
-    return [round(left * 1000 / w), round(top * 1000 / h), round(right * 1000 / w), round(bottom * 1000 / h)]
-
-
-@pytest.mark.parametrize("fed_at", [-9.0, -3.0, 2.0, 6.5])
-@pytest.mark.parametrize("line", [(60, 200, 420, 222), (300, 700, 440, 760)])   # a text line, a stamp
-def test_a_box_moves_and_levels_with_its_line(tmp_path, fed_at, line):
-    """Box a mark on a crooked scan as OCR would, straighten the scan, and the moved box sits on the mark
-    where it really ended up: same centre, and a text line's box levelled to the line."""
-    page = Image.new("L", (480, 1000), 255)
-    page.paste(0, line)
-    path = tmp_path / "scan.png"
-    tilt(page, fed_at).save(path)
-    with Image.open(path) as img:
-        found = _ink_box(img)
-    before, after, shift = deskew.straighten_file(path, -fed_at)
-    with Image.open(path) as img:
-        truth = _ink_box(img)
-    moved = deskew.straighten_box(found, -fed_at, before, after, shift)
-    assert moved == pytest.approx(truth, abs=6)          # within 0.6% of the page either way
-    assert after == pytest.approx(page.size, abs=2)       # cropped back to the page
-
-
-def test_straightening_keeps_the_boxes_in_order_and_leaves_odd_ones_alone():
-    boxes = [DetectedBox(ref_type="text", coords=[[100, 100, 400, 140]], text="a"),
-             DetectedBox(ref_type="text", coords=[[1, 2, 3]], text="b"),
-             DetectedBox(ref_type="text", coords=[[500, 500, 600, 520], [0, 0, 10, 10]], text="c")]
-    moved, band = deskew.straighten_boxes(boxes, 4.0, (480, 1000), (548, 1031))
-    assert band is None                                   # read from the whole page, still the whole page
-    assert [b.text for b in moved] == ["a", "b", "c"] and moved[1].coords == [[1, 2, 3]]
-    assert [len(b.coords) for b in moved] == [1, 1, 2] and moved[0].coords != boxes[0].coords
-    assert boxes[0].coords == [[100, 100, 400, 140]]      # the originals are untouched
-
-
 def test_a_zero_turn_changes_nothing_and_reports_no_sizes(tmp_path):
     path = tmp_path / "scan.png"
     scan("receipt_level.png").save(path)
@@ -250,22 +229,3 @@ def test_a_trim_moves_with_the_scan_and_keeps_all_it_held(tmp_path, fed_at):
         coupon_top = _ink_rows(img, start=0.66)[0]
     assert moved.top == 0.0                                       # an uncut edge stays the page's edge
     assert receipt[1] <= moved.bottom < coupon_top                # all of the receipt, none of the coupon
-
-
-def test_a_box_read_on_a_trimmed_band_still_lands_on_its_ink(tmp_path):
-    """OCR reads only the band: its box is on the band's scale, and after straightening it is on the moved
-    band's, still around the same ink."""
-    page = Image.new("L", (480, 1000), 255)
-    page.paste(0, (60, 400, 420, 424))
-    path = tmp_path / "scan.png"
-    tilt(page, 5).save(path)
-    band = Trim(top=0.3, bottom=0.6)
-    with Image.open(path) as img:
-        cut = img.crop((0, round(band.top * img.height), img.width, round(band.bottom * img.height)))
-        box = DetectedBox(ref_type="text", coords=[_ink_box(cut)], text="line")
-    before, after, shift = deskew.straighten_file(path, -5)
-    [moved], read = deskew.straighten_boxes([box], -5, before, after, shift, read=band)
-    with Image.open(path) as img:
-        cut = img.crop((0, round(read.top * img.height), img.width, round(read.bottom * img.height)))
-        truth = _ink_box(cut)
-    assert moved.coords[0] == pytest.approx(truth, abs=8)

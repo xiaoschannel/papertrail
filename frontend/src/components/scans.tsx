@@ -1,8 +1,9 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { inputUrl } from '../api/client.ts'
 import { useShortcutKeys } from '../api/config.ts'
 import type { Batch, TopPoints } from '../api/types.ts'
-import { keyLabel, keyOf } from './useShortcuts.ts'
+import { keyLabel, useDialogKeys } from './useShortcuts.ts'
 import './scans.css'
 
 /** The batch picker the File Index pages (Slice, Group) share. */
@@ -78,15 +79,22 @@ export function RotateButtons({ disabled, title, suggested, onRotate }: {
   )
 }
 
+/** How tall a scan may be in a viewer whose controls are docked under it: the window, less their room. */
+const dockedScanHeight = () => {
+  const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16
+  return Math.max(12 * rem, window.innerHeight * 0.96 - 19 * rem)
+}
+
 /** The size to show a scan at when it is turned ``turn`` degrees (a multiple of 90), to fit the viewer
- *  (``across`` side by side): its box and the scan inside it, which the turn then lays across the box. */
-function turnedFit(natural: [number, number], turn: number, across = 1) {
+ *  (``across`` side by side, at most ``maxHeight`` tall): its box and the scan inside it, which the turn
+ *  then lays across the box. */
+function turnedFit(natural: [number, number], turn: number, across = 1, maxHeight?: number) {
   const [w, h] = natural
   const sideways = Math.abs(turn) % 180 === 90
   const [boxW, boxH] = sideways ? [h, w] : [w, h]
   const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16
   const wide = (Math.min(69 * rem, window.innerWidth * 0.92) - (across - 1) * 12) / across
-  const scale = Math.min(1, wide / boxW, (window.innerHeight * 0.72) / boxH)
+  const scale = Math.min(1, wide / boxW, (maxHeight ?? window.innerHeight * 0.72) / boxH)
   return { box: { width: boxW * scale, height: boxH * scale }, scan: { width: w * scale, height: h * scale } }
 }
 
@@ -163,12 +171,13 @@ function straightenedCrop(natural: Size, tilt: number, outline: number[][]):
  *  levelled page, keeping all its ink (``outline``, from the server), sized to fit the viewer ``across``
  *  side by side. Until the outline arrives, and for a scan no page fits in, it is shown whole, shrunk to
  *  keep its corners in view. */
-export function StraightenedScan({ src, alt, tilt, outline, across = 1 }: {
+export function StraightenedScan({ src, alt, tilt, outline, across = 1, maxHeight }: {
   src: string
   alt: string
   tilt: number
   outline: number[][] | undefined
   across?: number
+  maxHeight?: number | undefined
 }) {
   const [natural, setNatural] = useState<Size | null>(null)
   const img = (style: object) => (
@@ -183,7 +192,7 @@ export function StraightenedScan({ src, alt, tilt, outline, across = 1 }: {
   const [left, top, right, bottom] = crop.box
   const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16
   const wide = (Math.min(69 * rem, window.innerWidth * 0.92) - (across - 1) * 12) / across
-  const scale = Math.min(1, wide / (right - left), (window.innerHeight * 0.78) / (bottom - top))
+  const scale = Math.min(1, wide / (right - left), (maxHeight ?? window.innerHeight * 0.78) / (bottom - top))
   return (
     <div className="scan-viewer__frame scan-viewer__straightened"
       style={{ width: (right - left) * scale, height: (bottom - top) * scale }}>
@@ -198,19 +207,22 @@ export function StraightenedScan({ src, alt, tilt, outline, across = 1 }: {
 }
 
 /** A scan at full size, for deciding whether a page continues the previous document, is upright, or
- *  where to cut a sheet. The dialogs' Cancel shortcut closes it. ``turn`` previews it turned (degrees
- *  clockwise, a multiple of 90) and ``tilt`` straightened (degrees counter-clockwise, a few) without
- *  changing it, beside the scan as it is (cropped as straightening would, keeping the ink in ``outline``);
- *  ``guides`` draws level and plumb lines over them to judge a tilt by; ``footer`` goes under the caption.
- *  ``scan`` shows something else in the scan's place (the trim rulers, which draw the scan themselves)
- *  unless a tilt is being previewed: trims are measured on the scan as it is stored, so a page is
- *  straightened first. ``children`` go in the caption. */
-export function ScanViewer({ label, filename, version, onClose, children, turn = 0, tilt = 0, outline, guides = false,
-  footer, scan }: {
-  label: string
-  filename: string
+ *  where to cut a sheet, or just to read it. The dialogs' Cancel shortcut closes it. The scan is the
+ *  input-folder file ``filename`` at ``version``, or ``src`` when given (an archived document's). ``turn``
+ *  (degrees clockwise, a multiple of 90) and ``tilt`` (degrees counter-clockwise, a few) preview a fix
+ *  without changing anything: the scan as it is, beside it turned and straightened (cropped as
+ *  straightening would, keeping the ink in ``outline``); ``guides`` draws level and plumb lines over them
+ *  to judge a tilt by; ``footer`` goes under the caption. ``scan`` shows something else in the scan's place
+ *  (the trim rulers, which draw the scan themselves) unless a fix is being previewed: trims are measured
+ *  on the scan as it is stored, so a page is turned first. ``children`` go in the caption. */
+export function ScanViewer({ label, filename, version = 0, src, onClose, children, turn = 0, tilt = 0, outline,
+  guides = false, footer, scan }: {
+  label: ReactNode
+  filename?: string | undefined
   /** The file's mtime, so a rotated scan isn't shown from the browser's cache. */
-  version: number
+  version?: number
+  /** The scan's URL, when it isn't an input-folder file. */
+  src?: string | undefined
   onClose: () => void
   scan?: ReactNode
   children?: ReactNode
@@ -222,57 +234,63 @@ export function ScanViewer({ label, filename, version, onClose, children, turn =
 }) {
   const [natural, setNatural] = useState<[number, number] | null>(null)
   const close = useShortcutKeys()?.cancel
-  useEffect(() => {
-    if (!close) return undefined
-    const onKey = (event: KeyboardEvent) => {
-      if (keyOf(event) === close && !event.ctrlKey && !event.metaKey && !event.altKey) onClose()
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [close, onClose])
+  useDialogKeys(close ? { [close]: onClose } : {})
+  // With controls under it (Fix Rotation's), the viewer takes the window's height and keeps them at the
+  // bottom, whatever the scan's size, so a key or the mouse finds them in one place scan after scan.
+  const docked = footer !== undefined
+  const maxHeight = docked ? dockedScanHeight() : undefined
 
-  /** The scan in its frame, turned ``turn`` and straightened ``by``. */
-  const frame = (by: number) => {
-    if (by && !turn) {
-      return <StraightenedScan src={inputUrl(filename, version)} alt={`Scan ${label}, straightened`} tilt={by}
-        outline={outline} across={2} />
+  const url = src ?? inputUrl(filename ?? '', version)
+  const alt = typeof label === 'string' ? `Scan ${label}` : 'Scan'
+  /** The scan in its frame, turned ``turnBy`` and straightened ``by``. */
+  const frame = (turnBy: number, by: number) => {
+    if (by && !turnBy) {
+      return <StraightenedScan src={url} alt={`${alt}, straightened`} tilt={by} outline={outline} across={2}
+        maxHeight={maxHeight} />
     }
     // CSS turns clockwise for positive angles; a tilt is counter-clockwise
     const tilted = by ? ` rotate(${-by}deg) scale(${tiltFit(natural, by)})` : ''
     const img = (style?: object) => (
-      <img src={inputUrl(filename, version)} alt={`Scan ${label}`} style={style}
+      <img src={url} alt={alt} style={style}
         onLoad={(e) => setNatural([e.currentTarget.naturalWidth, e.currentTarget.naturalHeight])} />
     )
-    if (!turn || natural === null) {
-      return <div className="scan-viewer__frame">{img(turn ? { visibility: 'hidden' } : undefined)}</div>
+    if (!turnBy || natural === null) {
+      return <div className="scan-viewer__frame">{img(turnBy ? { visibility: 'hidden' } : undefined)}</div>
     }
-    const fit = turnedFit(natural, turn, tilt ? 2 : 1)
+    const fit = turnedFit(natural, turnBy, 2, maxHeight)
     return (
       <div className="scan-viewer__frame">
         <div className="scan-viewer__turned" style={fit.box}>
-          {img({ ...fit.scan, maxWidth: 'none', maxHeight: 'none', transform: `translate(-50%, -50%) rotate(${turn}deg)${tilted}` })}
+          {img({ ...fit.scan, maxWidth: 'none', maxHeight: 'none', transform: `translate(-50%, -50%) rotate(${turnBy}deg)${tilted}` })}
         </div>
       </div>
     )
   }
 
-  return (
+  // Drawn at the top of the page: a card opens it from inside containers (a calendar day) that would
+  // otherwise clip it, or become what its fixed backdrop is placed against.
+  return createPortal(
     <div className="modal-backdrop scan-viewer" data-modal-open onClick={onClose} role="dialog" aria-modal="true">
-      <figure className={guides ? 'scan-viewer--guides' : undefined} onClick={(e) => e.stopPropagation()}>
-        {(scan && !tilt) ? scan : tilt ? (
+      <figure className={[guides && 'scan-viewer--guides', docked && 'scan-viewer--docked'].filter(Boolean).join(' ') || undefined}
+        onClick={(e) => e.stopPropagation()}>
+        {turn || tilt ? (
           <div className="scan-viewer__compare">
-            <div><span>As scanned</span>{frame(0)}</div>
-            <div><span>Straightened</span>{frame(tilt)}</div>
+            <div><span>As scanned</span>{frame(0, 0)}</div>
+            <div><span>{turn && tilt ? 'Turned and straightened' : turn ? 'Turned upright' : 'Straightened'}</span>
+              {frame(turn, tilt)}</div>
           </div>
-        ) : frame(0)}
-        <figcaption>
-          <strong>{label}</strong> {filename}
-          {children}
-          <button onClick={onClose}>Close{close && <> <kbd>{keyLabel(close)}</kbd></>}</button>
-        </figcaption>
-        {footer}
+        ) : scan ?? frame(0, 0)}
+        <div className="scan-viewer__controls">
+          <figcaption>
+            <strong>{label}</strong> {filename}
+            {children}
+            <button onClick={onClose}>Close{close && <> <kbd>{keyLabel(close)}</kbd></>}</button>
+          </figcaption>
+          {footer}
+        </div>
       </figure>
-    </div>
+    </div>,
+    document.body,
   )
 }
 

@@ -18,7 +18,7 @@ def sandbox(tmp_path_factory):
 
 
 def test_the_first_batch_is_filed_with_some_of_it_marked(sandbox):
-    first, second = load_scan_index(sandbox.archive).batches
+    first, second, _ = load_scan_index(sandbox.archive).batches
     assert first.archived and not second.archived
     marked = {read_sidecar(p).original_filename: read_sidecar(p)
               for p in (sandbox.archive / "marked").glob("*.png")}
@@ -47,12 +47,18 @@ def test_the_second_batch_waits_in_review(sandbox):
     assert [key for key, _ in plan.items] == ["2:2"] and plan.retrimmed == 1
 
 
-def test_the_unindexed_scans_make_one_new_batch(sandbox):
-    proposal = pipeline.propose_index(sandbox.scans, sandbox.archive, seed.SCHEME)
-    assert proposal.error is None and len(proposal.batches) == 1
-    [batch] = proposal.batches
-    assert batch.batch_id == 3 and len(batch.files) == 18
+def test_the_third_batch_is_indexed_and_not_read_yet(sandbox):
+    *_, batch = load_scan_index(sandbox.archive).batches
+    assert batch.batch_id == 3 and not batch.archived and len(batch.files) == 18
     assert batch.files[18] == "03012026100218_18.png"            # the coupon receipt, to trim in Group
+    assert not any(key.startswith("3:") for key in load_extractions(sandbox.archive))
+    plan = pipeline.plan_ocr(sandbox.archive, sandbox.scans, 3, reprocess=False, limit=0)
+    assert len(plan.items) == 18                                   # every page still to read
+
+
+def test_no_scan_is_left_unindexed(sandbox):
+    proposal = pipeline.propose_index(sandbox.scans, sandbox.archive, seed.SCHEME)
+    assert proposal.unindexed_count == 0 and proposal.batches == []
 
 
 def test_restarting_reads_every_scan_without_redrawing_it(sandbox):
@@ -73,7 +79,7 @@ def test_a_reset_puts_a_used_sandbox_back_into_the_shared_state(tmp_path):
 
     assert not (sb.scans / "a scan dropped in.png").exists()
     assert (sb.archive / "marked" / "02152026090030_4.png").exists()
-    assert [b.archived for b in load_scan_index(sb.archive).batches] == [True, False]
+    assert [b.archived for b in load_scan_index(sb.archive).batches] == [True, False, False]
 
 
 def test_the_reset_script_leaves_a_running_sandbox_alone(monkeypatch, tmp_path):

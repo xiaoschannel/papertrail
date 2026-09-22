@@ -9,6 +9,14 @@
   --editor-max-h: max(18rem, calc(96vh - 13rem));
 }
 .scan-viewer figure > img { max-width: 100%; max-height: 82vh; object-fit: contain; border-radius: 6px; background: #fff; }
+.scan-viewer__controls { display: grid; gap: 8px; justify-self: stretch; }
+/* Controls docked at the bottom (Fix Rotation's viewer): the figure is the window's height and a fixed
+   width, the scans share the space above, and the controls keep one place whatever the scan's size. */
+.scan-viewer figure.scan-viewer--docked {
+  width: min(69rem, 92vw); height: 96vh; grid-template-rows: minmax(0, 1fr) auto; align-items: center;
+}
+.scan-viewer--docked .scan-viewer__controls { align-self: end; width: min(46rem, 100%); justify-self: center; }
+.scan-viewer--docked .scan-viewer__frame > img { max-height: calc(96vh - 19rem); }
 /* a scan previewed turned: the box has the turned shape, and the scan is laid across it from its middle */
 .scan-viewer__turned { position: relative; justify-self: center; }
 .scan-viewer__turned img { position: absolute; left: 50%; top: 50%; background: #fff; }

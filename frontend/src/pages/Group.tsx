@@ -1,14 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, inputThumbUrl, inputUrl } from '../api/client.ts'
-import type { Grouping, GroupingPage, TopPoints, Trim } from '../api/types.ts'
+import type { Grouping, GroupingPage, Trim } from '../api/types.ts'
 import { ConfirmDialog } from '../components/ConfirmDialog.tsx'
+import { CappedImage } from '../components/DocumentCard.tsx'
 import { useBatchHolder, useEverythingHolder } from '../components/jobs.tsx'
-import { BatchSelect, Pager, RotateButtons } from '../components/scans.tsx'
-import { TiltBadge, TiltNotice, useTiltedPages } from '../components/tilts.tsx'
+import { BatchSelect, Pager, ScanViewer } from '../components/scans.tsx'
 import { TrimEditor } from '../components/TrimEditor.tsx'
-import { TrimmedImage } from '../components/TrimmedImage.tsx'
-import { PageViewer, TurnNotice, useTurnedPages, type Viewing } from '../components/turns.tsx'
 import { Card, Empty, ErrorState, Loading } from '../components/ui.tsx'
 import { useGridColumnCount } from '../components/useGridColumnCount.ts'
 import './ingest.css'
@@ -119,7 +117,7 @@ function GroupingEditor({ data, batchId, onBatch }: { data: Grouping; batchId: n
   const [page, setPage] = useState(0)
   const [confirmingSave, setConfirmingSave] = useState(false)
   const [saved, setSaved] = useState('')
-  const [viewing, setViewing] = useState<Viewing | null>(null)
+  const [viewing, setViewing] = useState<string | null>(null)   // the key of the page open full size
   const grid = useRef<HTMLDivElement>(null)
   const columns = useGridColumnCount(grid, 6)
 
@@ -132,8 +130,7 @@ function GroupingEditor({ data, batchId, onBatch }: { data: Grouping; batchId: n
   }, [data, batchId])
 
   const pageAction = useMutation({
-    mutationFn: ({ action, key, top }: { action: 'toss' | 'recover' | 'rotate'; key: string; top?: TopPoints }) =>
-      action === 'rotate' ? api.ingest.rotate(key, top ?? 'down') : api.ingest[action](key),
+    mutationFn: ({ action, key }: { action: 'toss' | 'recover'; key: string }) => api.ingest[action](key),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['ingest'] })
       // tossing or recovering a page also decides it (or takes the decision back) for Review
@@ -160,8 +157,6 @@ function GroupingEditor({ data, batchId, onBatch }: { data: Grouping; batchId: n
 
   const pagesByKey = useMemo(() => new Map(data.pages.map((p) => [p.key, p])), [data])
   const tossed = useMemo(() => new Set(data.pages.filter((p) => p.tossed).map((p) => p.key)), [data])
-  const turned = useTurnedPages(batchId, pagesByKey)
-  const tilted = useTiltedPages(batchId, pagesByKey)
 
   const current = rebase(draft, data)  // same as the synced draft; avoids one frame of stale links
   const activeKeys = current.keys.filter((k) => !tossed.has(k))
@@ -200,10 +195,6 @@ function GroupingEditor({ data, batchId, onBatch }: { data: Grouping; batchId: n
         <BatchSelect id="grouping-batch" batches={data.batches} value={batchId} onChange={onBatch} />
       </div>
       {pageAction.error && <div className="error-banner" role="alert">{pageAction.error.message}</div>}
-      <TurnNotice query={turned.query} turns={turned.turns}
-        onReview={() => setViewing({ keys: current.keys.filter((k) => turned.turns.has(k)), at: 0, review: 'turned' })} />
-      <TiltNotice query={tilted.query} tilts={tilted.tilts}
-        onReview={() => setViewing({ keys: current.keys.filter((k) => tilted.tilts.has(k)), at: 0, review: 'tilted' })} />
       {pager}
       <div className="page-grid" ref={grid}>
         {current.keys.slice(start, start + perPage).map((key, offset) => {
@@ -218,13 +209,12 @@ function GroupingEditor({ data, batchId, onBatch }: { data: Grouping; batchId: n
           const linked = linkable && Boolean(current.links[activeIndex])
           const group = groupOf.get(key)
           return (
-            <PageTile key={key} page={pageInfo} group={group} turn={turned.turns.get(key)} tilt={tilted.tilts.get(key)}
+            <PageTile key={key} page={pageInfo} group={group}
               onZoom={() => {
                 trim.reset()
-                setViewing({ keys: [key], at: 0, review: false })
+                setViewing(key)
               }}
-              busy={pageAction.isPending} rotateLocked={holder !== null} tossLocked={archiving !== null}
-              onRotate={(top) => pageAction.mutate({ action: 'rotate', key, top })}
+              busy={pageAction.isPending} tossLocked={archiving !== null}
               onToss={() => pageAction.mutate({ action: pageInfo.tossed ? 'recover' : 'toss', key })}
               link={next === undefined ? null : (
                 <div className={`page-link${linked ? ' on' : ''}`}>
@@ -254,17 +244,13 @@ function GroupingEditor({ data, batchId, onBatch }: { data: Grouping; batchId: n
         {!changed && <span className={`ingest-note${saved ? ' ok' : ''}`}>{saved || 'No unsaved changes.'}</span>}
       </div>
 
-      {viewing && <PageViewer viewing={viewing} pages={pagesByKey} turns={turned.turns} tilts={tilted.tilts}
-        cannotTurn={(key) => { const p = pagesByKey.get(key); return p ? turnRefusal(p, 'straighten') : null }}
-        onSetAsideTilt={tilted.setAside}
-        locked={holder === null ? null : `Waiting for ${holder.title}: it is using batch ${batchId}.`}
-        onSetAside={turned.setAside} onMove={setViewing} onClose={() => setViewing(null)}
-        pageView={(key) => {
-          const shown = pagesByKey.get(key)
-          if (!shown) return {}
-          if (shown.sliced) return { caption: <span className="ingest-note">Sliced into crops, which are what OCR reads: trim a crop instead.</span> }
-          return {
-            scan: (
+      {viewing && (() => {
+        // The page full size, with the rulers that trim it; a sliced sheet is never read, so it is just shown.
+        const shown = pagesByKey.get(viewing)
+        if (!shown) return null
+        return (
+          <ScanViewer label={shown.key} filename={shown.filename} version={shown.image_version} onClose={() => setViewing(null)}
+            scan={shown.sliced ? undefined : (
               <TrimEditor src={inputUrl(shown.filename, shown.image_version)} alt={`Scan ${shown.key}`}
                 value={shown.trim ?? null} saving={trim.isPending} error={trim.error?.message ?? null}
                 blockedBy={holder !== null ? holder.title : null}
@@ -274,9 +260,11 @@ function GroupingEditor({ data, batchId, onBatch }: { data: Grouping; batchId: n
                   the rulers, and every view shows only that part; the scan itself is never changed. A page OCR has
                   read already is read again by its next run.
                 </>} />
-            ),
-          }
-        }} />}
+            )}>
+            {shown.sliced && <span className="ingest-note">Sliced into crops, which are what OCR reads: trim a crop instead.</span>}
+          </ScanViewer>
+        )
+      })()}
 
       {confirmingSave && (
         <ConfirmDialog title="Save document groups?" confirmLabel="Save" danger busy={save.isPending}
@@ -291,37 +279,21 @@ function GroupingEditor({ data, batchId, onBatch }: { data: Grouping; batchId: n
 
 const GROUP_HUES = [210, 32, 150, 280, 350, 90]
 
-/** Why a page's scan can't be turned (rotated or straightened): the Slice page owns crops and sliced sheets. */
-function turnRefusal(page: GroupingPage, verb: 'rotate' | 'straighten'): string | null {
-  // Crops are cut upright from their sheet, and a sliced sheet stays as it was cut.
-  return page.crop_of ? 'A crop is turned the way its sheet is' : page.sliced ? `Unslice the sheet to ${verb} it` : null
-}
-
-function PageTile({ page, group, turn, tilt, link, busy, rotateLocked, tossLocked, onRotate, onToss, onZoom }: {
+function PageTile({ page, group, link, busy, tossLocked, onToss, onZoom }: {
   page: GroupingPage
   group: number | undefined
-  /** Where the scan's top seems to point, when it looks turned. */
-  turn: TopPoints | undefined
-  /** The turn that would level the scan, when it looks tilted. */
-  tilt: number | undefined
   link: ReactNode
   busy: boolean
-  rotateLocked: boolean
   tossLocked: boolean
-  onRotate: (top: TopPoints) => void
   onToss: () => void
   onZoom: () => void
 }) {
   const style = group === undefined ? undefined : ({ '--group-hue': GROUP_HUES[group % GROUP_HUES.length] } as CSSProperties)
-  // Crops are cut upright from their sheet, and a sliced sheet stays as it was cut: the Slice page owns both.
-  const cut = turnRefusal(page, 'rotate') ?? undefined
   return (
     <div className="page-cell">
       <figure className={`page-tile${page.tossed ? ' tossed' : ''}${group !== undefined ? ' grouped' : ''}`} style={style}>
         <div className="page-tile__tools">
-          <RotateButtons disabled={busy || rotateLocked || !page.image_available || cut !== undefined}
-            {...(cut ? { title: cut } : {})} suggested={turn} onRotate={onRotate} />
-          {tilt !== undefined && <TiltBadge degrees={tilt} onOpen={onZoom} />}
+          <span className="page-tile__key"><strong>{page.key}</strong></span>
           <button className={page.tossed ? '' : 'danger-outline'} disabled={busy || tossLocked || page.sliced} onClick={onToss}
             title={page.sliced ? 'A sliced sheet stays tossed; unslice it on the Slice page'
               : page.tossed ? 'Recover this page' : 'Toss this page'}>
@@ -335,14 +307,13 @@ function PageTile({ page, group, turn, tilt, link, busy, rotateLocked, tossLocke
                 title={page.sliced ? 'Show this scan full size'
                   : page.trim ? 'Show this scan full size (it is trimmed) and move its cuts'
                   : 'Show this scan full size, and trim it'}>
-                <TrimmedImage fit="contain" src={inputThumbUrl(page.filename, page.image_version)} alt={`Scan ${page.key}`}
+                <CappedImage src={inputThumbUrl(page.filename, page.image_version)} alt={`Scan ${page.key}`}
                   trim={page.trim ?? null} />
               </button>
             )
             : <span className="ingest-note">Scan not in the input folder</span>}
         </div>
         <figcaption>
-          <strong>{page.key}</strong>{' '}
           {page.crop_of && <span className="page-badge">from {page.crop_of} · r{page.cell?.[0]}c{page.cell?.[1]}</span>}
           {page.sliced && <span className="page-badge">sliced</span>}{' '}
           {page.filename}

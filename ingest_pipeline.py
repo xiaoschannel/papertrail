@@ -38,6 +38,8 @@ from data import (
     build_document_index,
     clear_extractions_decisions_for_batch,
     delete_sidecar,
+    drop_extractions,
+    drop_model_runs,
     load_decisions,
     load_document_groups,
     load_extractions,
@@ -62,7 +64,7 @@ from data import (
     TRIMS,
     write_sidecar,
 )
-from deskew import SkewEstimate, estimate_file_skew, straighten_boxes, straighten_file, straightened_trim
+from deskew import DEFAULT_TILT_SHARE, SkewEstimate, estimate_file_skew, straighten_file, straightened_trim
 from document_grouping import build_display_state, rotate_file_upright, split_groups_at_tossed_boundaries
 import extraction
 import slicing
@@ -369,10 +371,25 @@ def _is_sliced_sheet(output_path: Path, batch: ScanBatch, serial: int, key: str)
     return serial in batch.grids or (decision is not None and decision.sliced)
 
 
+def _forget_reading(output_path: Path, batch: ScanBatch, key: str) -> None:
+    """A page's scan was turned: what was read from it no longer holds. Its OCR goes (the next OCR run reads
+    it again, cheaply) and so does its document's extraction (Parse then extracts it again from the new
+    reading), each with the record of the run that made it. A review decision stays: it is a person's."""
+    results = load_ocr_batch(output_path, batch.batch_id)
+    if key in results:
+        del results[key]
+        save_ocr_batch(output_path, batch.batch_id, results)
+    drop_model_runs(output_path, OCR_RUNS, {key})
+    doc_key = str(build_document_index(output_path, set(_batch_keys(batch))).key_to_doc_key(key))
+    drop_extractions(output_path, {doc_key})
+    drop_model_runs(output_path, EXTRACTION_RUNS, {doc_key})
+
+
 def rotate_page_image(output_path: Path, input_path: Path, key: str, top_points: str) -> None:
     """Rotate an unarchived page's scan in place given where its top currently points.
 
-    A trim is measured on the file, so it turns with it (``turned_trim``).
+    A trim is measured on the file, so it turns with it (``turned_trim``); what was read from the scan is
+    forgotten, to be read again the right way up (``_forget_reading``).
     """
     batch, serial, filename = _unarchived_page(output_path, key)
     if serial in batch.slices:
@@ -383,6 +400,7 @@ def rotate_page_image(output_path: Path, input_path: Path, key: str, top_points:
     band = load_trims(output_path).get(key)
     if band is not None:
         set_trim(output_path, key, turned_trim(band, top_points))
+    _forget_reading(output_path, batch, key)
 
 
 def trim_page(output_path: Path, key: str, band: Trim | None) -> None:
@@ -410,9 +428,8 @@ def page_scan(output_path: Path, input_path: Path, key: str) -> Path:
 def straighten_page_image(output_path: Path, input_path: Path, key: str, degrees: float) -> None:
     """Turn an unarchived page's scan ``degrees`` counter-clockwise in place, to level a slight tilt.
 
-    What is measured on the file moves with it: the page's trim (``straightened_trim``, keeping all it
-    held) and, if it has been read, its OCR boxes and the band they were read from, so the boxes still sit
-    on the words they were found on.
+    The page's trim, measured on the file, moves with it (``straightened_trim``, keeping all it held); what
+    was read from the scan is forgotten, to be read again level (``_forget_reading``).
     """
     batch, serial, filename = _unarchived_page(output_path, key)
     if serial in batch.slices:
@@ -428,12 +445,7 @@ def straighten_page_image(output_path: Path, input_path: Path, key: str, degrees
     band = load_trims(output_path).get(key)
     if band is not None:
         set_trim(output_path, key, straightened_trim(band, degrees, *sizes))
-    results = load_ocr_batch(output_path, batch.batch_id)
-    result = results.get(key)
-    if result is not None and (result.boxes or result.trim is not None):
-        boxes, read = straighten_boxes(result.boxes or [], degrees, *sizes, read=result.trim)
-        results[key] = result.model_copy(update={"boxes": boxes if result.boxes is not None else None, "trim": read})
-        save_ocr_batch(output_path, batch.batch_id, results)
+    _forget_reading(output_path, batch, key)
 
 
 #: What an estimate of a scan says (a tilt, which way it faces).
@@ -467,12 +479,12 @@ def _measure_turnable_pages(output_path: Path, input_path: Path, batch_id: int,
 
 def tilted_pages(output_path: Path, input_path: Path, batch_id: int,
                  estimate: Callable[[Path], SkewEstimate] = estimate_file_skew,
-                 ) -> list[tuple[str, SkewEstimate, int]]:
-    """A batch's pages whose scan looks slightly tilted, in scan order, each with the turn that levels it
-    and the scan version it was measured on (see ``_measure_turnable_pages``). ``estimate`` lets a caller
-    cache estimates."""
+                 share: float = DEFAULT_TILT_SHARE) -> list[tuple[str, SkewEstimate, int]]:
+    """A batch's pages whose scan looks tilted enough to fix (``SkewEstimate.needs_straightening(share)``),
+    in scan order, each with the turn that levels it and the scan version it was measured on (see
+    ``_measure_turnable_pages``). ``estimate`` lets a caller cache estimates."""
     return [(key, e, version) for key, e, version in _measure_turnable_pages(output_path, input_path, batch_id, estimate)
-            if e.needs_straightening]
+            if e.needs_straightening(share)]
 
 
 def turned_pages(output_path: Path, input_path: Path, batch_id: int,
@@ -834,21 +846,42 @@ def _page_sort(index: DocumentIndex, key: str) -> tuple[int, int, int]:
     return doc.batch_id, doc.first_serial, _page_place(index, key)
 
 
+def _archive_scope(output_path: Path, scan_index: ScanIndex):
+    """What Archive works on: every unarchived page's filename by key, the decisions, the document index,
+    the unarchived batches, those whose every document is decided, and those batches' documents."""
+    indexed = iter_indexed_files(scan_index, include_archived=False)
+    key_to_filename = {batch_serial_key(b, s): fn for b, s, fn in indexed}
+    all_decisions = load_decisions(output_path)
+    index = build_document_index(output_path, set(key_to_filename))
+    unarchived = [b for b in scan_index.batches if not b.archived]
+    complete = [b for b in unarchived
+                if all(str(index.key_to_doc_key(batch_serial_key(b.batch_id, s))) in all_decisions for s in b.files)]
+    doc_keys = sorted({str(index.key_to_doc_key(batch_serial_key(b.batch_id, s))) for b in complete for s in b.files})
+    return key_to_filename, all_decisions, index, unarchived, complete, doc_keys
+
+
+def archive_ready_documents(output_path: Path) -> int:
+    """How many documents Archive would file: those of the fully reviewed batches, and only when
+    ``plan_archive`` has no blocker (every unarchived batch reviewed, no interrupted slice). Cheaper than
+    the plan: nothing in the archive is read."""
+    scan_index = _load_index(output_path)
+    if scan_index is None:
+        return 0
+    _, all_decisions, _, unarchived, complete, doc_keys = _archive_scope(output_path, scan_index)
+    if not unarchived or len(complete) != len(unarchived):
+        return 0
+    if any(slicing.mismatches(b, all_decisions) for b in unarchived):
+        return 0
+    return len(doc_keys)
+
+
 def plan_archive(output_path: Path) -> ArchivePlan:
     """Where every file of the fully reviewed batches would go, for the page to preview."""
     scan_index = _load_index(output_path)
     if scan_index is None:
         return ArchivePlan(0, 0, 0, 0, 0, 0, 0, 0, [], "Run File Index first to create batches.json.")
-    indexed = iter_indexed_files(scan_index, include_archived=False)
-    key_to_filename = {batch_serial_key(b, s): fn for b, s, fn in indexed}
-    all_decisions = load_decisions(output_path)
+    key_to_filename, all_decisions, index, unarchived, complete, doc_keys = _archive_scope(output_path, scan_index)
     organized = scan_organized_filenames(output_path)
-    index = build_document_index(output_path, set(key_to_filename))
-
-    unarchived = [b for b in scan_index.batches if not b.archived]
-    complete = [b for b in unarchived
-                if all(str(index.key_to_doc_key(batch_serial_key(b.batch_id, s))) in all_decisions for s in b.files)]
-    doc_keys = sorted({str(index.key_to_doc_key(batch_serial_key(b.batch_id, s))) for b in complete for s in b.files})
     decisions = {dk: all_decisions[dk] for dk in doc_keys if dk in all_decisions}
 
     def pages_of(doc_key: str) -> list[str]:

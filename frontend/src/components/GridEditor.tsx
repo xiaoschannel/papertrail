@@ -219,7 +219,7 @@ export function GridEditor({ sheetKey, filename, version, initial, busy, canUnsl
           </div>
           <p className="ingest-note">
             Drag the frame and the lines onto the gaps between receipts. Click a cell to mark it empty.
-            Turn the sheet upright before slicing: the crops are cut the way it faces.
+            Fix the sheet's rotation before slicing: the crops are cut the way it faces.
           </p>
         </header>
 

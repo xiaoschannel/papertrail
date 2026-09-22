@@ -30,3 +30,18 @@
   font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
 }
 .config-page .field input.config-key.neg, .config-page .field input.config-key.neg:focus { border-color: var(--neg); }
+
+/* Fix Rotation's threshold: the receipts drawn at the smallest tilt that counts (components/TiltDemo.tsx) */
+.config-note { color: var(--muted); font-size: 12.5px; margin: 8px 0 0; max-width: var(--measure); }
+.tilt-demo { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 28px; margin-top: 14px; }
+.tilt-demo figure { margin: 0; display: grid; gap: 6px; justify-items: start; }
+.tilt-demo figcaption { display: grid; font-size: 12px; color: var(--muted); }
+.tilt-demo figcaption strong { color: var(--text); font-weight: 600; }
+.tilt-demo__paper { fill: #fff; stroke: var(--border); }
+.tilt-demo__ink { fill: #9aa1ab; }
+.tilt-demo__wedge { fill: var(--accent); opacity: .45; }
+.tilt-demo__plumb { stroke: var(--accent); stroke-dasharray: 3 3; }
+.tilt-demo__pictures { display: flex; align-items: flex-end; gap: 10px; }
+.tilt-demo__corner { border: 1px solid var(--border); border-radius: 4px; background: var(--panel-2); }
+.tilt-demo__corner .tilt-demo__paper, .tilt-demo__corner .tilt-demo__plumb { vector-effect: non-scaling-stroke; }
+.tilt-demo__note { flex-basis: 100%; margin: 0; }

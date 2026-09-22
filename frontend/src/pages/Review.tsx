@@ -118,6 +118,7 @@ export default function Review() {
   const refreshAfterDecisionChange = async () => {
     // Archive's counts and plan follow the decisions; the rest of the app re-reads when next opened.
     void queryClient.invalidateQueries({ queryKey: ['ingest', 'archive'], refetchType: 'none' })
+    void queryClient.invalidateQueries({ queryKey: ['ingest', 'counts'] })     // the sidebar's Review and Archive
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['review-queue'] }),
       queryClient.invalidateQueries({ queryKey: ['review-doc'] }),

@@ -106,6 +106,8 @@ export const api = {
       unwrap(client.POST('/api/ingest/slices/plan', { body: { key, grid } })),
     applySlices: (key: string, grid: SheetGrid | null, token: string) =>
       unwrap(client.PUT('/api/ingest/slices', { body: { key, grid, token } })),
+    /** What waits at each ingest step, for the sidebar. */
+    counts: () => unwrap(client.GET('/api/ingest/counts')),
     tilted: (batchId: number) =>
       unwrap(client.GET('/api/ingest/tilted', { params: { query: { batch_id: batchId } } })),
     inkOutline: (key: string) =>

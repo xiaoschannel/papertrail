@@ -552,6 +552,26 @@ class TiltedPagesOut(_Model):
     pages: list[TiltedPageOut]
 
 
+class RotationFlagOut(_Model):
+    """A scan Fix Rotation points out, with what it looks like: the page sets aside some of these."""
+    key: str
+    filename: str
+    image_version: int
+    turned: bool
+    tilted: bool
+
+
+class PipelineCountsOut(_Model):
+    """What waits at each ingest step, for the sidebar."""
+    unindexed: int                      # scans in the input folder that aren't in a batch
+    rotation: list[RotationFlagOut]     # scans that look turned or tilted (the page counts those not set aside)
+    rotation_checked: bool              # False when the orientation model couldn't be had: tilts only
+    ocr: int                            # pages left to read, including those in a batch a job is using
+    parse: int                          # documents read and left to parse, likewise
+    review: int                         # documents parsed and not decided
+    archive: int                        # documents Archive would file now
+
+
 class InkOutlineOut(_Model):
     """Where a scan's ink is: its convex hull's corners as ``[x, y]`` fractions of the scan's width and height.
     Straightening crops nothing inside it, so a preview crops the same way."""
@@ -898,6 +918,10 @@ class ConfigOptions(_Model):
     indexing_schemes: list[str]
     dashboard_rank_by: list[str]
     embedding_threshold_step: float
+    #: The tilt share the Config page offers, and the tilts it can't go under or over (degrees): its demo.
+    tilt_share_range: list[float]
+    tilt_min_degrees: float
+    tilt_max_degrees: float
     #: What a shortcut can be besides one character (" " is Space), for the Config page's key recorder.
     shortcut_named_keys: list[str]
 

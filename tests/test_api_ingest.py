@@ -225,39 +225,104 @@ def test_tilted_pages_are_suggested_and_straightened_only_on_request(ingest_clie
     assert ingest_client.post("/api/ingest/pages/straighten", json={"key": "1:99", "degrees": 2}).status_code == 404
 
 
-def test_straightening_a_read_page_moves_its_ocr_boxes_with_it(ingest_client, configured_ingest, tmp_path):
-    """The boxes stay in order, so the extraction's field sources (box numbers) still point at the same text."""
+def test_the_sidebar_counts_agree_with_each_step(ingest_client, configured_ingest, tmp_path):
+    scans = tmp_path / "scans"
+    printed(top_points="down").save(scans / PAGE_1)                                    # 1:1, upside down
+    tilt_fixture("receipt_crooked.png").save(scans / "01102025140000_3.png")           # 1:3, fed crooked
+    Image.new("RGB", (4, 4)).save(scans / "01112025090100_1.png")                      # not in a batch yet
+
+    counts = ingest_client.get("/api/ingest/counts").json()
+    assert counts["unindexed"] == ingest_client.get("/api/ingest/index").json()["unindexed_count"] == 1
+    assert counts["rotation_checked"]
+    assert [(r["key"], r["turned"], r["tilted"]) for r in counts["rotation"]] == [("1:1", True, False),
+                                                                               ("1:3", False, True)]
+    assert all(r["image_version"] == (scans / r["filename"]).stat().st_mtime_ns for r in counts["rotation"])
+    ocr = ingest_client.get("/api/ingest/ocr").json()
+    parse = ingest_client.get("/api/ingest/parse").json()
+    queue = ingest_client.get("/api/review/queue").json()
+    assert counts["ocr"] == ocr["to_process"] + ocr["waiting"]
+    assert counts["parse"] == parse["to_process"] + parse["waiting"]
+    assert counts["review"] == queue["summary"]["pending"]
+    archive = ingest_client.get("/api/ingest/archive").json()
+    assert archive["blocker"] is None and counts["archive"] == archive["documents"] > 0     # the batch is reviewed
+
+    assert ingest_client.post("/api/ingest/pages/rotate", json={"key": "1:1", "top_points": "down"}).status_code == 200
+    assert [r["key"] for r in ingest_client.get("/api/ingest/counts").json()["rotation"]] == ["1:3"]
+    decisions = load_decisions(configured_ingest)
+    del decisions["1:3"]
+    save_decisions(configured_ingest, decisions)
+    counts = ingest_client.get("/api/ingest/counts").json()
+    assert counts["archive"] == 0 and counts["review"] == ingest_client.get("/api/review/queue").json()["summary"]["pending"]
+
+
+def test_the_sidebar_counts_never_download_the_orientation_model(ingest_client, configured_ingest, tmp_path,
+                                                                  monkeypatch):
+    printed(top_points="down").save(tmp_path / "scans" / PAGE_1)                      # 1:1, turned
+    tilt_fixture("receipt_crooked.png").save(tmp_path / "scans" / "01102025140000_3.png")   # 1:3, tilted
+
+    def download(url=orientation.MODEL_URL):
+        pytest.fail("the sidebar downloaded the orientation model")
+    monkeypatch.setattr(orientation, "_net", None)
+    monkeypatch.setattr(orientation, "model_path", lambda: tmp_path / "not downloaded.onnx")
+    monkeypatch.setattr(orientation, "fetch_model", download)
+    counts = ingest_client.get("/api/ingest/counts")
+    assert counts.status_code == 200
+    assert counts.json()["rotation_checked"] is False                               # tilts only, until Fix Rotation
+    assert [(r["key"], r["turned"], r["tilted"]) for r in counts.json()["rotation"]] == [("1:3", False, True)]
+
+
+def test_the_sidebar_counts_tilts_when_the_orientation_model_cannot_be_loaded(ingest_client, configured_ingest,
+                                                                             tmp_path, monkeypatch):
+    printed(top_points="down").save(tmp_path / "scans" / PAGE_1)
+    broken = tmp_path / "broken.onnx"
+    broken.write_bytes(b"not a model")
+    monkeypatch.setattr(orientation, "_net", None)
+    monkeypatch.setattr(orientation, "model_path", lambda: broken)
+    counts = ingest_client.get("/api/ingest/counts")
+    assert counts.status_code == 200
+    assert counts.json()["rotation_checked"] is False and counts.json()["rotation"] == []
+
+
+@pytest.mark.parametrize("turn", [("straighten", {"degrees": 3.7}), ("rotate", {"top_points": "down"})])
+def test_turning_a_read_page_sends_it_back_to_ocr_and_parse(ingest_client, configured_ingest, tmp_path, turn):
+    """What was read from the scan the old way no longer holds: its OCR and its document's extraction go,
+    with their run records, and OCR and Parse take the page up again. A review decision is a person's, and
+    every other page keeps what was read from it."""
+    from data import EXTRACTION_RUNS, OCR_RUNS, load_model_runs, merge_model_runs
+    from models import ModelRun
+
     tilt_fixture("receipt_crooked.png").save(tmp_path / "scans" / PAGE_1)
+    merge_model_runs(configured_ingest, OCR_RUNS, {"1:1": ModelRun(model="m", at=0, seconds=1)})
+    merge_model_runs(configured_ingest, EXTRACTION_RUNS, {"1:1": ModelRun(model="m", at=0, seconds=1)})
     everything = load_ocr_results(configured_ingest)
-    before = everything["1:1"]
     extractions = load_extractions(configured_ingest)
-    assert before.boxes, "the fixture's page 1:1 has been read with boxes"
+    decisions = load_decisions(configured_ingest)
+    assert "1:1" in everything and "1:1" in extractions, "the fixture's page 1:1 is read and parsed"
+    assert ingest_client.get("/api/ingest/ocr").json()["to_process"] == 0
 
-    assert ingest_client.post("/api/ingest/pages/straighten", json={"key": "1:1", "degrees": 3.7}).status_code == 200
+    action, body = turn
+    assert ingest_client.post(f"/api/ingest/pages/{action}", json={"key": "1:1", **body}).status_code == 200
     after = load_ocr_results(configured_ingest)
-    assert [b.text for b in after["1:1"].boxes] == [b.text for b in before.boxes]
-    assert [b.coords for b in after["1:1"].boxes] != [b.coords for b in before.boxes]
-    assert after["1:1"].markdown == before.markdown and load_extractions(configured_ingest) == extractions
+    assert "1:1" not in after and "1:1" not in load_extractions(configured_ingest)
+    assert "1:1" not in load_model_runs(configured_ingest, OCR_RUNS)
+    assert "1:1" not in load_model_runs(configured_ingest, EXTRACTION_RUNS)
+    assert ingest_client.get("/api/ingest/ocr").json()["to_process"] == 1          # read again next run
+    assert load_decisions(configured_ingest) == decisions
     assert {k: v for k, v in after.items() if k != "1:1"} == {k: v for k, v in everything.items() if k != "1:1"}
+    assert {k: v for k, v in load_extractions(configured_ingest).items()} ==         {k: v for k, v in extractions.items() if k != "1:1"}
 
 
-def test_straightening_a_trimmed_page_moves_its_trim_and_the_band_it_was_read_from(ingest_client, configured_ingest,
-                                                                                    tmp_path):
-    from data import load_ocr_batch, load_trims, save_ocr_batch, set_trim
+def test_straightening_a_trimmed_page_moves_its_trim(ingest_client, configured_ingest, tmp_path):
+    from data import load_trims, set_trim
     from models import Trim
 
     tilt_fixture("receipt_crooked.png").save(tmp_path / "scans" / PAGE_1)
     band = Trim(top=0.1, bottom=0.8)
     set_trim(configured_ingest, "1:1", band)
-    results = load_ocr_batch(configured_ingest, 1)
-    results["1:1"] = results["1:1"].model_copy(update={"trim": band})
-    save_ocr_batch(configured_ingest, 1, results)
 
     assert ingest_client.post("/api/ingest/pages/straighten", json={"key": "1:1", "degrees": 3.7}).status_code == 200
     trim = load_trims(configured_ingest)["1:1"]
-    read = load_ocr_results(configured_ingest)["1:1"].trim
-    assert trim == read != band                                     # both moved, and the same way
-    assert trim.top < band.top + 0.05 and trim.bottom > band.bottom - 0.05
+    assert trim != band and trim.top < band.top + 0.05 and trim.bottom > band.bottom - 0.05   # keeps all it held
 
 
 def test_input_thumbnail(ingest_client, tmp_path):

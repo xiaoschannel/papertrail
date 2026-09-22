@@ -86,7 +86,8 @@ def test_only_pages_on_this_machine_are_served(api_client):
 def test_shortcuts_default_to_the_left_hand(api_client):
     assert api_client.get("/api/config").json()["shortcuts"] == {
         "accept": "a", "mark": "s", "toss": "d", "prev": "x", "next": "c", "undo": "z",
-        "quick_1": "1", "quick_2": "2", "quick_3": "3", "hide_boxes": "b", "hold_original": "r", "confirm": "e", "cancel": "q"}
+        "quick_1": "1", "quick_2": "2", "quick_3": "3", "hide_boxes": "b", "hold_original": "r", "confirm": "e", "cancel": "q",
+        "leave_as_is": "w", "turn_upright": "e", "toggle_guides": "r", "straighten": "d"}
 
 
 def test_shortcuts_are_saved_as_a_section(api_client):
@@ -101,10 +102,22 @@ def test_shortcuts_are_saved_as_a_section(api_client):
     assert body["normalize_engine"] == "string"
 
 
+def test_the_tilt_worth_fixing_is_kept_to_what_the_config_page_offers(api_client):
+    assert api_client.get("/api/config").json()["tilt_share"] == 0.03
+    assert api_client.patch("/api/config", json={"tilt_share": 0.05}).status_code == 200
+    assert api_client.get("/api/config").json()["tilt_share"] == 0.05
+    for bad in (0.0, 0.5, -0.02):
+        assert api_client.patch("/api/config", json={"tilt_share": bad}).status_code == 422, bad
+    options = api_client.get("/api/config/options").json()
+    assert options["tilt_share_range"] == [0.005, 0.1]
+    assert options["tilt_min_degrees"] < options["tilt_max_degrees"]
+
+
 def test_shortcuts_reject_what_a_page_could_not_tell_apart(api_client):
     keys = api_client.get("/api/config").json()["shortcuts"]
     for bad in ({"mark": "a"}, {"cancel": "e"}, {"toss": "1"}, {"quick_3": "r"}, {"hold_original": "a"}, {"prev": ""}, {"next": "cc"}, {"undo": "Tab"},
-                {"hide_boxes": "Shift"}, {"confirm": "enter"}, {"hold_original": "b"}):
+                {"hide_boxes": "Shift"}, {"confirm": "enter"}, {"hold_original": "b"}, {"straighten": "q"},
+                {"leave_as_is": "e"}):
         assert api_client.patch("/api/config", json={"shortcuts": {**keys, **bad}}).status_code == 422, bad
     assert api_client.get("/api/config").json()["shortcuts"] == keys
 

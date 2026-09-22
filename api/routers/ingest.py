@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 import ingest_pipeline as pipeline
 import rate_budget
+import review_logic as rl
 import slicing
 from api import cache, ingest_registry as registry
 from api import ingest_store as store
@@ -25,7 +26,8 @@ from api.jobs import EVERYTHING, NOTHING_HELD, Claim, JobConflict, runner
 from api.model_manager import models
 from api.schemas import (
     ApplySliceIn, ArchiveMoveOut, ArchiveStatus, BatchFile, BatchOut, ConfirmIndexIn, GroupingOut, GroupingPageOut,
-    IndexStatus, InkOutlineOut, JobOut, OcrStatus, PageIn, ParseStatus, ProposedBatch, RotateIn, SaveGroupingIn,
+    IndexStatus, InkOutlineOut, JobOut, OcrStatus, PageIn, ParseStatus, PipelineCountsOut, ProposedBatch,
+    RotateIn, RotationFlagOut, SaveGroupingIn,
     SaveGroupingOut, SliceCropOut, SliceMoveOut, SlicePlanIn, SlicePlanOut, SlicingOut, SlicingSheetOut, StartOcrIn,
     StartParseIn,
     TurnedPageOut, TurnedPagesOut,
@@ -34,7 +36,7 @@ from api.schemas import (
 from data import load_decisions, load_document_groups
 from indexing_schemes import SCHEMES
 from models import ScanBatch, batch_serial_key, parse_batch_serial_key
-from orientation import ModelUnavailable, load_model
+from orientation import ModelUnavailable, load_cached_model, load_model
 from settings import get_config, update_config
 
 router = APIRouter(prefix="/api/ingest", tags=["ingest"])
@@ -69,6 +71,49 @@ def _page_claim(key: str) -> Claim:
     """An edit to one page holds that page's batch (an unparseable key 404s in the pipeline)."""
     parsed = parse_batch_serial_key(key)
     return Claim(batches=frozenset({parsed[0]})) if parsed else NOTHING_HELD
+
+
+# --- The sidebar's counts ----------------------------------------------------------------------
+@router.get("/counts", response_model=PipelineCountsOut)
+def pipeline_counts(
+    output_path: Path = Depends(get_output_path),
+    input_path: Path = Depends(get_input_path),
+):
+    """What waits at each ingest step, cheaply enough to ask on every page: nothing in the archive is read,
+    and a scan is measured for turn and tilt once per version (the cache the Fix Rotation page shares).
+    The orientation model is used only once it is on disk: the Fix Rotation page downloads it."""
+    index = pipeline._load_index(output_path)
+    unindexed = 0
+    if input_path.is_dir():
+        indexed = set(pipeline.filename_to_batch_serial(index)) if index else set()
+        unindexed = sum(1 for fn in pipeline.input_images(input_path) if fn not in indexed)   # as File Index counts
+    if index is None:
+        return PipelineCountsOut(unindexed=unindexed, rotation=[], rotation_checked=True, ocr=0, parse=0, review=0,
+                                 archive=0)
+
+    turned: dict[str, int] = {}
+    tilted: dict[str, int] = {}
+    checked = load_cached_model()
+    for batch in index.batches:
+        if batch.archived:
+            continue
+        if checked:
+            for key, _, version in pipeline.turned_pages(output_path, input_path, batch.batch_id,
+                                                         estimate=store.scan_orientation):
+                turned[key] = version
+        for key, _, version in pipeline.tilted_pages(output_path, input_path, batch.batch_id,
+                                                     estimate=store.scan_skew, share=get_config().tilt_share):
+            tilted[key] = version
+    files = {batch_serial_key(b.batch_id, s): fn for b in index.batches if not b.archived for s, fn in b.files.items()}
+    rotation = [RotationFlagOut(key=k, filename=files[k], image_version=turned.get(k) or tilted[k],
+                                turned=k in turned, tilted=k in tilted) for k in sorted({*turned, *tilted})]
+
+    ocr = pipeline.plan_ocr(output_path, input_path, None, reprocess=False, limit=0, held=runner.held_batches())
+    parse = pipeline.plan_parse(output_path, reprocess=False, limit=0, held=runner.held_batches())
+    review = len(rl.pending_doc_keys(store.extractions(output_path), load_decisions(output_path)))
+    return PipelineCountsOut(unindexed=unindexed, rotation=rotation, rotation_checked=checked,
+                             ocr=len(ocr.items) + ocr.waiting, parse=len(parse.documents) + parse.waiting,
+                             review=review, archive=pipeline.archive_ready_documents(output_path))
 
 
 # --- File Index --------------------------------------------------------------------------------
@@ -250,7 +295,8 @@ def tilted_pages(
     Only a suggestion: nothing changes until a page is straightened.
     """
     try:
-        found = pipeline.tilted_pages(output_path, input_path, batch_id, estimate=store.scan_skew)
+        found = pipeline.tilted_pages(output_path, input_path, batch_id, estimate=store.scan_skew,
+                                      share=get_config().tilt_share)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc.args[0])) from exc
     return TiltedPagesOut(batch_id=batch_id, pages=[

@@ -6,6 +6,7 @@ import { Link } from 'react-router-dom'
 import { mediaUrl } from '../api/client.ts'
 import type { Trim, VizRecord } from '../api/types.ts'
 import { money } from '../format.ts'
+import { ScanViewer } from './scans.tsx'
 import { TrimmedImage } from './TrimmedImage.tsx'
 import { useGridColumnCount } from './useGridColumnCount.ts'
 import './DocumentCard.css'
@@ -58,6 +59,11 @@ export type DocumentCardProps<C extends ElementType = 'div'> =
  * The presentational document card: capped scan, name, caption. Knows nothing
  * about where documents live or what clicking does — pass that in.
  *
+ * The capped scan is cut off at the bottom, so a card with one also has a zoom
+ * button, over the scan's corner, that opens it full size in the scan viewer.
+ * It sits beside the card's root, not inside it, since the root may be a link
+ * or a button; the wrapper is what a containing layout lays out.
+ *
  * The card never sets its own outer margin; spacing belongs to the containing
  * layout (a grid gap, the calendar's .cal-items).
  */
@@ -74,14 +80,33 @@ export function DocumentCard<C extends ElementType = 'div'>({
   ...rest
 }: DocumentCardProps<C>) {
   const Root: ElementType = as ?? 'div'
+  const [viewing, setViewing] = useState(false)
   const cls = ['doc-card', compact && 'doc-card--compact', className].filter(Boolean).join(' ')
-  return (
+  const card = (
     <Root className={cls} {...rest}>
       {src && <CappedImage src={src} capRatio={capRatio} trim={trim} />}
       <div className="doc-card__name">{name}</div>
       {caption ? <div className="doc-card__caption">{caption}</div> : null}
       {children}
     </Root>
+  )
+  if (!src) return card
+  return (
+    <div className={`doc-card-wrap${compact ? ' doc-card-wrap--compact' : ''}`}>
+      {card}
+      <button className="doc-card__zoom" type="button" title="Show the scan full size" aria-label="Show the scan full size"
+        onClick={(e) => { e.preventDefault(); setViewing(true) }}>⤢</button>
+      {viewing && (
+        <ScanViewer label={name} src={src} onClose={() => setViewing(false)}
+          scan={(
+            <div className="scan-viewer__frame scan-viewer__frame--band">
+              <TrimmedImage fit="contain" src={src} trim={trim} lazy={false} alt="" />
+            </div>
+          )}>
+          {caption}
+        </ScanViewer>
+      )}
+    </div>
   )
 }
 
