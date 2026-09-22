@@ -5,6 +5,9 @@ when OCR or Parse runs, so they are cached and reloaded when a file's mtime or s
 folder: when any batch file does, or one comes or goes). ``decisions.json`` is small and is
 also written by other pages (File Index, Normalize, Archive), so it is always read fresh, and every
 read-modify-write goes through one lock so two requests can't lose each other's decision.
+
+Which way up each scan faces is cached the same way, per scan file: Slice and Group ask for a whole batch's
+on every visit, and a scan only changes when someone rotates it.
 """
 
 from __future__ import annotations
@@ -16,6 +19,7 @@ from typing import TypeVar
 
 from data import OCR_DIR, load_extractions, load_ocr_results, load_smart_match_cache, migrate_ocr_results
 from models import load_scan_index
+from orientation import OrientationEstimate, estimate_file_orientation
 
 T = TypeVar("T")
 
@@ -79,6 +83,24 @@ def smart_match_cache(output_path: Path):
     return _cached(output_path, "smart_match_cache.json", load_smart_match_cache)
 
 
+_orientation_cache: dict[str, tuple[tuple[int, int], OrientationEstimate]] = {}
+
+
+def scan_orientation(path: Path) -> OrientationEstimate:
+    """Which way one scan faces, estimated again when the file changes."""
+    key = str(path.resolve())
+    signature = _signature(path)
+    with _cache_lock:
+        hit = _orientation_cache.get(key)
+    if hit is not None and hit[0] == signature:
+        return hit[1]
+    value = estimate_file_orientation(path)
+    with _cache_lock:
+        _orientation_cache[key] = (signature, value)
+    return value
+
+
 def clear() -> None:
     with _cache_lock:
         _cache.clear()
+        _orientation_cache.clear()

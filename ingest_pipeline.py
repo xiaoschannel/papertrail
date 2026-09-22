@@ -85,6 +85,7 @@ from models import (
     load_scan_index,
     parse_batch_serial_key,
 )
+from orientation import UNREADABLE, OrientationEstimate, estimate_file_orientation
 from organize_utils import plan_accepted_destinations, scan_existing_names
 from settings import IMAGE_EXTENSIONS
 
@@ -356,6 +357,34 @@ def rotate_page_image(output_path: Path, input_path: Path, key: str, top_points:
     if parsed[1] in batch.grids or (decision is not None and decision.sliced):
         raise ValueError(f"{key} is sliced; unslice it before rotating it, since its crops are cut upright.")
     rotate_file_upright(input_path / filename, top_points)
+
+
+def turned_pages(output_path: Path, input_path: Path, batch_id: int,
+                 estimate: Callable[[Path], OrientationEstimate] = estimate_file_orientation,
+                 ) -> list[tuple[str, OrientationEstimate, int]]:
+    """A batch's pages whose scan looks sideways or upside down, in scan order, each with where its top
+    points and the scan version (its mtime, as the page grids' thumbnails use it) read before it was measured.
+    Raises ``orientation.ModelUnavailable`` when the model can't be had.
+
+    Only pages the rotate arrows can turn are looked at: not tossed pages, crops (turned the way their
+    sheet is) or sliced sheets, and only scans that are in the input folder. A scan that can't be read
+    (half copied, not an image) is left out rather than failing the rest. ``estimate`` lets a caller cache
+    estimates.
+    """
+    state = grouping_state(output_path, batch_id)
+    pages = [(p.key, input_path / p.filename) for p in state.pages
+             if not p.tossed and p.crop_of is None and not p.sliced and p.serial not in state.batch.grids]
+    pages = [(key, path, path.stat().st_mtime_ns) for key, path in pages if path.is_file()]
+
+    def readable(path: Path) -> OrientationEstimate | None:
+        try:
+            return estimate(path)
+        except UNREADABLE:
+            return None
+
+    with ThreadPoolExecutor(max_workers=8) as pool:   # the estimate is numpy/OpenCV work, off the GIL
+        estimates = list(pool.map(readable, [path for _, path, _ in pages]))
+    return [(key, e, version) for (key, _, version), e in zip(pages, estimates) if e is not None and e.needs_turning]
 
 
 # =====================================================================================

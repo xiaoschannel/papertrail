@@ -18,6 +18,13 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           pip install pytest
+      # The orientation model the tests run is fetched on first use (orientation.py); keep it between runs
+      # rather than downloading it from PyPI every time. The key ends in the start of its pinned hash
+      # (orientation.MODEL_SHA256): change it with the model, or every run downloads the new one.
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/papertrail
+          key: orientation-model-2f62c9bfb830
       - name: Run tests
         run: python -m pytest -q
       # The committed fixtures are generated: they must be exactly what the generator makes.
@@ -47,6 +54,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pytest
+      # The orientation model the tests run is fetched on first use (orientation.py); keep it between runs
+      # rather than downloading it from PyPI every time. The key ends in the start of its pinned hash
+      # (orientation.MODEL_SHA256): change it with the model, or every run downloads the new one.
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/papertrail
+          key: orientation-model-2f62c9bfb830
       - name: Run tests
         run: python -m pytest -q -rs
 

@@ -130,6 +130,19 @@ def test_crops_and_sliced_sheets_cant_be_rotated_and_crops_cant_be_linked(ingest
     assert ingest_client.post("/api/ingest/pages/toss", json={"key": "1:10"}).status_code == 200   # a crop can go
 
 
+def test_only_pages_the_rotate_arrows_can_turn_are_checked_for_orientation(ingest_client, scans):
+    """A sheet is turned before it is cut, so its crops come out the way it faced: neither a sliced sheet
+    nor its crops can be rotated, and neither is suggested."""
+    from tests.test_api_ingest import printed
+
+    for name in ("01102025133000_2.png", "01102025140000_3.png"):                  # 1:2, the sheet, and 1:3
+        printed(top_points="down").resize((600, 1320)).save(scans / name)
+    turned = lambda: [p["key"] for p in ingest_client.get("/api/ingest/turned", params={"batch_id": 1}).json()["pages"]]
+    assert turned() == ["1:2", "1:3"]
+    slice_sheet(ingest_client)                                                     # crops 1:9-1:11, cut upside down
+    assert turned() == ["1:3"]
+
+
 def test_archived_tossed_and_marked_crops_are_known_by_their_scan_names(ingest_client, configured_ingest, scans):
     """Sanity Check and a resumed Archive find a crop filed in tossed/ or marked/ under its batch name."""
     import ingest_pipeline as ip

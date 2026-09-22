@@ -4,7 +4,8 @@ import { api, inputThumbUrl } from '../api/client.ts'
 import type { Grouping, GroupingPage, TopPoints } from '../api/types.ts'
 import { ConfirmDialog } from '../components/ConfirmDialog.tsx'
 import { useBatchHolder, useEverythingHolder } from '../components/jobs.tsx'
-import { BatchSelect, Pager, RotateButtons, ScanViewer } from '../components/scans.tsx'
+import { BatchSelect, Pager, RotateButtons } from '../components/scans.tsx'
+import { PageViewer, TurnNotice, useTurnedPages, type Viewing } from '../components/turns.tsx'
 import { Card, Empty, ErrorState, Loading } from '../components/ui.tsx'
 import { useGridColumnCount } from '../components/useGridColumnCount.ts'
 import './ingest.css'
@@ -115,7 +116,7 @@ function GroupingEditor({ data, batchId, onBatch }: { data: Grouping; batchId: n
   const [page, setPage] = useState(0)
   const [confirmingSave, setConfirmingSave] = useState(false)
   const [saved, setSaved] = useState('')
-  const [zoomed, setZoomed] = useState<GroupingPage | null>(null)
+  const [viewing, setViewing] = useState<Viewing | null>(null)
   const grid = useRef<HTMLDivElement>(null)
   const columns = useGridColumnCount(grid, 6)
 
@@ -149,6 +150,7 @@ function GroupingEditor({ data, batchId, onBatch }: { data: Grouping; batchId: n
 
   const pagesByKey = useMemo(() => new Map(data.pages.map((p) => [p.key, p])), [data])
   const tossed = useMemo(() => new Set(data.pages.filter((p) => p.tossed).map((p) => p.key)), [data])
+  const turned = useTurnedPages(batchId, pagesByKey)
 
   const current = rebase(draft, data)  // same as the synced draft; avoids one frame of stale links
   const activeKeys = current.keys.filter((k) => !tossed.has(k))
@@ -187,6 +189,8 @@ function GroupingEditor({ data, batchId, onBatch }: { data: Grouping; batchId: n
         <BatchSelect id="grouping-batch" batches={data.batches} value={batchId} onChange={onBatch} />
       </div>
       {pageAction.error && <div className="error-banner" role="alert">{pageAction.error.message}</div>}
+      <TurnNotice query={turned.query} turns={turned.turns}
+        onReview={() => setViewing({ keys: current.keys.filter((k) => turned.turns.has(k)), at: 0, review: true })} />
       {pager}
       <div className="page-grid" ref={grid}>
         {current.keys.slice(start, start + perPage).map((key, offset) => {
@@ -201,7 +205,8 @@ function GroupingEditor({ data, batchId, onBatch }: { data: Grouping; batchId: n
           const linked = linkable && Boolean(current.links[activeIndex])
           const group = groupOf.get(key)
           return (
-            <PageTile key={key} page={pageInfo} group={group} onZoom={() => setZoomed(pageInfo)}
+            <PageTile key={key} page={pageInfo} group={group} turn={turned.turns.get(key)}
+              onZoom={() => setViewing({ keys: [key], at: 0, review: false })}
               busy={pageAction.isPending} rotateLocked={holder !== null} tossLocked={archiving !== null}
               onRotate={(top) => pageAction.mutate({ action: 'rotate', key, top })}
               onToss={() => pageAction.mutate({ action: pageInfo.tossed ? 'recover' : 'toss', key })}
@@ -233,8 +238,9 @@ function GroupingEditor({ data, batchId, onBatch }: { data: Grouping; batchId: n
         {!changed && <span className={`ingest-note${saved ? ' ok' : ''}`}>{saved || 'No unsaved changes.'}</span>}
       </div>
 
-      {zoomed && <ScanViewer label={zoomed.key} filename={zoomed.filename} version={zoomed.image_version}
-        onClose={() => setZoomed(null)} />}
+      {viewing && <PageViewer viewing={viewing} pages={pagesByKey} turns={turned.turns}
+        locked={holder === null ? null : `Waiting for ${holder.title}: it is using batch ${batchId}.`}
+        onSetAside={turned.setAside} onMove={setViewing} onClose={() => setViewing(null)} />}
 
       {confirmingSave && (
         <ConfirmDialog title="Save document groups?" confirmLabel="Save" danger busy={save.isPending}
@@ -249,9 +255,11 @@ function GroupingEditor({ data, batchId, onBatch }: { data: Grouping; batchId: n
 
 const GROUP_HUES = [210, 32, 150, 280, 350, 90]
 
-function PageTile({ page, group, link, busy, rotateLocked, tossLocked, onRotate, onToss, onZoom }: {
+function PageTile({ page, group, turn, link, busy, rotateLocked, tossLocked, onRotate, onToss, onZoom }: {
   page: GroupingPage
   group: number | undefined
+  /** Where the scan's top seems to point, when it looks turned. */
+  turn: TopPoints | undefined
   link: ReactNode
   busy: boolean
   rotateLocked: boolean
@@ -268,7 +276,7 @@ function PageTile({ page, group, link, busy, rotateLocked, tossLocked, onRotate,
       <figure className={`page-tile${page.tossed ? ' tossed' : ''}${group !== undefined ? ' grouped' : ''}`} style={style}>
         <div className="page-tile__tools">
           <RotateButtons disabled={busy || rotateLocked || !page.image_available || cut !== undefined}
-            {...(cut ? { title: cut } : {})} onRotate={onRotate} />
+            {...(cut ? { title: cut } : {})} suggested={turn} onRotate={onRotate} />
           <button className={page.tossed ? '' : 'danger-outline'} disabled={busy || tossLocked || page.sliced} onClick={onToss}
             title={page.sliced ? 'A sliced sheet stays tossed; unslice it on the Slice page'
               : page.tossed ? 'Recover this page' : 'Toss this page'}>
