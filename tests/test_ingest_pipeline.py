@@ -535,3 +535,121 @@ def test_a_partly_failed_run_names_the_failures(ingest_dir, tmp_path):
     message = ip.run_ocr(ingest_dir, items, provider, structured=False, progress=FakeProgress(),
                          model="Fake OCR", shuffle=False)
     assert message == "OCR read 1 of 2 page(s). 1 failed."
+
+
+# --- trims ---------------------------------------------------------------------------------------------
+#: The fixture's trimmed page (trims.json), and the band OCR read it under (ocr/1.json).
+TRIMMED, FIXTURE_TRIM = "1:3", (0.0, 0.75)
+
+
+def test_the_fixture_s_trimmed_page_was_read_under_its_trim(ingest_dir, tmp_path):
+    from data import load_trims
+    from models import Trim
+
+    band = Trim(top=FIXTURE_TRIM[0], bottom=FIXTURE_TRIM[1])
+    assert load_trims(ingest_dir) == {TRIMMED: band}
+    assert load_ocr_results(ingest_dir)[TRIMMED].trim == band
+    plan = ip.plan_ocr(ingest_dir, _scans(tmp_path, ingest_dir), None, reprocess=False, limit=0)
+    assert plan.items == [] and plan.retrimmed == 0            # read as it is trimmed: nothing is due
+
+
+def test_a_page_trimmed_differently_after_it_was_read_is_read_again(ingest_dir, tmp_path):
+    from data import load_trims
+    from models import Trim
+
+    scans = _scans(tmp_path, ingest_dir)
+    ip.trim_page(ingest_dir, TRIMMED, Trim(top=0.0, bottom=0.6))          # the cut moves up
+    ip.trim_page(ingest_dir, "1:2", Trim(top=0.1, bottom=1.0))             # a page read whole gets one
+
+    plan = ip.plan_ocr(ingest_dir, scans, None, reprocess=False, limit=0)
+    assert sorted(k for k, _ in plan.items) == ["1:2", TRIMMED] and plan.retrimmed == 2
+    assert plan.processed == 8                            # they were read; they are due again, not unread
+    ip.trim_page(ingest_dir, TRIMMED, Trim(top=FIXTURE_TRIM[0], bottom=FIXTURE_TRIM[1]))   # moved back
+    ip.trim_page(ingest_dir, "1:2", None)                                                   # taken off
+    assert ip.plan_ocr(ingest_dir, scans, None, reprocess=False, limit=0).items == []
+    assert set(load_trims(ingest_dir)) == {TRIMMED}
+    with pytest.raises(KeyError):
+        ip.trim_page(ingest_dir, "1:99", Trim(top=0.1, bottom=1.0))
+
+
+def test_ocr_of_the_coupon_scan_never_sees_the_coupon(ingest_dir, tmp_path):
+    """The trims fixture: a receipt with a coupon under it, and the trim that keeps the receipt."""
+    from models import Trim
+
+    spec = json.loads((FIXTURES / "trims" / "receipt_with_coupon.json").read_text(encoding="utf-8"))
+    scans = _scans(tmp_path, ingest_dir)
+    shutil.copy(FIXTURES / "trims" / "receipt_with_coupon.png", scans / "01102025132642_1.png")      # page 1:1
+    band = Trim.model_validate(spec["trim"])
+    ip.trim_page(ingest_dir, "1:1", band)
+    seen = []
+
+    class LookingOcr(FakeOcr):
+        def run(self, path, structured=False):
+            with Image.open(path) as image:
+                seen.append((image.height, set(image.convert("L").getdata())))
+            return super().run(path, structured)
+
+    ip.run_ocr(ingest_dir, [("1:1", scans / "01102025132642_1.png")], LookingOcr(), structured=True,
+               progress=FakeProgress(), model="Fake", shuffle=False)
+
+    assert len(seen) == 2                                              # the text pass and the boxes pass
+    for height, greys in seen:
+        assert spec["receipt_rows"][1] <= height < spec["tear_row"]      # cut in the gap above the tear line
+        assert spec["receipt_mark"] in greys and spec["coupon_mark"] not in greys
+    assert load_ocr_results(ingest_dir)["1:1"].trim == band
+
+
+def test_ocr_reads_only_the_band_and_remembers_which(ingest_dir, tmp_path):
+    from models import Trim
+
+    scans = _scans(tmp_path, ingest_dir)                  # 40 x 80 scans
+    ip.trim_page(ingest_dir, "1:1", Trim(top=0.5, bottom=1.0))
+    seen = []
+
+    class SizingOcr(FakeOcr):
+        def run(self, path, structured=False):
+            with Image.open(path) as image:
+                seen.append(image.size)
+            return super().run(path, structured)
+
+    items = [("1:1", scans / "01102025132642_1.png"), ("1:2", scans / "01102025133000_2.png")]
+    ip.run_ocr(ingest_dir, items, SizingOcr(), structured=True, progress=FakeProgress(), model="Fake", shuffle=False)
+
+    assert seen == [(40, 40), (40, 40), (40, 80), (40, 80)]     # both passes on the band; the other page whole
+    results = load_ocr_results(ingest_dir)
+    assert results["1:1"].trim == Trim(top=0.5, bottom=1.0) and results["1:2"].trim is None
+    assert ip.plan_ocr(ingest_dir, scans, None, reprocess=False, limit=0).retrimmed == 0
+
+
+def test_a_trim_turns_with_its_page(ingest_dir, tmp_path):
+    from data import load_trims
+    from models import Trim
+
+    scans = _scans(tmp_path, ingest_dir)
+    ip.trim_page(ingest_dir, "1:1", Trim(top=0.1, bottom=0.6))
+
+    ip.rotate_page_image(ingest_dir, scans, "1:1", "down")
+    ip.rotate_page_image(ingest_dir, scans, TRIMMED, "left")
+
+    assert load_trims(ingest_dir) == {"1:1": Trim(top=0.4, bottom=0.9)}   # a quarter turn leaves 1:3 whole
+
+
+def test_the_grouping_editor_sees_each_page_s_trim(ingest_dir):
+    from models import Trim
+
+    pages = {page.key: page.trim for page in ip.grouping_state(ingest_dir, 1).pages}
+    assert pages[TRIMMED] == Trim(top=FIXTURE_TRIM[0], bottom=FIXTURE_TRIM[1])
+    assert all(t is None for k, t in pages.items() if k != TRIMMED)
+
+
+def test_archiving_files_each_page_s_trim_with_it(ingest_dir, tmp_path):
+    from data import TRIMS, read_sidecar
+    from models import Trim
+
+    ip.run_archive(ingest_dir, _scans(tmp_path, ingest_dir), FakeProgress())
+
+    filed = {read_sidecar(p).original_filename: read_sidecar(p) for p in (ingest_dir / "2025" / "01").glob("*.png")}
+    band = Trim(top=FIXTURE_TRIM[0], bottom=FIXTURE_TRIM[1])
+    assert filed["01102025140000_3.png"].trim == band and filed["01102025140000_3.png"].ocr.trim == band
+    assert all(s.trim is None for name, s in filed.items() if name != "01102025140000_3.png")
+    assert not (ingest_dir / TRIMS).exists()

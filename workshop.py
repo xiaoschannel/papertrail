@@ -19,8 +19,8 @@ from dedupe_candidates import WEEK_WINDOW, parse_verdict_datetime
 from document_files import MARKED, ensure_movable, load_pages, place_document, toss_document
 from document_grouping import rotate_file_upright
 from models import (
-    DocumentExtraction, DocumentKey, OcrResult, ReceiptResult, ReviewDecision, ScanIndex, Sidecar, batch_serial_key,
-    ocr_page_section,
+    DocumentExtraction, DocumentKey, OcrResult, ReceiptResult, ReviewDecision, ScanIndex, Sidecar, Trim,
+    batch_serial_key, ocr_page_section, turned_trim,
 )
 from viz_records import page_order
 
@@ -139,7 +139,8 @@ def store_reprocessed(document: MarkedDocument, reread: Reread) -> None:
 
     OCR read the pages turned by ``top_points``, so its boxes are measured on the turned image: the files
     are turned too, or the boxes would sit in the wrong places wherever the scan is shown later. Only the
-    turn is kept; the treatments were only there to help OCR read, and change no geometry.
+    turn is kept; the treatments were only there to help OCR read, and change no geometry. A trim is
+    measured on the file, so the page's, and the one the read was made from, turn with it.
     """
     from data import write_sidecar
 
@@ -147,7 +148,9 @@ def store_reprocessed(document: MarkedDocument, reread: Reread) -> None:
         if index >= len(reread.results):
             break
         rotate_file_upright(path, reread.top_points)
-        update = {"ocr": reread.results[index]}
+        result = reread.results[index]
+        update = {"ocr": result.model_copy(update={"trim": turned_trim(result.trim, reread.top_points)}),
+                  "trim": turned_trim(sidecar.trim, reread.top_points)}
         if index == 0:
             update["extraction"] = reread.extraction
         write_sidecar(path, sidecar.model_copy(update=update))
@@ -179,6 +182,27 @@ def toss(output_path: Path, document: MarkedDocument) -> list[str]:
     tossed = toss_document(output_path, document.pages)
     rereads.drop(document.key)
     return tossed
+
+
+def reading_trim(band: Trim | None, top_points: str) -> Trim | None:
+    """The part of a page a reread reads when it is turned from ``top_points``: its trim, or all of it
+    under a quarter turn. A trim runs along the page as stored, and Accept, which turns the file, can't
+    keep one across a quarter turn (``turned_trim``); reading the whole page keeps the boxes true to it."""
+    return None if top_points in ("left", "right") else band
+
+
+def marked_page(output_path: Path, filename: str) -> tuple[Path, Sidecar] | None:
+    """A page of a marked document, by its file in ``marked/``, with its sidecar."""
+    return next(((path, sidecar) for document in marked_documents(output_path)
+                 for path, sidecar in zip(document.pages, document.sidecars) if path.name == filename), None)
+
+
+def trim_page(path: Path, sidecar: Sidecar, band: Trim | None) -> None:
+    """Keep only ``band`` of a marked page (None: all of it). The scan is untouched; a reread reads only
+    the band, and every display shows only the band."""
+    from data import write_sidecar
+
+    write_sidecar(path, sidecar.model_copy(update={"trim": band}))
 
 
 def _write_missing_sidecars(document: MarkedDocument) -> None:
@@ -222,6 +246,7 @@ class ContextScan:
     cost: float = 0.0
     currency: str = ""
     image: str | None = None         # a media URL
+    trim: Trim | None = None       # of the scan at ``image``
     receipt: str | None = None       # the archived document's id, for Receipt Detail
     current: bool = False
 
@@ -242,14 +267,15 @@ def _input_url(filename: str) -> str:
 
 def week_around(document: MarkedDocument, date: str, time: str, archived: list[dict],
                 marked: list[MarkedDocument], ingesting: dict[str, ReviewDecision],
-                scan_index: ScanIndex | None) -> list[ContextScan] | None:
+                scan_index: ScanIndex | None, trims: dict[str, Trim] | None = None) -> list[ContextScan] | None:
     """Receipts within a week either side of ``date``/``time`` (the form's values), in time order.
 
     A marked document is archived, so the week comes from the archive, the other marked documents and
     whatever is mid-ingest, not just its own batch. None when the form has no usable date yet. Tossed
     documents are left out. A document whose date isn't one
-    (2025-02-31) is skipped rather than failing the whole strip.
+    (2025-02-31) is skipped rather than failing the whole strip. ``trims`` are the mid-ingest pages'.
     """
+    trims = trims or {}
     target = _when(date, time)
     if target is None:
         return None
@@ -266,7 +292,9 @@ def week_around(document: MarkedDocument, date: str, time: str, archived: list[d
         add(_when(record["date"], record["time"]), ContextScan(
             filename=record["filename"], verdict="accepted", name=record["name"], date=record["date"],
             time=record["time"], cost=float(record["cost"]), currency=record["currency"],
-            image=_archived_url(record["path"]) if record["path"] else None, receipt=record["filename"]))
+            image=_archived_url(record["path"]) if record["path"] else None,
+            trim=Trim.model_validate(record["trim"]) if record.get("trim") else None,
+            receipt=record["filename"]))
 
     for other in marked:
         review = other.first.review
@@ -274,7 +302,8 @@ def week_around(document: MarkedDocument, date: str, time: str, archived: list[d
             continue
         add(_when(review.date, review.time), ContextScan(
             filename=other.pages[0].name, verdict="marked", name=review.name, date=review.date, time=review.time,
-            cost=review.cost, currency=review.currency, image=_archived_url(f"{MARKED}/{other.pages[0].name}")))
+            cost=review.cost, currency=review.currency, image=_archived_url(f"{MARKED}/{other.pages[0].name}"),
+            trim=other.first.trim))
 
     files = {(batch.batch_id, serial): name for batch in (scan_index.batches if scan_index else [])
              for serial, name in batch.files.items()}
@@ -286,20 +315,24 @@ def week_around(document: MarkedDocument, date: str, time: str, archived: list[d
         add(_when(decision.date, decision.time), ContextScan(
             filename=first or key, verdict=decision.verdict, name=decision.name, date=decision.date,
             time=decision.time, cost=decision.cost, currency=decision.currency,
-            image=_input_url(first) if first else None))
+            image=_input_url(first) if first else None,
+            trim=trims.get(batch_serial_key(parsed.batch_id, parsed.first_serial))))
 
     review = document.first.review
     found.append((target, ContextScan(
         filename=document.pages[0].name, verdict="marked", name=review.name, date=date, time=time,
         cost=review.cost, currency=review.currency, image=_archived_url(f"{MARKED}/{document.pages[0].name}"),
-        current=True)))
+        trim=document.first.trim, current=True)))
     found.sort(key=lambda pair: pair[0])
     return [scan for _, scan in found]
 
 
 def same_batch(output_path: Path, input_path: Path | None, document: MarkedDocument, scan_index: ScanIndex | None,
-               tossed: set[str], accepted: dict[str, tuple[Sidecar, str]]) -> tuple[int | None, list[ContextScan]]:
-    """Every scan of the document's batch in scan order, with where each one ended up."""
+               tossed: set[str], accepted: dict[str, tuple[Sidecar, str]],
+               trims: dict[str, Trim] | None = None) -> tuple[int | None, list[ContextScan]]:
+    """Every scan of the document's batch in scan order, with where each one ended up. ``trims`` are the
+    mid-ingest pages'."""
+    trims = trims or {}
     batch_id = document.first.batch_id
     batch = next((b for b in (scan_index.batches if scan_index else []) if b.batch_id == batch_id), None)
     if batch is None:
@@ -317,19 +350,23 @@ def same_batch(output_path: Path, input_path: Path | None, document: MarkedDocum
                 filename=filename, verdict="marked", current=current,
                 name=review.name if review else "", date=review.date if review else "",
                 time=review.time if review else "", cost=review.cost if review else 0.0, currency=review.currency if review else "",
-                image=_archived_url(f"{MARKED}/{filed}")))
+                image=_archived_url(f"{MARKED}/{filed}"), trim=sidecar.trim if sidecar else None))
         elif filename in accepted:
             sidecar, rel_path = accepted[filename]
             review = sidecar.review
             scans.append(ContextScan(
                 filename=filename, verdict="accepted", current=current, name=review.name, date=review.date,
                 time=review.time, cost=review.cost, currency=review.currency,
-                image=_archived_url(rel_path) if rel_path else None, receipt=sidecar.document_key or filename))
+                image=_archived_url(rel_path) if rel_path else None, trim=sidecar.trim,
+                receipt=sidecar.document_key or filename))
         elif filed in tossed:
+            sidecar = read_sidecar(output_path / "tossed" / filed)
             scans.append(ContextScan(filename=filename, verdict="tossed", current=current,
-                                     image=_archived_url(f"tossed/{filed}")))
+                                     image=_archived_url(f"tossed/{filed}"),
+                                     trim=sidecar.trim if sidecar else None))
         else:
             available = input_path is not None and (input_path / filename).is_file()
             scans.append(ContextScan(filename=filename, verdict="", current=current,
-                                     image=_input_url(filename) if available else None))
+                                     image=_input_url(filename) if available else None,
+                                     trim=trims.get(batch_serial_key(batch.batch_id, serial))))
     return batch_id, scans

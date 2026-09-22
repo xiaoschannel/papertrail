@@ -13,7 +13,11 @@ import pandas as pd
 
 from brand_registry import enrich_receipt_brand_columns, load_brand_directory
 from data import load_reorganized_state
-from models import Sidecar
+from models import Sidecar, Trim
+
+
+def _dumped(band: Trim | None) -> dict | None:
+    return band.model_dump() if band else None
 
 
 def page_order(sidecar: Sidecar, rel_path: str) -> tuple:
@@ -54,6 +58,8 @@ def build_viz_records(output_path: Path,
             "filename": doc_id,
             "path": first_path,
             "paths": paths,
+            "trim": _dumped(first_sc.trim),
+            "trims": [_dumped(sidecar.trim) for _, sidecar in pages],
             "document_type": review.document_type,
             "name": review.name,
             "date": review.date,

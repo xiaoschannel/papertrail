@@ -20,6 +20,7 @@ from models import (
     ReviewDecision,
     ScanIndex,
     Sidecar,
+    Trim,
     SmartMatchHistoryRow,
 )
 
@@ -246,6 +247,46 @@ def drop_model_runs(output_path: Path, name: str, keys: set[str]) -> int:
             atomic_write_text(output_path / name, json.dumps(
                 {k: v.model_dump() for k, v in current.items() if k not in gone}, indent=2, ensure_ascii=False))
         return len(gone)
+
+
+#: How pages still being ingested are trimmed, by page key; Archive folds each into its page's sidecar and
+#: deletes the file. A page that isn't trimmed has no entry.
+TRIMS = "trims.json"
+
+_trims_lock = threading.Lock()
+
+
+def load_trims(output_path: Path) -> dict[str, Trim]:
+    path = output_path / TRIMS
+    if not path.exists():
+        return {}
+    return {k: Trim.model_validate(v) for k, v in json.loads(path.read_text(encoding="utf-8")).items()}
+
+
+def set_trim(output_path: Path, key: str, band: Trim | None) -> None:
+    """Trim one page (``None`` keeps the whole page), leaving every other page's trim alone."""
+    with _trims_lock:
+        current = load_trims(output_path)
+        if band is None:
+            if current.pop(key, None) is None:
+                return
+        else:
+            current[key] = band
+        _save_trims(output_path, current)
+
+
+def drop_trims(output_path: Path, keys: set[str]) -> int:
+    """Remove these pages' trims; returns how many went."""
+    with _trims_lock:
+        current = load_trims(output_path)
+        gone = keys & set(current)
+        if gone:
+            _save_trims(output_path, {k: v for k, v in current.items() if k not in gone})
+        return len(gone)
+
+
+def _save_trims(output_path: Path, trims: dict[str, Trim]) -> None:
+    atomic_write_text(output_path / TRIMS, json.dumps({k: v.model_dump() for k, v in sorted(trims.items())}, indent=2))
 
 
 def load_decisions(output_path: Path) -> dict[str, ReviewDecision]:

@@ -271,7 +271,7 @@ function ImageColumn({ run, view, onView, treatment, comparing, activeFields, on
   // Until the first reading arrives (a moment after its job ends) there is only the preview to show.
   const seen = ocr ? experimentSeenUrl(run.id, String(ocr.read_at)) : experimentScanUrl(run.id, settled)
   const boxes: FieldBox[] = view === 'boxes' ? ocr?.boxes ?? [] : view === 'fields' ? parse?.field_boxes ?? [] : []
-  const page = { file_key: run.id, filename: run.filename, image_available: true, boxes }
+  const page = { file_key: run.id, filename: run.filename, image_available: true, boxes, trim: null, retrimmed: false }
   const hint = view === 'preview' ? (comparing ? 'as uploaded' : 'what OCR will read with the settings below')
     : view === 'boxes' ? `what ${ocr?.model} read, and the ${ocr?.boxes.length ?? 0} boxes it found`
     : `the boxes ${parse?.extractor} took each field from`

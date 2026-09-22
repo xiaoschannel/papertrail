@@ -164,7 +164,7 @@ def merchant_endpoint(
     # Slim projection for the gallery: deliberately excludes ocr_markdown/items so
     # the payload stays small for merchants with hundreds of receipts.
     slim_cols = [
-        c for c in ("filename", "path", "date", "time", "cost", "currency",
+        c for c in ("filename", "path", "trim", "date", "time", "cost", "currency",
                     "name", "brand_location", "document_type")
         if c in subset.columns
     ]
@@ -255,8 +255,9 @@ def receipt_runs(file: str = Query(...), output_path: Path = Depends(get_output_
 @router.get("/receipt/pages", response_model=list[ReviewPage])
 def receipt_pages(file: str = Query(...), output_path: Path = Depends(get_output_path)):
     """The document's scans with their boxes, as Review and the Workshop draw them: the boxes the fields
-    cite (from the extraction on the first page's sidecar), or every box read when nothing is cited.
-    `filename` is the page's path in the archive, which is what /api/media/archived serves."""
+    cite (from the extraction on the first page's sidecar), or every box read when nothing is cited, placed
+    on the band each page is trimmed to. `filename` is the page's path in the archive, which is what
+    /api/media/archived serves."""
     df = cache.viz_records(output_path)
     match = df[df["filename"] == file] if not df.empty else df
     if match.empty:
@@ -267,10 +268,13 @@ def receipt_pages(file: str = Query(...), output_path: Path = Depends(get_output
     field_sources = getattr(extraction, "field_sources", {}) or {}
     pages = []
     for page_number, (rel, sidecar) in enumerate(zip(paths, sidecars), start=1):
-        found = (sidecar.ocr.boxes if sidecar and sidecar.ocr else None) or []
+        ocr = sidecar.ocr if sidecar else None
+        trim = sidecar.trim if sidecar else None
+        found = (ocr.boxes if ocr else None) or []
         drawn = rl.field_boxes(page_number, found, field_sources) if field_sources else rl.all_boxes(found)
         pages.append(ReviewPage(file_key=rel, filename=rel, image_available=(output_path / rel).is_file(),
-                                boxes=FieldBoxOut.all_of(drawn)))
+                                boxes=FieldBoxOut.all_of(rl.reframed(drawn, ocr.trim if ocr else None, trim)),
+                                trim=trim, retrimmed=bool(ocr and ocr.succeeded and ocr.trim != trim)))
     return pages
 
 

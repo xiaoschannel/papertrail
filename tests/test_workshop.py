@@ -162,3 +162,64 @@ def test_a_scan_marked_by_hand_without_a_sidecar_is_listed_and_can_be_decided(ar
     [placed] = workshop.accept(archive_dir, document, _decision())
     assert read_sidecar(archive_dir / placed).original_filename == "hand placed.png"
 
+
+
+# --- trims ----------------------------------------------------------------------------------------------
+def _trimmed_reread(document, top_points, band):
+    from models import OcrResult
+
+    read = ReceiptResult(document_type="receipt", language="ja", date="2025-08-10", time="14:20",
+                         name="ローソン 池袋店", currency="JPY", address="", cost=300.0)
+    return workshop.Reread(pages=tuple(document.filenames),
+                           results=[OcrResult(markdown="p1", trim=workshop.reading_trim(band, top_points))],
+                           extraction=read, top_points=top_points, ocr_model="m", extractor="e")
+
+
+def test_trimming_a_marked_page_keeps_the_cut_with_the_page(archive_dir):
+    from models import Trim
+
+    path, sidecar = workshop.marked_page(archive_dir, "08102025142000_202.png")
+    workshop.trim_page(path, sidecar, Trim(top=0.0, bottom=0.7))
+
+    assert read_sidecar(path).trim == Trim(top=0.0, bottom=0.7)
+    assert read_sidecar(path).review == sidecar.review                      # nothing else about it changes
+    assert workshop.marked_page(archive_dir, "08102025142000_202.json") is None    # a page, not any file
+
+
+def test_accepting_a_page_turned_upside_down_turns_its_trim_too(archive_dir):
+    from models import Trim
+
+    path, sidecar = workshop.marked_page(archive_dir, "08102025142000_202.png")
+    band = Trim(top=0.1, bottom=0.6)
+    workshop.trim_page(path, sidecar, band)
+    document = workshop.find(archive_dir, "9:202")
+
+    [placed] = workshop.accept(archive_dir, document, _decision(), _trimmed_reread(document, "down", band))
+
+    filed = read_sidecar(archive_dir / placed)
+    assert filed.trim == Trim(top=0.4, bottom=0.9) and filed.ocr.trim == Trim(top=0.4, bottom=0.9)
+
+
+def test_a_quarter_turn_reads_the_whole_page_and_files_it_whole(archive_dir):
+    """A trim runs along the page as stored; turned a quarter, it would lie across, so it isn't kept."""
+    from models import Trim
+
+    path, sidecar = workshop.marked_page(archive_dir, "08102025142000_202.png")
+    band = Trim(top=0.1, bottom=0.6)
+    workshop.trim_page(path, sidecar, band)
+    document = workshop.find(archive_dir, "9:202")
+    assert workshop.reading_trim(band, "left") is None and workshop.reading_trim(band, "down") == band
+
+    [placed] = workshop.accept(archive_dir, document, _decision(), _trimmed_reread(document, "left", band))
+
+    filed = read_sidecar(archive_dir / placed)
+    assert filed.trim is None and filed.ocr.trim is None
+
+
+def test_a_scan_marked_by_hand_can_be_trimmed(archive_dir):
+    from models import Trim
+
+    shutil.copy(archive_dir / "marked" / "08102025142000_202.png", archive_dir / "marked" / "by hand.png")
+    path, sidecar = workshop.marked_page(archive_dir, "by hand.png")
+    workshop.trim_page(path, sidecar, Trim(top=0.2, bottom=1.0))
+    assert read_sidecar(path).trim == Trim(top=0.2, bottom=1.0) and read_sidecar(path).review.verdict == "marked"

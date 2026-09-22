@@ -182,12 +182,14 @@ def test_receipt_lookup_and_404(api_client):
 
 
 def _record_with_a_box(api_client, archive):
+    """The untrimmed page with an OCR box. Records come in the order the file system lists the archive, which
+    isn't the same on every OS, and the trimmed page with a box shows it moved onto its band."""
     from data import read_sidecar
     for record in api_client.get("/api/viz/records").json():
         sidecar = read_sidecar(archive / record["paths"][0])
-        if sidecar and sidecar.ocr and sidecar.ocr.boxes:
+        if sidecar and sidecar.ocr and sidecar.ocr.boxes and record["trim"] is None:
             return record
-    raise AssertionError("the fixture archive has a page with an OCR box")
+    raise AssertionError("the fixture archive has an untrimmed page with an OCR box")
 
 
 def test_receipt_pages_draw_every_box_read_when_no_field_cites_one(api_client, configured_archive):
@@ -273,3 +275,27 @@ def test_documents_lists_every_archived_document_for_the_picker(api_client):
     assert [d["filename"] for d in listed] == sorted(r["filename"] for r in records)
     assert {d["document_type"] for d in listed} >= {"receipt"}
     assert any(d["date"] == "" for d in listed)           # the undated one is reachable too
+
+
+#: The archive fixture's trimmed page: read whole, then trimmed to its top 60% (tools/build_fixture.py).
+TRIMMED_PATH_END = "上野店.png"
+
+
+def test_a_document_s_trims_come_with_it_wherever_its_scan_is_shown(api_client):
+    records = api_client.get("/api/viz/records").json()
+    [record] = [r for r in records if r["path"].endswith(TRIMMED_PATH_END)]
+    assert record["trim"] == {"top": 0.0, "bottom": 0.6} and record["trims"] == [{"top": 0.0, "bottom": 0.6}]
+    assert all(r["trim"] is None for r in records if r is not record)
+    assert api_client.get("/api/receipt", params={"file": record["filename"]}).json()["trim"] == record["trim"]
+    gallery = api_client.get("/api/analytics/merchant", params={"brand_id": "seven-eleven"}).json()["receipts"]
+    assert {r["path"]: r["trim"] for r in gallery}[record["path"]] == record["trim"]
+
+
+def test_receipt_detail_draws_a_trimmed_page_s_boxes_on_its_band(api_client):
+    """Read whole, trimmed after: the box is measured on the whole page and shown on the band."""
+    [record] = [r for r in api_client.get("/api/viz/records").json() if r["path"].endswith(TRIMMED_PATH_END)]
+
+    [shown] = api_client.get("/api/receipt/pages", params={"file": record["filename"]}).json()
+
+    assert shown["trim"] == {"top": 0.0, "bottom": 0.6} and shown["retrimmed"] is True
+    assert shown["boxes"][0]["rects"] == [{"x1": 80, "y1": 500, "x2": 470, "y2": 567}]   # 300-340 of the page

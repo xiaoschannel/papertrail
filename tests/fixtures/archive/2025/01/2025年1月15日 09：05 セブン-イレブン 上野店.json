@@ -14,7 +14,21 @@
   },
   "ocr": {
     "markdown": "セブン-イレブン 上野店\n合計 ¥640",
-    "succeeded": true
+    "succeeded": true,
+    "boxes": [
+      {
+        "ref_type": "text",
+        "coords": [
+          [
+            80,
+            300,
+            470,
+            340
+          ]
+        ],
+        "text": "合計 ¥640"
+      }
+    ]
   },
   "extraction": {
     "document_type": "receipt",
@@ -33,5 +47,9 @@
     ],
     "cost": 640.0,
     "field_sources": {}
+  },
+  "trim": {
+    "top": 0.0,
+    "bottom": 0.6
   }
 }

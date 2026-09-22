@@ -197,3 +197,16 @@ def test_document_needs_the_scan_index(pending, configured_ingest):
     (configured_ingest / "batches.json").unlink()
     r = pending.get("/api/review/document", params={"key": "1:1"})
     assert r.status_code == 409 and "File Index" in r.json()["detail"]
+
+
+def test_a_page_trimmed_after_it_was_read_shows_its_boxes_on_the_band(pending, configured_ingest):
+    """The boxes were measured on the whole page; the page is shown trimmed, so they are placed on the band."""
+    from data import set_trim
+    from models import Trim
+
+    set_trim(configured_ingest, "1:1", Trim(top=0.0, bottom=0.5))
+
+    page = pending.get("/api/review/document", params={"key": "1:1"}).json()["pages"][0]
+
+    assert page["trim"] == {"top": 0.0, "bottom": 0.5} and page["retrimmed"] is True
+    assert page["boxes"][0]["rects"] == [{"x1": 80, "y1": 80, "x2": 880, "y2": 208}]

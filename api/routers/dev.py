@@ -10,7 +10,6 @@ from __future__ import annotations
 import io
 import os
 import time
-from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated
@@ -280,7 +279,8 @@ def run_ocr(run_id: str, body: ExperimentOcrIn):
                 progress.tick(item="boxes")
             boxes = parse_grounding_output(raw) if raw is not None else []
             runs.save_ocr(run, runs.OcrRecord(
-                model=body.model, read_at=time.time(), with_boxes=with_boxes, treatment=asdict(settings),
+                model=body.model, read_at=time.time(), with_boxes=with_boxes,
+                treatment=body.model_dump(include=set(ExperimentTreatmentIn.model_fields)),
                 markdown=markdown,
                 structured_raw=raw, boxes=boxes, seconds=round(seconds, 2),
                 structured_seconds=round(structured_seconds, 2) if structured_seconds is not None else None,

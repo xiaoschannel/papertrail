@@ -470,3 +470,44 @@ def test_model_manager_unloads_before_switching():
     assert calls == ["a"] and manager.loaded == "b"
     manager.release()  # a failing unload is logged, not raised
     assert manager.loaded is None
+
+
+def test_trimming_a_page_shows_in_grouping_and_puts_it_back_in_the_ocr_queue(ingest_client, configured_ingest):
+    def page(key):
+        return next(p for p in ingest_client.get("/api/ingest/grouping").json()["pages"] if p["key"] == key)
+
+    assert page("1:1")["trim"] is None
+    assert ingest_client.get("/api/ingest/ocr").json()["retrimmed"] == 0
+
+    trimmed = ingest_client.put("/api/ingest/pages/trim", json={"key": "1:1", "trim": {"top": 0, "bottom": 0.75}})
+
+    assert trimmed.json() == {"changed": True}
+    assert page("1:1")["trim"] == {"top": 0.0, "bottom": 0.75}
+    status = ingest_client.get("/api/ingest/ocr").json()
+    assert (status["retrimmed"], status["to_process"]) == (1, 1)       # 1:1 is the one scan in the input folder
+    ingest_client.put("/api/ingest/pages/trim", json={"key": "1:1", "trim": None})
+    assert page("1:1")["trim"] is None and ingest_client.get("/api/ingest/ocr").json()["to_process"] == 0
+
+
+def test_a_trim_has_to_keep_some_of_a_page_that_exists(ingest_client):
+    assert ingest_client.put("/api/ingest/pages/trim",
+                             json={"key": "1:1", "trim": {"top": 0.5, "bottom": 0.5}}).status_code == 422
+    assert ingest_client.put("/api/ingest/pages/trim",
+                             json={"key": "1:99", "trim": {"top": 0, "bottom": 0.5}}).status_code == 404
+
+
+def test_a_sliced_sheet_cant_be_trimmed_but_its_crops_can(ingest_client, configured_ingest, tmp_path):
+    import slicing
+    from models import Box, SheetGrid
+
+    Image.new("RGB", (200, 100), "white").save(tmp_path / "scans" / PAGE_1)    # a sheet of two tickets
+    two = SheetGrid(frame=Box(x1=0, y1=0, x2=1000, y2=1000), col_lines=[500], cells=[[1, 1], [1, 2]])
+    plan = slicing.plan_slices(configured_ingest, 1, 1, two)
+    slicing.apply_slices(configured_ingest, tmp_path / "scans", 1, 1, two, plan.token)
+    band = {"top": 0, "bottom": 0.5}
+
+    refused = ingest_client.put("/api/ingest/pages/trim", json={"key": "1:1", "trim": band})
+    assert refused.status_code == 409 and "trim a crop instead" in refused.json()["detail"]
+    assert ingest_client.put("/api/ingest/pages/trim", json={"key": "1:9", "trim": band}).status_code == 200
+    pages = {p["key"]: p for p in ingest_client.get("/api/ingest/grouping").json()["pages"]}
+    assert pages["1:9"]["trim"] == {"top": 0.0, "bottom": 0.5} and pages["1:1"]["trim"] is None

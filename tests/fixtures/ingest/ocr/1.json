@@ -35,7 +35,11 @@
   },
   "1:3": {
     "markdown": "上海小笼包馆\n小笼包 ¥500\n服务费 ¥20\n合计 ¥520",
-    "succeeded": true
+    "succeeded": true,
+    "trim": {
+      "top": 0.0,
+      "bottom": 0.75
+    }
   },
   "1:4": {
     "markdown": "Tealive KLCC\nBrown Sugar Boba RM15.90\n--- page 1 ---",

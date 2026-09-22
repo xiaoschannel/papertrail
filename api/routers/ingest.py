@@ -1,5 +1,5 @@
-"""Ingest step endpoints: File Index (batches, slicing, grouping, rotate, toss, and the scans that look
-turned), OCR, Parse and Archive.
+"""Ingest step endpoints: File Index (batches, slicing, grouping, rotate, trim, toss, and the scans
+that look turned), OCR, Parse and Archive.
 
 Thin wrappers over ingest_pipeline. OCR, Parse and Archive run as background jobs (api.jobs), side by
 side when they don't collide: each holds the batches it works on (and the GPU, if it loads a model), a
@@ -28,6 +28,7 @@ from api.schemas import (
     IndexStatus, JobOut, OcrStatus, PageIn, ParseStatus, ProposedBatch, RotateIn, SaveGroupingIn, SaveGroupingOut,
     SliceCropOut, SliceMoveOut, SlicePlanIn, SlicePlanOut, SlicingOut, SlicingSheetOut, StartOcrIn, StartParseIn,
     TurnedPageOut, TurnedPagesOut,
+    TrimIn,
 )
 from data import load_decisions, load_document_groups
 from indexing_schemes import SCHEMES
@@ -139,7 +140,7 @@ def grouping(
         available, version = _image(input_path, page.filename)
         pages.append(GroupingPageOut(key=page.key, serial=page.serial, filename=page.filename, tossed=page.tossed,
                                      image_available=available, image_version=version, crop_of=page.crop_of,
-                                     cell=page.cell, sliced=page.sliced))
+                                     cell=page.cell, sliced=page.sliced, trim=page.trim))
     return GroupingOut(blocker=None, batches=batches, batch_id=chosen, pages=pages, display_keys=state.display_keys,
                        active_links=state.active_links, saved_groups=state.saved_groups)
 
@@ -223,6 +224,20 @@ def turned_pages(
         for key, e, version in found])
 
 
+@router.put("/pages/trim", response_model=SaveGroupingOut)
+def trim_page(body: TrimIn, output_path: Path = Depends(get_output_path)):
+    """Keep only the band of a page between two cuts (or, with none, the whole page). The scan itself
+    is untouched; OCR reads only the band, and a page it has read already goes back in its queue."""
+    try:
+        with no_job_running("trim scans", claim=_page_claim(body.key)):   # an OCR run on the batch reads them
+            pipeline.trim_page(output_path, body.key, body.trim)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc.args[0])) from exc
+    except ValueError as exc:            # a sliced sheet: its crops are what is read
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return SaveGroupingOut(changed=True)
+
+
 # --- Slicing sheets of small receipts ------------------------------------------------------------------
 @router.get("/slicing", response_model=SlicingOut)
 def slicing_state(
@@ -275,7 +290,7 @@ def _plan_out(key: str, plan: slicing.SlicePlan) -> SlicePlanOut:
         moved=[SliceMoveOut(old_key=batch_serial_key(b, old), new_key=batch_serial_key(b, new))
                for old, new in plan.moved],
         dropped_keys=sorted(plan.dropped_keys, key=lambda k: parse_batch_serial_key(k) or (0, 0)),
-        ocr=plan.ocr, extractions=plan.extractions, decisions=plan.decisions,
+        ocr=plan.ocr, extractions=plan.extractions, decisions=plan.decisions, trims=plan.trims,
         replaces_decision=plan.replaces_decision, token=plan.token)
 
 
@@ -337,6 +352,7 @@ def ocr_status(
         grounding=bool(getattr(providers.get(chosen), "grounding", False)) and get_config().extract_structured,
         batches=_unarchived_batches(output_path), total=plan.total, processed=plan.processed, failed=plan.failed,
         missing_images=plan.missing_images, to_process=len(plan.items), waiting=plan.waiting,
+        retrimmed=plan.retrimmed,
     )
 
 
