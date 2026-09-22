@@ -357,17 +357,17 @@ def test_what_each_call_took_is_kept_beside_its_result_and_in_the_log(ingest_dir
         on_usage(TokenUse(prompt=2000, cached=1024, completion=400, thinking=250))
         return _receipt("Priced")
 
-    ip.run_parse(ingest_dir, plan, extract, "", FakeProgress(), model="OpenAI - gpt-5.6-luna", shuffle=False)
+    ip.run_parse(ingest_dir, plan, extract, "", FakeProgress(), model="OpenAI - gpt-6-luna", shuffle=False)
 
     [run] = load_model_runs(ingest_dir, EXTRACTION_RUNS).values()
-    assert run.model == "OpenAI - gpt-5.6-luna" and run.seconds >= 0 and run.at > 0
+    assert run.model == "OpenAI - gpt-6-luna" and run.seconds >= 0 and run.at > 0
     assert run.tokens.cached == 1024
-    assert run.cost == pytest.approx(0.000696, abs=1e-5)
+    assert run.cost == pytest.approx(0.000308, abs=1e-5)
     assert load_model_runs(ingest_dir, OCR_RUNS) == {}          # this run read nothing
 
     [row] = run_log.read(ingest_dir)
     assert (row["kind"], row["job_id"], row["item"]) == ("parse", "test-job", "1:1")
-    assert row["cost"] == pytest.approx(0.000696, abs=1e-5)
+    assert row["cost"] == pytest.approx(0.000308, abs=1e-5)
 
 
 def test_a_local_model_records_its_time_and_no_money(ingest_dir, tmp_path):
@@ -479,8 +479,8 @@ def test_archiving_files_what_the_calls_behind_a_document_took(ingest_dir, tmp_p
 
     merge_model_runs(ingest_dir, OCR_RUNS, {"1:1": ModelRun(model="DeepSeek OCR 2", at=1.0, seconds=31.5)})
     merge_model_runs(ingest_dir, EXTRACTION_RUNS, {"1:1": ModelRun(
-        model="OpenAI - gpt-5.6-luna", at=2.0, seconds=1.25,
-        tokens=TokenUse(prompt=2000, cached=1024, completion=400, thinking=250), cost=0.000696)})
+        model="OpenAI - gpt-6-luna", at=2.0, seconds=1.25,
+        tokens=TokenUse(prompt=2000, cached=1024, completion=400, thinking=250), cost=0.000308)})
 
     ip.run_archive(ingest_dir, _scans(tmp_path, ingest_dir), FakeProgress())
 
@@ -488,7 +488,7 @@ def test_archiving_files_what_the_calls_behind_a_document_took(ingest_dir, tmp_p
     sidecar = read_sidecar(first_page)
     assert sidecar.ocr_run.model == "DeepSeek OCR 2" and sidecar.ocr_run.seconds == 31.5
     assert sidecar.ocr_run.cost is None                       # it read on this machine
-    assert sidecar.extraction_run.cost == pytest.approx(0.000696)
+    assert sidecar.extraction_run.cost == pytest.approx(0.000308)
     assert sidecar.extraction_run.tokens.cached == 1024
 
 

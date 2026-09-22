@@ -163,7 +163,7 @@ def test_a_documents_runs_come_from_its_sidecar(api_client, configured_archive):
     sidecar = read_sidecar(page)
     write_sidecar(page, sidecar.model_copy(update={
         "ocr_run": ModelRun(model="DeepSeek OCR 2", at=1.0, seconds=30.0),
-        "extraction_run": ModelRun(model="OpenAI - gpt-5.6-luna", at=2.0, seconds=1.2,
+        "extraction_run": ModelRun(model="OpenAI - gpt-6-luna", at=2.0, seconds=1.2,
                                    tokens=TokenUse(prompt=2000, cached=1024), cost=0.0007)}))
 
     body = api_client.get("/api/receipt/runs", params={"file": sidecar.original_filename}).json()
