@@ -18,7 +18,7 @@ from PIL import Image
 from pydantic import BaseModel, ConfigDict
 
 from document_grouping import replace_image
-from models import DetectedBox, Trim, trim_of
+from models import Trim, trim_of
 
 #: The steepest tilt looked for either way. A page further off than this is a sideways scan, not a
 #: slightly crooked one, and the rotate arrows are the fix for that.
@@ -217,7 +217,7 @@ def straighten(image: Image.Image, degrees: float) -> Image.Image:
 
 def straighten_file(path: Path, degrees: float) -> tuple[Size, Size, Shift] | None:
     """Straighten the scan at ``path`` in place. Returns its size before and after, and where what was kept
-    lies (``Shift``), which placing its OCR boxes again needs; or None when a turn of 0 left it alone."""
+    lies (``Shift``), which moving its trim with it needs; or None when a turn of 0 left it alone."""
     if not -MAX_DEGREES <= degrees <= MAX_DEGREES:
         raise ValueError(f"a tilt of {degrees}° is beyond the {MAX_DEGREES}° this corrects")
     if not degrees:
@@ -234,41 +234,6 @@ def straighten_file(path: Path, degrees: float) -> tuple[Size, Size, Shift] | No
 
 
 #: OCR box coordinates are on this scale of the page image, whatever its size.
-_SCALE = 1000
-
-
-def straighten_box(coords: list[int], degrees: float, before: Size, after: Size,
-                    shift: Shift = (0.0, 0.0)) -> list[int]:
-    """A box measured on a scan (``[x1, y1, x2, y2]`` on the 0-1000 scale), placed on the scan straightened
-    by ``degrees``.
-
-    Its centre turns with the page. Its size is what it enclosed, levelled: a box around a line of text
-    sloping at ``degrees`` is taller than the line (it holds the slope), and solving ``w = L·cos + t·sin``,
-    ``h = L·sin + t·cos`` for the line's length ``L`` and thickness ``t`` gives the box that fits the line
-    once level. A box that isn't one sloping rectangle (the solve comes out non-positive) keeps its size,
-    and one drawn tighter than the slope isn't levelled below a quarter of its height, so a box never
-    shrinks to nothing (a little loose still shows where the text is).
-    """
-    if len(coords) != 4:
-        return coords
-    (w0, h0), (w1, h1) = before, after
-    x1, y1, x2, y2 = (coords[0] * w0 / _SCALE, coords[1] * h0 / _SCALE,
-                      coords[2] * w0 / _SCALE, coords[3] * h0 / _SCALE)
-    # Turning the page counter-clockwise on screen (y down): a point right of centre moves up.
-    cx, cy = _turned_point((x1 + x2) / 2, (y1 + y2) / 2, degrees, before, after, shift)
-    theta = np.radians(degrees)
-    cos, sin = float(np.cos(theta)), float(np.sin(theta))
-    width, height = abs(x2 - x1), abs(y2 - y1)
-    a, b = abs(cos), abs(sin)
-    det = a * a - b * b
-    length, thickness = (width * a - height * b) / det, (height * a - width * b) / det
-    if length > 0 and thickness > 0:
-        width, height = length, max(thickness, height / 4)
-    left, right = (cx - width / 2) * _SCALE / w1, (cx + width / 2) * _SCALE / w1
-    top, bottom = (cy - height / 2) * _SCALE / h1, (cy + height / 2) * _SCALE / h1
-    return [int(round(min(max(v, 0), _SCALE))) for v in (left, top, right, bottom)]
-
-
 def _turned_point(x: float, y: float, degrees: float, before: Size, after: Size,
                   shift: Shift = (0.0, 0.0)) -> tuple[float, float]:
     """A point on the scan (pixels), where it lands on the scan straightened by ``degrees``."""
@@ -291,27 +256,3 @@ def straightened_trim(band: Trim | None, degrees: float, before: Size, after: Si
     top = 0.0 if band.top == 0 else max(0.0, min(ends(band.top)))
     bottom = 1.0 if band.bottom == 1 else min(1.0, max(ends(band.bottom)))
     return trim_of(top, bottom)
-
-
-def straighten_boxes(boxes: list[DetectedBox], degrees: float, before: Size, after: Size,
-                     shift: Shift = (0.0, 0.0), read: Trim | None = None) -> tuple[list[DetectedBox], Trim | None]:
-    """OCR boxes placed on the straightened scan, in the same order, so references to them by number (the
-    extraction's field sources) still point at the same text; and the band they are now measured on.
-
-    Boxes are measured on the band OCR ``read`` (the page as trimmed then; None: the whole page). That band
-    moves with the scan like a trim does, and the boxes are measured on the moved band.
-    """
-    moved = straightened_trim(read, degrees, before, after, shift)
-    top0, height0 = (read.top, read.bottom - read.top) if read else (0.0, 1.0)
-    top1, height1 = (moved.top, moved.bottom - moved.top) if moved else (0.0, 1.0)
-
-    def one(coords: list[int]) -> list[int]:
-        if len(coords) != 4:
-            return coords
-        x1, y1, x2, y2 = coords
-        on_scan = [x1, round((top0 + y1 / _SCALE * height0) * _SCALE), x2, round((top0 + y2 / _SCALE * height0) * _SCALE)]
-        x1, y1, x2, y2 = straighten_box(on_scan, degrees, before, after, shift)
-        on_band = lambda y: int(round(min(max((y / _SCALE - top1) / height1 * _SCALE, 0), _SCALE)))
-        return [x1, on_band(y1), x2, on_band(y2)]
-
-    return [box.model_copy(update={"coords": [one(c) for c in box.coords]}) for box in boxes], moved

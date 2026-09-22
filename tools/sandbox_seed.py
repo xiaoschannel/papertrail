@@ -28,8 +28,8 @@ What each stage holds for a feature today:
   the archive, a filed receipt trimmed, and a marked one untrimmed (the Workshop's Trim row).
 * Tilted scans: two receipts in batch 3 were fed in crooked (10 a little clockwise, 13 further the other way),
   for Fix Rotation to point out; any scan can be straightened from its full-size view. The fake OCR
-  boxes each line where it lies on the crooked page, as a real one would, so straightening a page after
-  OCR shows its boxes moving with it (Review draws them).
+  boxes each line where it lies on the crooked page, as a real one would. Turning or straightening a page
+  after OCR sends it back to OCR and Parse.
 """
 
 from __future__ import annotations
