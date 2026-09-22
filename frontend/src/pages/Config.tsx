@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api/client.ts'
 import type { AppConfig, ConfigOptions, Shortcuts } from '../api/types.ts'
+import { TiltDemo } from '../components/TiltDemo.tsx'
 import { Card, ErrorState, Loading } from '../components/ui.tsx'
 import { keyLabel, keyOf } from '../components/useShortcuts.ts'
 import './config.css'
@@ -101,6 +102,18 @@ function ConfigForm({ saved, options }: { saved: AppConfig; options: ConfigOptio
           <Slider label="String similarity" value={draft.normalize_string_similarity} min={50} max={100} step={1}
             format={(v) => `${v}%`} onChange={(v) => set('normalize_string_similarity', v)} />
         </div>
+      </Card>
+
+      <Card title="Fix Rotation" hint="When a scan counts as tilted">
+        <Slider label="Tilt worth fixing" value={draft.tilt_share}
+          min={options.tilt_share_range[0] ?? 0.005} max={options.tilt_share_range[1] ?? 0.1} step={0.001}
+          format={(v) => `${(v * 100).toFixed(1)}% of the short side`} onChange={(v) => set('tilt_share', v)} />
+        <p className="config-note">
+          A crooked feed leaves an empty wedge along the page's long side. A scan counts as tilted once that
+          wedge is this wide against the page's short side, so a long receipt counts at a smaller angle than a
+          short one. Under {options.tilt_min_degrees}° no scan counts: that is too small to measure.
+        </p>
+        <TiltDemo share={draft.tilt_share} minDegrees={options.tilt_min_degrees} maxDegrees={options.tilt_max_degrees} />
       </Card>
 
       <Card title="Brand prefix suggestions" hint="Where Brand registry's suggestions start">

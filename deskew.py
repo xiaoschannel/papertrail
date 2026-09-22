@@ -23,8 +23,12 @@ from models import Trim, trim_of
 #: The steepest tilt looked for either way. A page further off than this is a sideways scan, not a
 #: slightly crooked one, and the rotate arrows are the fix for that.
 MAX_DEGREES = 15.0
-#: Tilts smaller than this aren't worth rewriting a scan for.
-MIN_DEGREES = 0.8
+#: A tilt worth fixing, unless the Config page says otherwise: how far the page's long edge wanders
+#: sideways along its length, as a share of its short edge. That is the empty wedge a crooked feed leaves
+#: along the long side, so the same angle counts for more on a long receipt than on a short one.
+DEFAULT_TILT_SHARE = 0.03
+#: Under this the estimate can't place a tilt reliably, whatever the page's shape.
+MIN_DEGREES = 0.3
 #: How much sharper the rows must be at the best angle than as scanned: a nearly blank page scores
 #: about the same at every angle, and its "best" angle is noise.
 MIN_GAIN = 1.3
@@ -49,10 +53,22 @@ class SkewEstimate(BaseModel):
     gain: float
     #: False when the best angle sat at the edge of the search, so the true one may lie beyond it.
     within_range: bool
+    #: The size of the ink's area in scan pixels, specks left out: the page's shape as printed, without the
+    #: scanner bed or margins round it, which says how far the tilt shows (``drift``).
+    width: int = 0
+    height: int = 0
 
     @property
-    def needs_straightening(self) -> bool:
-        return self.within_range and abs(self.degrees) >= MIN_DEGREES and self.gain >= MIN_GAIN
+    def drift(self) -> float:
+        """How far the long edge wanders sideways along its length, as a share of the short edge."""
+        long, short = max(self.width, self.height), min(self.width, self.height)
+        return abs(math.sin(math.radians(self.degrees))) * (long / short if short else 1.0)
+
+    def needs_straightening(self, share: float = DEFAULT_TILT_SHARE) -> bool:
+        """Whether the tilt is worth fixing: it shows (``drift`` at least ``share``), it is big enough to be
+        measured, and the text really is sharper levelled."""
+        return (self.within_range and self.gain >= MIN_GAIN and abs(self.degrees) >= MIN_DEGREES
+                and self.drift >= share)
 
 
 def _ink(image: Image.Image) -> np.ndarray:
@@ -78,6 +94,21 @@ def _sharpness(ink: np.ndarray, degrees: float) -> float:
     return float(np.square(np.diff(rows)).sum())
 
 
+def _ink_extent(ink: np.ndarray, image: Image.Image) -> tuple[int, int]:
+    """The width and height of the area the ink covers, specks left out, in the scan's own pixels."""
+    import cv2
+
+    _, _, stats, _ = cv2.connectedComponentsWithStats((ink > 0).astype(np.uint8), connectivity=8)
+    marks = stats[1:][stats[1:, cv2.CC_STAT_AREA] >= _SPECK]
+    if len(marks) == 0:
+        return image.width, image.height
+    left, top = marks[:, cv2.CC_STAT_LEFT].min(), marks[:, cv2.CC_STAT_TOP].min()
+    right = (marks[:, cv2.CC_STAT_LEFT] + marks[:, cv2.CC_STAT_WIDTH]).max()
+    bottom = (marks[:, cv2.CC_STAT_TOP] + marks[:, cv2.CC_STAT_HEIGHT]).max()
+    scale = image.width / ink.shape[1]
+    return round((right - left) * scale), round((bottom - top) * scale)
+
+
 def estimate_skew(image: Image.Image) -> SkewEstimate:
     """How far the scan's text lines slope, as the turn that levels them."""
     import cv2
@@ -86,7 +117,7 @@ def estimate_skew(image: Image.Image) -> SkewEstimate:
     # Too small to have lines to level (a placeholder, a sliver): halving it for the wide search would leave
     # nothing, which OpenCV refuses.
     if not ink.any() or min(ink.shape) < _MIN_SIDE:
-        return SkewEstimate(degrees=0.0, gain=1.0, within_range=True)
+        return SkewEstimate(degrees=0.0, gain=1.0, within_range=True, width=image.width, height=image.height)
     # The wide search runs at half size, where a text line still spans rows; the fine one at full size, two
     # steps either side: as scanned (0°) is the one angle not blurred by turning, so the wide search leans to
     # it, and a tilt just under a degree can come out there.
@@ -98,8 +129,9 @@ def estimate_skew(image: Image.Image) -> SkewEstimate:
     degrees = float(np.clip(fine[int(np.argmax(scores))], -MAX_DEGREES, MAX_DEGREES))
     as_scanned = _sharpness(ink, 0.0)
     gain = max(scores) / as_scanned if as_scanned > 0 else 1.0
+    width, height = _ink_extent(ink, image)
     return SkewEstimate(degrees=round(degrees, 2) + 0.0, gain=round(gain, 2),   # + 0.0: no -0.0
-                        within_range=abs(best) < MAX_DEGREES)
+                        within_range=abs(best) < MAX_DEGREES, width=width, height=height)
 
 
 def estimate_file_skew(path: Path) -> SkewEstimate:

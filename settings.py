@@ -12,6 +12,8 @@ log = logging.getLogger(__name__)
 CONFIG_PATH = Path(__file__).resolve().parent / "config.json"
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
+#: The tilt share the Config page offers (``AppConfig.tilt_share``).
+TILT_SHARE_RANGE = (0.005, 0.1)
 
 
 #: Keys a shortcut can be besides one character: the names `KeyboardEvent.key` gives them (" " is Space).
@@ -97,9 +99,18 @@ class AppConfig(BaseModel):
     prefix_suggestion_max_length: int = 24
     prefix_suggestion_min_length: int = 3
     prefix_suggestion_min_count: int = 2
+    #: A tilt worth fixing on Fix Rotation, as a share of the page's short side (deskew.DEFAULT_TILT_SHARE).
+    tilt_share: float = 0.03
     calendar_period: str = "week"
     calendar_date: str = ""
     shortcuts: Shortcuts = Shortcuts()
+
+    @field_validator("tilt_share")
+    @classmethod
+    def _a_share_the_page_can_show(cls, value: float) -> float:
+        if not TILT_SHARE_RANGE[0] <= value <= TILT_SHARE_RANGE[1]:
+            raise ValueError(f"a tilt share must be between {TILT_SHARE_RANGE[0]} and {TILT_SHARE_RANGE[1]}")
+        return value
 
 
 def get_config() -> AppConfig:

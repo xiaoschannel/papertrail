@@ -918,6 +918,10 @@ class ConfigOptions(_Model):
     indexing_schemes: list[str]
     dashboard_rank_by: list[str]
     embedding_threshold_step: float
+    #: The tilt share the Config page offers, and the tilts it can't go under or over (degrees): its demo.
+    tilt_share_range: list[float]
+    tilt_min_degrees: float
+    tilt_max_degrees: float
     #: What a shortcut can be besides one character (" " is Space), for the Config page's key recorder.
     shortcut_named_keys: list[str]
 

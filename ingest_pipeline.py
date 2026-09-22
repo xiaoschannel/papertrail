@@ -64,7 +64,7 @@ from data import (
     TRIMS,
     write_sidecar,
 )
-from deskew import SkewEstimate, estimate_file_skew, straighten_file, straightened_trim
+from deskew import DEFAULT_TILT_SHARE, SkewEstimate, estimate_file_skew, straighten_file, straightened_trim
 from document_grouping import build_display_state, rotate_file_upright, split_groups_at_tossed_boundaries
 import extraction
 import slicing
@@ -479,12 +479,12 @@ def _measure_turnable_pages(output_path: Path, input_path: Path, batch_id: int,
 
 def tilted_pages(output_path: Path, input_path: Path, batch_id: int,
                  estimate: Callable[[Path], SkewEstimate] = estimate_file_skew,
-                 ) -> list[tuple[str, SkewEstimate, int]]:
-    """A batch's pages whose scan looks slightly tilted, in scan order, each with the turn that levels it
-    and the scan version it was measured on (see ``_measure_turnable_pages``). ``estimate`` lets a caller
-    cache estimates."""
+                 share: float = DEFAULT_TILT_SHARE) -> list[tuple[str, SkewEstimate, int]]:
+    """A batch's pages whose scan looks tilted enough to fix (``SkewEstimate.needs_straightening(share)``),
+    in scan order, each with the turn that levels it and the scan version it was measured on (see
+    ``_measure_turnable_pages``). ``estimate`` lets a caller cache estimates."""
     return [(key, e, version) for key, e, version in _measure_turnable_pages(output_path, input_path, batch_id, estimate)
-            if e.needs_straightening]
+            if e.needs_straightening(share)]
 
 
 def turned_pages(output_path: Path, input_path: Path, batch_id: int,

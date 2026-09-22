@@ -1,5 +1,7 @@
 """Tilt detection and straightening, on the tilt fixtures (tests/fixtures/tilt, from tools/build_fixture.py)."""
 
+import math
+
 import pytest
 from PIL import Image
 
@@ -7,9 +9,17 @@ import deskew
 from models import Trim
 from tilt_scans import BLANK_BACK, PAGES, scan, tilt
 
-CROOKED = [name for name, page in PAGES.items() if abs(page["fed_at"]) >= deskew.MIN_DEGREES]
+def shows(page: dict, share: float = deskew.DEFAULT_TILT_SHARE) -> bool:
+    """Whether a fixture's tilt shows: its long edge wanders at least ``share`` of its short edge."""
+    long, short = max(page["printed"]), min(page["printed"])
+    return abs(math.sin(math.radians(page["fed_at"]))) * long / short >= share
+
+
+CROOKED = [name for name, page in PAGES.items() if shows(page)]
 #: A page of each kind to turn further while a test runs: the level receipt, and the crooked ones levelled.
 LEVEL = ["receipt_level.png", *CROOKED]
+#: Those no more than about twice as long as wide, where a tilt under half a degree doesn't show.
+SHORT = [name for name in LEVEL if not name.startswith("long")]
 
 
 def level(name: str) -> Image.Image:
@@ -22,51 +32,69 @@ def test_each_fixture_is_found_as_it_was_fed_in(name):
     fed_at = PAGES[name]["fed_at"]
     estimate = deskew.estimate_skew(scan(name))
     assert estimate.degrees == pytest.approx(-fed_at, abs=0.15)
-    assert estimate.needs_straightening == (abs(fed_at) >= deskew.MIN_DEGREES)
+    assert estimate.needs_straightening() == shows(PAGES[name])
 
 
 @pytest.mark.parametrize("name", LEVEL)
 @pytest.mark.parametrize("fed_at", [-10.0, -5.0, -1.8, -1.1, 1.1, 1.6, 8.3, 12.0])
 def test_a_crooked_feed_is_found_with_the_turn_that_levels_it(name, fed_at):
+    """At a share every page here shows 1.1° by: the flyer is barely longer than wide."""
     estimate = deskew.estimate_skew(tilt(level(name), fed_at))
     assert estimate.degrees == pytest.approx(-fed_at, abs=0.2)
-    assert estimate.needs_straightening
+    assert estimate.needs_straightening(share=0.02)
 
 
-@pytest.mark.parametrize("name", LEVEL)
+@pytest.mark.parametrize("name", SHORT)
 @pytest.mark.parametrize("fed_at", [0.0, 0.4, -0.5])
 def test_a_level_or_barely_tilted_scan_is_left_alone(name, fed_at):
     """Under half a degree the fixtures are too small to place the lines exactly; only the verdict counts."""
     estimate = deskew.estimate_skew(tilt(level(name), fed_at))
-    assert abs(estimate.degrees) < deskew.MIN_DEGREES
-    assert not estimate.needs_straightening
+    assert abs(estimate.degrees) < 0.8
+    assert not estimate.needs_straightening()
 
+
+@pytest.mark.parametrize("fed_at", [1.0, -1.0])
+def test_the_same_tilt_shows_on_a_long_receipt_and_not_on_a_short_one(fed_at):
+    """The long receipt is twice the short one's length at its width: the wedge a tilt leaves along its side
+    is twice as wide against it, so the same tilt is worth fixing on the one and not the other. Its shape is
+    the ink's, not the scan's: the margins round a page (here, the white a turn adds) don't count."""
+    short = deskew.estimate_skew(tilt(level("receipt_crooked.png"), fed_at))
+    long = deskew.estimate_skew(tilt(level("long_receipt_crooked.png"), fed_at))
+    assert long.drift == pytest.approx(2 * short.drift, rel=0.2)
+    assert long.needs_straightening(share=0.06) and not short.needs_straightening(share=0.06)
+
+
+def test_a_tilt_too_small_to_measure_is_never_flagged():
+    """However long the page, under deskew.MIN_DEGREES the estimate is noise."""
+    tiny = deskew.SkewEstimate(degrees=0.25, gain=2.0, within_range=True, width=100, height=5000)
+    assert tiny.drift > 0.2 and not tiny.needs_straightening()
 
 @pytest.mark.parametrize("fed_at", [0.0, -3.7, 7.0])
 def test_a_blank_page_is_never_flagged(fed_at):
     """Specks have no lines to level: whatever angle scores best, it is no better than as scanned."""
     with Image.open(BLANK_BACK) as back:
-        assert not deskew.estimate_skew(tilt(back, fed_at)).needs_straightening
+        assert not deskew.estimate_skew(tilt(back, fed_at)).needs_straightening()
 
 
 @pytest.mark.parametrize("size", [(1, 1), (2, 40), (400, 10)])
 def test_a_scan_too_small_to_measure_has_no_tilt(size):
     """A placeholder or a sliver, even all ink, has no lines to level (and mustn't make OpenCV refuse)."""
-    assert deskew.estimate_skew(Image.new("L", size, 0)) == deskew.SkewEstimate(degrees=0.0, gain=1.0, within_range=True)
+    assert deskew.estimate_skew(Image.new("L", size, 0)) == \
+        deskew.SkewEstimate(degrees=0.0, gain=1.0, within_range=True, width=size[0], height=size[1])
 
 
 def test_an_empty_page_has_no_tilt():
-    assert deskew.estimate_skew(Image.new("L", (300, 600), 255)) ==         deskew.SkewEstimate(degrees=0.0, gain=1.0, within_range=True)
+    assert deskew.estimate_skew(Image.new("L", (300, 600), 255)) ==         deskew.SkewEstimate(degrees=0.0, gain=1.0, within_range=True, width=300, height=600)
 
 
 @pytest.mark.parametrize("name", LEVEL)
 def test_a_sideways_scan_is_for_the_rotate_arrows_not_straightening(name):
-    assert not deskew.estimate_skew(tilt(level(name), 90)).needs_straightening
+    assert not deskew.estimate_skew(tilt(level(name), 90)).needs_straightening()
 
 
 def test_a_best_angle_at_the_edge_of_the_search_is_not_trusted():
     at_edge = deskew.estimate_skew(tilt(level("receipt_level.png"), -deskew.MAX_DEGREES - 3))
-    assert not at_edge.within_range and not at_edge.needs_straightening
+    assert not at_edge.within_range and not at_edge.needs_straightening()
 
 
 @pytest.mark.parametrize("name", CROOKED)

@@ -102,7 +102,7 @@ def pipeline_counts(
                                                          estimate=store.scan_orientation):
                 turned[key] = version
         for key, _, version in pipeline.tilted_pages(output_path, input_path, batch.batch_id,
-                                                     estimate=store.scan_skew):
+                                                     estimate=store.scan_skew, share=get_config().tilt_share):
             tilted[key] = version
     files = {batch_serial_key(b.batch_id, s): fn for b in index.batches if not b.archived for s, fn in b.files.items()}
     rotation = [RotationFlagOut(key=k, filename=files[k], image_version=turned.get(k) or tilted[k],
@@ -295,7 +295,8 @@ def tilted_pages(
     Only a suggestion: nothing changes until a page is straightened.
     """
     try:
-        found = pipeline.tilted_pages(output_path, input_path, batch_id, estimate=store.scan_skew)
+        found = pipeline.tilted_pages(output_path, input_path, batch_id, estimate=store.scan_skew,
+                                      share=get_config().tilt_share)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc.args[0])) from exc
     return TiltedPagesOut(batch_id=batch_id, pages=[
