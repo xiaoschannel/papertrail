@@ -255,7 +255,7 @@ table.fixed td, table.fixed th { overflow: hidden; text-overflow: ellipsis; whit
    enough for each column to stay >= ~120px (2 x 120 + gap = 248px).
    On a 2560px window that's two ~150px columns; at 1920px and below days stay
    single so receipts don't shrink. CSS columns balance by actual rendered height. */
-.cal-items > .doc-card { margin-bottom: 3px; break-inside: avoid; }
+.cal-items > .doc-card-wrap { margin-bottom: 3px; break-inside: avoid; }
 @container (min-width: 248px) {
   .cal-items.split { columns: 2; column-gap: 3px; }
 }

@@ -1,11 +1,11 @@
-"""Finding and fixing a scan fed in at a slight angle (the "looks tilted" suggestions on Slice and Group).
+"""Finding and fixing a scan fed in at a slight angle (the "looks tilted" suggestions on Straighten).
 
 A receipt that went through the feeder a few degrees off comes out with its text lines sloping. The
 estimate is a projection profile: rotate the page's ink through candidate angles and keep the one whose
 row sums change most sharply from row to row, which is when every text line lies on one row band. It
 needs no model and runs on the CPU in well under a tenth of a second a page.
 
-Only a suggestion: Slice and Group show it, and the scan is rewritten only after someone confirms it.
+Only a suggestion: Straighten shows it, and the scan is rewritten only after someone confirms it.
 """
 
 from __future__ import annotations

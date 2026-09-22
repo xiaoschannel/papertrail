@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query'
 import { api } from '../api/client.ts'
 import type { TopPoints, TurnedPages } from '../api/types.ts'
@@ -6,12 +6,12 @@ import { ARROWS, FACING, ScanViewer } from './scans.tsx'
 import { StraightenControls, useStraightening } from './tilts.tsx'
 
 /*
- * Scans that look sideways or upside down, as the Slice and Group pages point them out: a notice over the
+ * Scans that look sideways or upside down, as the Straighten page points them out: a notice over the
  * grid, the suggested arrow lit on each tile, and a review that shows each page turned upright in the
  * full-size viewer before anything is saved. Turning one is the page's own rotate arrow.
  */
 
-/** What these need of a page: Slice's sheets and Group's pages both have it. */
+/** What these need of a page. */
 export interface ScanPage {
   key: string
   filename: string
@@ -23,8 +23,8 @@ export interface ScanPage {
 const UPRIGHT_TURN: Record<TopPoints, number> = { left: 90, right: -90, down: 180 }
 
 /**
- * Suggestions set aside with "Leave as is" while the app is open, by scan and version (so on Slice and
- * Group alike): rotating the scan makes a new version, which is judged afresh.
+ * Suggestions set aside with "Leave as is" while the app is open, by scan and version: rotating the scan
+ * makes a new version, which is judged afresh.
  */
 const leftAsIs = new Set<string>()
 const scanVersion = (page: ScanPage) => `${page.filename}@${page.image_version}`
@@ -74,22 +74,14 @@ export function TurnNotice({ query, turns, onReview }: {
 /** Pages open in the full-size viewer: one opened from its tile, or the turned or tilted ones under review. */
 export type Viewing = { keys: string[]; at: number; review: false | 'turned' | 'tilted' }
 
-/** What a page adds to its full-size view: something in the scan's place (Group's trim rulers), and a note
- *  in the caption. */
-export type PageView = { scan?: ReactNode; caption?: ReactNode }
-
 /**
  * The page ``viewing`` is at, full size. One that looks turned is shown as it would be turned upright
  * (a checkbox shows it as scanned), with "Turn upright" and "Leave as is"; under it, any page can be
  * straightened, starting from its detected tilt if it looks tilted. Reviewing steps on to the next page
  * that still looks turned (or tilted), and a page opened on its own stays open, showing the saved scan.
- *
- * ``pageView`` is what the page adds when no turn is being suggested (see PageView); a page that looks
- * turned is turned first, and a tilted one straightened first, since what it adds is measured on the scan
- * as it is stored.
  */
 export function PageViewer({ viewing, pages, turns, tilts, locked, cannotTurn, onSetAside, onSetAsideTilt, onMove,
-  onClose, pageView }: {
+  onClose }: {
   viewing: Viewing
   pages: Map<string, ScanPage>
   turns: Map<string, TopPoints>
@@ -102,7 +94,6 @@ export function PageViewer({ viewing, pages, turns, tilts, locked, cannotTurn, o
   onSetAsideTilt: (page: ScanPage) => void
   onMove: (viewing: Viewing | null) => void
   onClose: () => void
-  pageView?: ((key: string) => PageView) | undefined
 }) {
   const flagged = viewing.review === 'tilted' ? tilts : turns
   const key = viewing.review ? viewing.keys.slice(viewing.at).find((k) => flagged.has(k)) : viewing.keys[viewing.at]
@@ -121,19 +112,17 @@ export function PageViewer({ viewing, pages, turns, tilts, locked, cannotTurn, o
     // Keyed by the scan's version and its tilt: a saved turn, or a tilt measured after the viewer opened,
     // starts the slider again from the scan as it is now.
     <ScanViewerWithTurn key={`${scanVersion(page)}|${tilt ?? ''}`} page={page} top={top} tilt={tilt}
-      view={pageView?.(key) ?? {}}
       position={viewing.keys.length > 1 ? `${at + 1} of ${viewing.keys.length}` : ''} locked={locked}
       cannotTurn={cannotTurn(key)} onTurned={next} onLeave={leave(onSetAside)} onLeaveTilt={leave(onSetAsideTilt)}
       onClose={onClose} />
   )
 }
 
-function ScanViewerWithTurn({ page, top, tilt, view, position, locked, cannotTurn, onTurned, onLeave, onLeaveTilt,
+function ScanViewerWithTurn({ page, top, tilt, position, locked, cannotTurn, onTurned, onLeave, onLeaveTilt,
   onClose }: {
   page: ScanPage
   top: TopPoints | undefined
   tilt: number | undefined
-  view: PageView
   position: string
   locked: string | null
   cannotTurn: string | null
@@ -163,14 +152,11 @@ function ScanViewerWithTurn({ page, top, tilt, view, position, locked, cannotTur
   const label = position ? `${page.key} — ${position}` : page.key
   const straighten = (
     <StraightenControls page={page} suggested={tilt} refusal={cannotTurn ?? locked} straightening={straightening}
-      onStraightened={onTurned} onLeave={onLeaveTilt}
-      note={view.scan && straightening.degrees ? 'The trim rulers come back once it is straightened (or the turn is reset).' : null} />
+      onStraightened={onTurned} onLeave={onLeaveTilt} />
   )
   const viewed = { label, filename: page.filename, version: page.image_version, onClose,
     tilt: straightening.degrees, outline: outline.data?.points, guides: straightening.guides }
-  if (top === undefined) {
-    return <ScanViewer {...viewed} scan={view.scan} footer={straighten}>{view.caption}</ScanViewer>
-  }
+  if (top === undefined) return <ScanViewer {...viewed} footer={straighten} />
   const arrow = ARROWS.find((a) => a.top === top)?.label
   return (
     <ScanViewer {...viewed} turn={preview ? UPRIGHT_TURN[top] : 0}

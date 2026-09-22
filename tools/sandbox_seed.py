@@ -7,8 +7,8 @@ the app really produces:
 * **Batch 1, archived** — filed under ``YYYY/MM``, a few marked: the Marked Workshop, Receipt Detail, the
   Calendar and the other Visualize pages.
 * **Batch 2, parsed** — OCR'd and extracted, nothing decided yet: Review.
-* **Unindexed scans** — in the scan folder, not yet a batch: File Index, then Slice, Group, OCR, Parse,
-  Review and Archive from the start.
+* **Unindexed scans** — in the scan folder, not yet a batch: File Index, then Straighten, Slice, Group,
+  OCR, Parse, Review and Archive from the start.
 
 There is one state, not one per feature: **a feature adds its examples to the stage where they can be
 tried** (a scan to ``unindexed_scans``, a page to review to ``review_batch``, a filed or marked document to
@@ -17,13 +17,13 @@ tried** (a scan to ``unindexed_scans``, a page to review to ``review_batch``, a 
 What each stage holds for a feature today:
 
 * Slice: two sheets of meal tickets among the unindexed scans (one scanned sideways).
-* Turned scans: three unindexed scans were fed in turned (2 and 17 sideways, 6 upside down), for Slice
-  and Group to point out.
+* Turned scans: three unindexed scans were fed in turned (2 and 17 sideways, 6 upside down), for
+  Straighten to point out.
 * Trim: a receipt with a coupon under it at every stage. Unindexed, to trim in Group; in Review, one
   trimmed before OCR (read as the receipt alone) and one trimmed after (read again by the next OCR); in
   the archive, a filed receipt trimmed, and a marked one untrimmed (the Workshop's Trim row).
 * Tilted scans: two unindexed receipts were fed in crooked (10 a little clockwise, 13 further the other way),
-  for Slice and Group to point out; any scan can be straightened from its full-size view. The fake OCR
+  for Straighten to point out; any scan can be straightened from its full-size view. The fake OCR
   boxes each line where it lies on the crooked page, as a real one would, so straightening a page after
   OCR shows its boxes moving with it (Review draws them).
 """
@@ -194,7 +194,7 @@ def unindexed_scans(sb: Sandbox) -> None:
     sb.receipt("03012026100050_6.png", "Ramen Testya", "2026/02/26 12:45", 1100, rotate=Image.Transpose.ROTATE_180)
     sb.scan("03012026100100_7.png", [((80, 40, 880, 104), "(blank page)")])
     sb.receipt("03012026100110_8.png", "Coffee Stand Foo", "2026/02/25 09:05", 420)
-    # Tilted: 10 and 13 were fed in crooked (with item lines, so there is text to level): Group points them out.
+    # Tilted: 10 and 13 were fed in crooked (with item lines, so there is text to level): Straighten points them out.
     tilts = {10: -4.0, 13: 7.0}
     for i in range(9, 15):
         items = [((80, 200 + 36 * n, 700, 232 + 36 * n), f"品目 {n + 1}    ¥{50 * (n + i)}") for n in range(2)]             if i in tilts else ()

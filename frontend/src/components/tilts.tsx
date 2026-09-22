@@ -5,14 +5,14 @@ import type { TiltedPages } from '../api/types.ts'
 import type { ScanPage } from './turns.tsx'
 
 /*
- * Scans fed in slightly crooked, as the Slice and Group pages point them out: a notice over the grid, a
- * badge on each tile, and, in the full-size viewer, a turn slider over level guides that previews the
- * scan straightened before anything is saved. Any scan can be straightened there, detected or not.
+ * Scans fed in slightly crooked, as the Straighten page points them out: a notice over the grid, a badge
+ * on each tile, and, in the full-size viewer, a turn slider over level guides that previews the scan
+ * straightened before anything is saved. Any scan can be straightened there, detected or not.
  */
 
 /**
- * Suggestions set aside with "Leave as is" while the app is open, by scan and version (so on Slice and
- * Group alike): straightening or rotating the scan makes a new version, which is judged afresh.
+ * Suggestions set aside with "Leave as is" while the app is open, by scan and version: straightening or
+ * rotating the scan makes a new version, which is judged afresh.
  */
 const leftAsIs = new Set<string>()
 const scanVersion = (page: ScanPage) => `${page.filename}@${page.image_version}`
@@ -85,7 +85,7 @@ export function useStraightening(suggested: number | undefined) {
  * Under the full-size scan: the turn slider (it turns only the preview), the guides checkbox, and
  * Straighten, which saves the scan turned. A detected tilt presets the slider and offers "Leave as is".
  */
-export function StraightenControls({ page, suggested, refusal, straightening, onStraightened, onLeave, note = null }: {
+export function StraightenControls({ page, suggested, refusal, straightening, onStraightened, onLeave }: {
   page: ScanPage
   suggested: number | undefined
   /** Why the scan can't be straightened (a crop, a sliced sheet, a job using the batch), or null. */
@@ -93,8 +93,6 @@ export function StraightenControls({ page, suggested, refusal, straightening, on
   straightening: ReturnType<typeof useStraightening>
   onStraightened: () => void
   onLeave: () => void
-  /** A word on what the preview hides meanwhile (the trim rulers), or null. */
-  note?: string | null
 }) {
   const queryClient = useQueryClient()
   const { degrees, setDegrees, guides, setGuides } = straightening
@@ -137,7 +135,6 @@ export function StraightenControls({ page, suggested, refusal, straightening, on
           Straighten
         </button>
       </span>
-      {note && <span className="ingest-note">{note}</span>}
       {refusal && <span className="ingest-note ingest-warning">{refusal}</span>}
       {save.error && <span className="error-banner" role="alert">{save.error.message}</span>}
     </div>

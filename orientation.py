@@ -1,4 +1,4 @@
-"""Finding scans fed in sideways or upside down (what Slice and Group point out).
+"""Finding scans fed in sideways or upside down (what Straighten points out).
 
 Projection profiles can tell that a page's lines run up and down, but not which way is up, so this asks a
 small classifier: PaddleClas's text-image orientation model (PP-LCNet, Apache-2.0), which sorts a 224x224
@@ -15,7 +15,7 @@ The model is downloaded on first use, like the OCR models: the ONNX export ships
 rapid-orientation wheel on PyPI (a fixed, immutable file), and is checked against a pinned hash before
 it is cached under ``~/.cache/papertrail``.
 
-Only a suggestion: Slice and Group show it, and a scan is turned only after someone confirms it.
+Only a suggestion: Straighten shows it, and a scan is turned only after someone confirms it.
 """
 
 from __future__ import annotations

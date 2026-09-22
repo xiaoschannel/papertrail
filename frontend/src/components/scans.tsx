@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { inputUrl } from '../api/client.ts'
 import { useShortcutKeys } from '../api/config.ts'
 import type { Batch, TopPoints } from '../api/types.ts'
@@ -198,19 +199,22 @@ export function StraightenedScan({ src, alt, tilt, outline, across = 1 }: {
 }
 
 /** A scan at full size, for deciding whether a page continues the previous document, is upright, or
- *  where to cut a sheet. The dialogs' Cancel shortcut closes it. ``turn`` previews it turned (degrees
- *  clockwise, a multiple of 90) and ``tilt`` straightened (degrees counter-clockwise, a few) without
- *  changing it, beside the scan as it is (cropped as straightening would, keeping the ink in ``outline``);
- *  ``guides`` draws level and plumb lines over them to judge a tilt by; ``footer`` goes under the caption.
- *  ``scan`` shows something else in the scan's place (the trim rulers, which draw the scan themselves)
- *  unless a tilt is being previewed: trims are measured on the scan as it is stored, so a page is
- *  straightened first. ``children`` go in the caption. */
-export function ScanViewer({ label, filename, version, onClose, children, turn = 0, tilt = 0, outline, guides = false,
-  footer, scan }: {
-  label: string
-  filename: string
+ *  where to cut a sheet, or just to read it. The dialogs' Cancel shortcut closes it. The scan is the
+ *  input-folder file ``filename`` at ``version``, or ``src`` when given (an archived document's). ``turn``
+ *  previews it turned (degrees clockwise, a multiple of 90) and ``tilt`` straightened (degrees
+ *  counter-clockwise, a few) without changing it, beside the scan as it is (cropped as straightening would,
+ *  keeping the ink in ``outline``); ``guides`` draws level and plumb lines over them to judge a tilt by;
+ *  ``footer`` goes under the caption. ``scan`` shows something else in the scan's place (the trim rulers,
+ *  which draw the scan themselves) unless a tilt is being previewed: trims are measured on the scan as it
+ *  is stored, so a page is straightened first. ``children`` go in the caption. */
+export function ScanViewer({ label, filename, version = 0, src, onClose, children, turn = 0, tilt = 0, outline,
+  guides = false, footer, scan }: {
+  label: ReactNode
+  filename?: string | undefined
   /** The file's mtime, so a rotated scan isn't shown from the browser's cache. */
-  version: number
+  version?: number
+  /** The scan's URL, when it isn't an input-folder file. */
+  src?: string | undefined
   onClose: () => void
   scan?: ReactNode
   children?: ReactNode
@@ -231,16 +235,17 @@ export function ScanViewer({ label, filename, version, onClose, children, turn =
     return () => document.removeEventListener('keydown', onKey)
   }, [close, onClose])
 
+  const url = src ?? inputUrl(filename ?? '', version)
+  const alt = typeof label === 'string' ? `Scan ${label}` : 'Scan'
   /** The scan in its frame, turned ``turn`` and straightened ``by``. */
   const frame = (by: number) => {
     if (by && !turn) {
-      return <StraightenedScan src={inputUrl(filename, version)} alt={`Scan ${label}, straightened`} tilt={by}
-        outline={outline} across={2} />
+      return <StraightenedScan src={url} alt={`${alt}, straightened`} tilt={by} outline={outline} across={2} />
     }
     // CSS turns clockwise for positive angles; a tilt is counter-clockwise
     const tilted = by ? ` rotate(${-by}deg) scale(${tiltFit(natural, by)})` : ''
     const img = (style?: object) => (
-      <img src={inputUrl(filename, version)} alt={`Scan ${label}`} style={style}
+      <img src={url} alt={alt} style={style}
         onLoad={(e) => setNatural([e.currentTarget.naturalWidth, e.currentTarget.naturalHeight])} />
     )
     if (!turn || natural === null) {
@@ -256,7 +261,9 @@ export function ScanViewer({ label, filename, version, onClose, children, turn =
     )
   }
 
-  return (
+  // Drawn at the top of the page: a card opens it from inside containers (a calendar day) that would
+  // otherwise clip it, or become what its fixed backdrop is placed against.
+  return createPortal(
     <div className="modal-backdrop scan-viewer" data-modal-open onClick={onClose} role="dialog" aria-modal="true">
       <figure className={guides ? 'scan-viewer--guides' : undefined} onClick={(e) => e.stopPropagation()}>
         {(scan && !tilt) ? scan : tilt ? (
@@ -272,7 +279,8 @@ export function ScanViewer({ label, filename, version, onClose, children, turn =
         </figcaption>
         {footer}
       </figure>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
