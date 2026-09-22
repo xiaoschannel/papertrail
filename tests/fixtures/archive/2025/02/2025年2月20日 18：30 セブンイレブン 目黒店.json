@@ -12,6 +12,7 @@
     "currency": "JPY",
     "comment": ""
   },
+  "page": 1,
   "ocr": {
     "markdown": "セブンイレブン 目黒店\n合計 ¥980",
     "succeeded": true

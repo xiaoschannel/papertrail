@@ -12,6 +12,7 @@
     "currency": "MYR",
     "comment": ""
   },
+  "page": 1,
   "ocr": {
     "markdown": "Tealive KLCC\nBrown Sugar Boba RM15.90",
     "succeeded": true

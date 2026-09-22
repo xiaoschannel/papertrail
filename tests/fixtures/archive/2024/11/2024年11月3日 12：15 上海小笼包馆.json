@@ -12,6 +12,7 @@
     "currency": "CNY",
     "comment": ""
   },
+  "page": 1,
   "ocr": {
     "markdown": "上海小笼包馆\n合计 ¥520",
     "succeeded": true

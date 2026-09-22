@@ -12,6 +12,7 @@
     "currency": "JPY",
     "comment": ""
   },
+  "page": 1,
   "ocr": {
     "markdown": "スターバックス 渋谷店\n合計 ¥540",
     "succeeded": true

@@ -1,4 +1,4 @@
-"""Moving a document's pages: scan order, no overwrites, never an image without its sidecar."""
+"""Moving a document's pages: page order, no overwrites, never an image without its sidecar."""
 
 from pathlib import Path
 
@@ -24,14 +24,16 @@ def _decision(row, **changes):
     return ReviewDecision(**values)
 
 
-def test_place_document_files_pages_in_scan_order(archive_dir):
+def test_place_document_files_pages_in_page_order(archive_dir):
     pages, row = _document(archive_dir, multi=True)
-    serials = sorted(read_sidecar(p).serial for p in pages)
+    serials = [read_sidecar(p).serial for p in pages]
+    assert serials != sorted(serials)           # the fixture's pages were grouped out of scan order
 
-    placed = df.place_document(archive_dir, df.load_pages(pages), _decision(row, name="Ordered Doc"))
+    placed = df.place_document(archive_dir, df.load_pages(list(reversed(pages))), _decision(row, name="Ordered Doc"))
 
     assert [read_sidecar(archive_dir / p).serial for p in placed] == serials
-    assert placed[1].endswith("(2).png")        # the later scan takes the suffix
+    assert [read_sidecar(archive_dir / p).page for p in placed] == [1, 2]
+    assert placed[1].endswith("(2).png")        # page 2 takes the suffix, though it was scanned first
     assert all("Ordered Doc" in p for p in placed)
 
 

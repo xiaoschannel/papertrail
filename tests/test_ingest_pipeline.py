@@ -415,6 +415,28 @@ def test_run_parse_saves_periodically(ingest_dir, monkeypatch):
 
 
 # --- Archive -------------------------------------------------------------------------------------------------
+def test_swapping_a_group_s_pages_is_saved_and_shown_in_that_order(ingest_dir):
+    assert ip.save_grouping(ingest_dir, 1, [["1:1"], ["1:2"], ["1:3"], ["1:5", "1:4"], ["1:7"]]) is True
+    assert load_document_groups(ingest_dir).groups == [["1:5", "1:4"]]
+    state = ip.grouping_state(ingest_dir, 1)
+    assert state.saved_groups == [["1:5", "1:4"]]
+    assert state.display_keys.index("1:5") < state.display_keys.index("1:4")
+
+
+def test_archive_files_a_document_s_pages_in_their_grouped_order(ingest_dir, tmp_path):
+    from data import read_sidecar, save_document_groups
+    from models import DocumentGroups
+
+    save_document_groups(ingest_dir, DocumentGroups(groups=[["1:5", "1:4"]]))   # 1:5 is page 1
+    ip.run_archive(ingest_dir, _scans(tmp_path, ingest_dir), FakeProgress())
+
+    [first] = (ingest_dir / "2025" / "01").glob("*Tealive KLCC.png")
+    [second] = (ingest_dir / "2025" / "01").glob("*Tealive KLCC (2).png")
+    assert (read_sidecar(first).serial, read_sidecar(first).page) == (5, 1)
+    assert (read_sidecar(second).serial, read_sidecar(second).page) == (4, 2)
+    assert read_sidecar(first).document_key == "1:4-5"
+
+
 def test_plan_archive_blocks_until_every_page_is_reviewed(ingest_dir):
     decisions = load_decisions(ingest_dir)
     del decisions["1:3"]

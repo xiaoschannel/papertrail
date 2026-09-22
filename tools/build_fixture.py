@@ -163,7 +163,7 @@ def review(*, verdict, document_type, name, date, time, cost=0.0, currency="", c
 
 
 def sidecar(*, original_filename, batch_id, serial, review_, extraction=None, ocr=None, document_key=None,
-            trim_=None) -> dict:
+            page=1, trim_=None) -> dict:
     d: dict = {
         "original_filename": original_filename,
         "batch_id": batch_id,
@@ -172,6 +172,7 @@ def sidecar(*, original_filename, batch_id, serial, review_, extraction=None, oc
     }
     if document_key is not None:
         d["document_key"] = document_key
+    d["page"] = page
     if ocr is not None:
         d["ocr"] = ocr
     if extraction is not None:
@@ -363,21 +364,22 @@ def build_archive(root: Path) -> None:
                                               cost=15.90, items=[item("Brown Sugar Boba", 15.90)])))
 
     # --- multi-page archived doc (document_key "5:106-107") + name collision suffix ---
+    # Grouped with its pages swapped: page 1 is the later scan (107), so page order isn't scan order.
     bic_ocr_1 = ocr_result("ビックカメラ 新宿店\nノートPC ¥98,000\n--- page 1 ---")
     bic_ocr_2 = ocr_result("ビックカメラ 新宿店\nありがとうございました\n--- page 2 ---")
     bic_ext = receipt_extraction(language="ja", date="2025-03-02", time="10:00:00",
                                  name="ビックカメラ 新宿店", currency="JPY", cost=98000.0,
                                  items=[item("ノートPC", 98000.0)])
     add("2025/03", "2025年3月2日 10：00 ビックカメラ 新宿店",
-        sidecar(original_filename="03022025100000_106.png", batch_id=5, serial=106,
-                document_key="5:106-107",
+        sidecar(original_filename="03022025100000_107.png", batch_id=5, serial=107,
+                document_key="5:106-107", page=1,
                 review_=review(verdict="accepted", document_type="receipt",
                                name="ビックカメラ 新宿店", date="2025-03-02",
                                time="10:00:00", cost=98000.0, currency="JPY"),
                 ocr=bic_ocr_1, extraction=bic_ext))
     add("2025/03", "2025年3月2日 10：00 ビックカメラ 新宿店 (2)",
-        sidecar(original_filename="03022025100000_107.png", batch_id=5, serial=107,
-                document_key="5:106-107",
+        sidecar(original_filename="03022025100000_106.png", batch_id=5, serial=106,
+                document_key="5:106-107", page=2,
                 review_=review(verdict="accepted", document_type="receipt",
                                name="ビックカメラ 新宿店", date="2025-03-02",
                                time="10:00:00", cost=98000.0, currency="JPY"),
@@ -441,7 +443,7 @@ def build_archive(root: Path) -> None:
     })
 
     # --- root: documents.json (the multi-page group) ---
-    _write_json(root / "documents.json", {"groups": [["5:106", "5:107"]]})
+    _write_json(root / "documents.json", {"groups": [["5:107", "5:106"]]})
 
     # --- root: brand_directory.json ---
     _write_json(root / "brand_directory.json", {

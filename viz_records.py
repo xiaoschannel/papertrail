@@ -13,7 +13,7 @@ import pandas as pd
 
 from brand_registry import enrich_receipt_brand_columns, load_brand_directory
 from data import load_reorganized_state
-from models import Sidecar, Trim
+from models import DocumentKey, Sidecar, Trim
 
 
 def _dumped(band: Trim | None) -> dict | None:
@@ -21,10 +21,12 @@ def _dumped(band: Trim | None) -> dict | None:
 
 
 def page_order(sidecar: Sidecar, rel_path: str) -> tuple:
-    """Sort key putting a document's pages in the order they were scanned."""
+    """Sort key putting documents in scan order, and each document's pages in its own page order."""
     if sidecar.batch_id is not None and sidecar.serial is not None:
-        return (0, sidecar.batch_id, sidecar.serial, rel_path)
-    return (1, 0, 0, rel_path)   # older sidecars without batch/serial keep filename order
+        document = DocumentKey.parse(sidecar.document_key) if sidecar.document_key else None
+        start = document.first_serial if document else sidecar.serial
+        return (0, sidecar.batch_id, start, sidecar.page, sidecar.serial, rel_path)
+    return (1, 0, 0, sidecar.page, 0, rel_path)   # older sidecars without batch/serial keep filename order
 
 
 def build_viz_records(output_path: Path,
@@ -42,7 +44,7 @@ def build_viz_records(output_path: Path,
 
     records = []
     for doc_id, pages in doc_groups.items():
-        # Scan order, not filename order: page 2's archived name is "… (2).png", which sorts BEFORE
+        # Page order, not filename order: page 2's archived name is "… (2).png", which sorts BEFORE
         # page 1's "….png" (space-paren < dot), so sorting by path would show the pages back to front.
         pages.sort(key=lambda page: page_order(page[1], page[0]))
         first_path, first_sc = pages[0]

@@ -12,6 +12,7 @@
     "currency": "JPY",
     "comment": "needs re-OCR (half-width katakana)"
   },
+  "page": 1,
   "ocr": {
     "markdown": "ﾛｰｿﾝ 池袋店\n合計 ¥300",
     "succeeded": true

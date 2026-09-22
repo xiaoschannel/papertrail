@@ -1,7 +1,7 @@
 {
-  "original_filename": "03022025100000_107.png",
+  "original_filename": "03022025100000_106.png",
   "batch_id": 5,
-  "serial": 107,
+  "serial": 106,
   "review": {
     "verdict": "accepted",
     "document_type": "receipt",
@@ -13,6 +13,7 @@
     "comment": ""
   },
   "document_key": "5:106-107",
+  "page": 2,
   "ocr": {
     "markdown": "ビックカメラ 新宿店\nありがとうございました\n--- page 2 ---",
     "succeeded": true
