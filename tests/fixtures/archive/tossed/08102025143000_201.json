@@ -12,6 +12,7 @@
     "currency": "JPY",
     "comment": ""
   },
+  "page": 1,
   "ocr": {
     "markdown": "(blank)",
     "succeeded": true

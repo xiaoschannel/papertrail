@@ -823,6 +823,17 @@ class ArchivePlan:
     index: DocumentIndex | None = field(default=None, repr=False)
 
 
+def _page_place(index: DocumentIndex, key: str) -> int:
+    """A page's place in its document, from 1 (the grouped order, which can differ from scan order)."""
+    return index.keys_for_doc(index.key_to_doc_key(key)).index(key) + 1
+
+
+def _page_sort(index: DocumentIndex, key: str) -> tuple[int, int, int]:
+    """Documents in scan order, each one's pages together and in page order."""
+    doc = index.key_to_doc_key(key)
+    return doc.batch_id, doc.first_serial, _page_place(index, key)
+
+
 def plan_archive(output_path: Path) -> ArchivePlan:
     """Where every file of the fully reviewed batches would go, for the page to preview."""
     scan_index = _load_index(output_path)
@@ -867,7 +878,7 @@ def plan_archive(output_path: Path) -> ArchivePlan:
     if all_complete:
         destinations = plan_accepted_destinations(
             accepted_files, scan_existing_names(output_path), key_to_filename=key_to_filename,
-            key_to_sort={k: (parse_batch_serial_key(k) or (0, 0)) for k in accepted_files},
+            key_to_sort={k: _page_sort(index, k) for k in accepted_files},
         )
         for folder, docs in (("marked", marked_docs), ("tossed", tossed_docs)):
             for doc_key in docs:
@@ -942,6 +953,7 @@ def run_archive(output_path: Path, input_path: Path, progress: Progress) -> str:
                 serial=parsed[1] if parsed else None,
                 review=plan.decisions[str(doc)],
                 document_key=str(doc) if doc.is_multi_page else None,
+                page=_page_place(plan.index, move.key),
                 ocr=ocr.get(move.key),
                 extraction=extractions.get(str(doc)),
                 ocr_run=ocr_runs.get(move.key),

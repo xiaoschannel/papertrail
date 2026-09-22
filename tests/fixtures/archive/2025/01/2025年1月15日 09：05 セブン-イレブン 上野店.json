@@ -12,6 +12,7 @@
     "currency": "JPY",
     "comment": ""
   },
+  "page": 1,
   "ocr": {
     "markdown": "セブン-イレブン 上野店\n合計 ¥640",
     "succeeded": true,

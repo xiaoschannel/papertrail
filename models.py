@@ -284,6 +284,8 @@ class Sidecar(BaseModel):
     serial: int | None = None
     review: ReviewDecision
     document_key: str | None = None
+    #: the page's place in its document, from 1: the order the pages were grouped in, not scan order
+    page: int = 1
     ocr: OcrResult | None = None
     extraction: DocumentExtraction | None = None
     #: what the two model calls behind this document took; absent for documents filed before this was kept

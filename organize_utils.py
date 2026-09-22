@@ -2,6 +2,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from models import ReviewDecision, Sidecar
+from viz_records import page_order
 
 FULLWIDTH_COLON = "\uff1a"
 WINDOWS_FORBIDDEN = str.maketrans({
@@ -52,20 +53,15 @@ def _stem_matches_base(stem: str, base: str) -> bool:
 def plan_accepted_destinations(
     records: dict[str, ReviewDecision],
     existing_names_by_folder: dict[str, set[str]],
-    filename_to_batch_serial: dict[str, tuple[int, int]] | None = None,
     key_to_filename: dict[str, str] | None = None,
-    key_to_sort: dict[str, tuple[int, int]] | None = None,
+    key_to_sort: dict[str, tuple] | None = None,
 ) -> dict[str, str]:
-    if filename_to_batch_serial is None:
-        filename_to_batch_serial = {}
+    """Where each accepted page goes. Pages sharing a name are numbered by seconds, then ``key_to_sort``
+    (a document's pages must sort together, in page order)."""
+    key_to_sort = key_to_sort or {}
 
     def get_fn(key: str) -> str:
         return key_to_filename[key] if key_to_filename else key
-
-    def get_sort(key: str) -> tuple[int, int]:
-        if key_to_sort and key in key_to_sort:
-            return key_to_sort[key]
-        return filename_to_batch_serial.get(key, (0, 0))
 
     groups: dict[tuple[str, str], list[tuple[str, int]]] = defaultdict(list)
     for key, decision in records.items():
@@ -74,11 +70,7 @@ def plan_accepted_destinations(
 
     file_destinations: dict[str, str] = {}
     for (folder, base), members in groups.items():
-        members.sort(key=lambda m: (
-            m[1] if m[1] >= 0 else 9999,
-            get_sort(m[0])[0],
-            get_sort(m[0])[1],
-        ))
+        members.sort(key=lambda m: (m[1] if m[1] >= 0 else 9999, key_to_sort.get(m[0], ())))
 
         taken = existing_names_by_folder.get(folder, set())
         existing_count = 0
@@ -133,14 +125,13 @@ def apply_reorganize(output_path: Path) -> list[tuple[str, str, str]]:
 
     stale: dict[str, ReviewDecision] = {}
     stable_stems: dict[str, set[str]] = defaultdict(set)
-    filename_to_batch_serial: dict[str, tuple[int, int]] = {}
+    order: dict[str, tuple] = {}
 
     for fn, (sidecar, current_path) in accepted.items():
         decision = sidecar.review
         expected_folder, expected_base, _ = build_accepted_name(decision, fn)
 
-        if sidecar.batch_id is not None and sidecar.serial is not None:
-            filename_to_batch_serial[fn] = (sidecar.batch_id, sidecar.serial)
+        order[fn] = page_order(sidecar, current_path)
 
         current_folder = str(Path(current_path).parent).replace("\\", "/") if current_path else ""
         current_stem = Path(current_path).stem if current_path else ""
@@ -154,7 +145,7 @@ def apply_reorganize(output_path: Path) -> list[tuple[str, str, str]]:
         return []
 
     destinations = plan_accepted_destinations(
-        stale, stable_stems, filename_to_batch_serial,
+        stale, stable_stems, key_to_sort=order,
     )
 
     # Moving goes through document_files: sidecar first, and never onto a name already in use —

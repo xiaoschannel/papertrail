@@ -12,6 +12,7 @@
     "currency": "JPY",
     "comment": ""
   },
+  "page": 1,
   "ocr": {
     "markdown": "セブン-イレブン 品川駅前店\n合計 ¥1,260",
     "succeeded": true,

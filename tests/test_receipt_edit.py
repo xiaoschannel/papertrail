@@ -50,7 +50,7 @@ def test_editing_renames_the_file_and_rewrites_the_sidecar(archive_dir):
     assert sidecar.original_filename == read_sidecar(archive_dir / path).original_filename
 
 
-def test_every_page_of_a_multi_page_document_is_refiled_in_scan_order(archive_dir):
+def test_every_page_of_a_multi_page_document_is_refiled_in_page_order(archive_dir):
     row = next(r for _, r in build_viz_records(archive_dir).iterrows() if len(r["paths"]) > 1)
     serials = [read_sidecar(archive_dir / p).serial for p in row["paths"]]
 
@@ -59,8 +59,10 @@ def test_every_page_of_a_multi_page_document_is_refiled_in_scan_order(archive_di
     assert len(after) == len(serials)
     assert all("Two Page Doc" in p for p in after)                   # every page is re-filed, not just the first
     assert after[1].endswith("(2).png") and after[0] != after[1]     # pages keep distinct names
-    # the earlier scan keeps the plain name; "(2)" sorts before "." by filename, so this pins the order
-    assert [read_sidecar(archive_dir / p).serial for p in after] == sorted(serials)
+    # page 1 keeps the plain name, though it was scanned later; "(2)" sorts before "." by filename,
+    # so this pins the order
+    assert [read_sidecar(archive_dir / p).serial for p in after] == serials != sorted(serials)
+    assert [read_sidecar(archive_dir / p).page for p in after] == [1, 2]
     assert all((archive_dir / p).exists() and read_sidecar(archive_dir / p) for p in after)
     assert {read_sidecar(archive_dir / p).document_key for p in after} == {row["filename"]}
 

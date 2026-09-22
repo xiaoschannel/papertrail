@@ -13,6 +13,9 @@ def test_build_viz_records_collapses_multipage(configured_archive):
     multi = df[df["filename"] == "5:106-107"].iloc[0]
     assert len(multi["paths"]) == 2
     assert "--- Page break ---" in multi["ocr_markdown"]
+    # page order, not scan order: page 1 (the later scan, 107) comes first
+    assert not multi["paths"][0].endswith("(2).png") and multi["paths"][1].endswith("(2).png")
+    assert multi["ocr_markdown"].index("--- page 1 ---") < multi["ocr_markdown"].index("--- page 2 ---")
 
 
 def test_build_viz_records_brand_and_dates(configured_archive):
