@@ -158,6 +158,30 @@ def test_uncommitted_changes_say_what_happened_to_each_file(tmp_path):
                                      history.Change("scans/01102025132642_2.png", "added")]
 
 
+def test_files_a_failed_commit_left_in_the_index_are_listed_counted_and_discarded(tmp_path, monkeypatch):
+    """A milestone's ``git add`` ran and its ``git commit`` didn't (a lock left behind, say): the files wait in the
+    index, in no commit. Deleted since, one is in neither the last commit nor the folder."""
+    root = _folder(tmp_path)
+    history.commit(root, "everything")
+    staged, gone = root / "archive" / "notes.json", root / "archive" / "gone.json"
+    staged.write_bytes(b"a\nb\n")
+    gone.write_bytes(b"a\n")
+    history._git(root, "add", "--", "archive/notes.json", "archive/gone.json")
+    gone.unlink()
+    staged.write_bytes(b"a\nb\nc\n")                                               # and edited after the add
+    asked = []
+    numstat = history._numstat
+    monkeypatch.setattr(history, "_numstat", lambda r, command, paths: asked.extend(paths) or numstat(r, command, paths))
+
+    assert history.changes(root) == [history.Change("archive/gone.json", "deleted", (0, 0)),
+                                     history.Change("archive/notes.json", "added", (3, 0))]
+    assert asked == ["archive/gone.json"]           # a file no commit holds is counted from the file, not a diff
+
+    assert history.discard_changes(root, ["archive/notes.json", "archive/gone.json"]) == 2
+    assert not staged.exists() and history.changes(root) == []
+    assert _git(root, "status", "--porcelain") == ""                                 # the index is clean again
+
+
 def test_lines_are_counted_for_more_files_than_one_command_line_can_name(tmp_path):
     root = _folder(tmp_path)
     history.commit(root, "everything")

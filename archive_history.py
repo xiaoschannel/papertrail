@@ -280,30 +280,42 @@ def _numstat(root: Path, command: tuple[str, ...], paths: list[str]) -> dict[str
     """Lines added and removed per path by a ``--numstat`` diff (None: binary), asked of these paths only, a
     command line's worth at a time (Windows caps one at 32k characters)."""
     counted: dict[str, tuple[int, int] | None] = {}
-    chunk: list[str] = []
-    for i, path in enumerate(paths):
-        chunk.append(path)
-        if i + 1 < len(paths) and sum(len(p) + 3 for p in chunk) + len(paths[i + 1]) < 20_000:
-            continue
+
+    def ask(chunk: list[str]) -> None:
         for entry in _git(root, *command, "--no-renames", "--numstat", "-z", "--", *chunk).split("\0"):
             if entry:
                 added, removed, name = entry.split("\t", 2)
                 counted[name] = None if added == "-" else (int(added), int(removed))
-        chunk = []
+
+    chunk: list[str] = []
+    size = 0
+    for path in paths:
+        if chunk and size + len(path) + 3 > 20_000:
+            ask(chunk)
+            chunk, size = [], 0
+        chunk.append(path)
+        size += len(path) + 3               # a space and the quotes a name with a space in it gets
+    if chunk:
+        ask(chunk)
     return counted
 
 
-def _new_file_lines(path: Path) -> tuple[int, int] | None:
-    """A file no commit holds: all its lines added, counted as git counts them (None if it looks binary)."""
+def _file_lines(path: Path) -> tuple[int, int] | None:
+    """A file as it is on disk, all its lines added, counted as git counts them (None if it looks binary);
+    none at all when it isn't there."""
+    if not path.is_file():
+        return 0, 0
     data = path.read_bytes()
     if b"\0" in data[:8000]:
         return None
     return data.count(b"\n") + (1 if data and not data.endswith(b"\n") else 0), 0
 
 
-def _counted(root: Path, found: list[Change], command: tuple[str, ...]) -> list[Change]:
-    """``found`` with each text file's lines added and removed, by ``command`` (a diff of what they changed)."""
-    text = [c.path for c in found if not _binary_by_name(c.path)]
+def _counted(root: Path, found: list[Change], command: tuple[str, ...], diffed: bool = True) -> list[Change]:
+    """``found`` with each text file's lines added and removed, by ``command`` (a diff of what they changed).
+    With ``diffed`` False an added file isn't asked of the diff: it is one git doesn't know of yet, which no
+    diff counts, so it is counted from the file instead."""
+    text = [c.path for c in found if not _binary_by_name(c.path) and (diffed or c.kind != "added")]
     counted = _numstat(root, command, text) if text else {}
     out = []
     for c in found:
@@ -311,8 +323,8 @@ def _counted(root: Path, found: list[Change], command: tuple[str, ...]) -> list[
             out.append(c)
         elif c.path in counted:
             out.append(replace(c, lines=counted[c.path]))
-        else:                               # a file git doesn't know of yet, so no diff counts it
-            out.append(replace(c, lines=_new_file_lines(root / c.path)))
+        else:
+            out.append(replace(c, lines=_file_lines(root / c.path)))
     return out
 
 
@@ -322,7 +334,7 @@ def changes(root: Path) -> list[Change]:
     if not (root / ".git").exists():
         return []
     with _lock:
-        return _counted(root, sorted(_changes(root), key=lambda c: c.path), ("diff", "HEAD"))
+        return _counted(root, sorted(_changes(root), key=lambda c: c.path), ("diff", "HEAD"), diffed=False)
 
 
 @dataclass(frozen=True)
@@ -388,20 +400,29 @@ def uncommit(root: Path, sha: str) -> Commit:
 
 def discard_changes(root: Path, paths: Iterable[str]) -> int:
     """Throw away the uncommitted changes to these files (exact paths; one that no longer differs is skipped):
-    one the last commit holds goes back to it, deleted or not, and one it doesn't hold is deleted. How many
-    were thrown away."""
+    one the last commit holds goes back to it, deleted or not, and one it doesn't hold is deleted, and taken
+    out of the index too if a commit that failed part-way had added it there. How many were thrown away."""
     if not (root / ".git").exists():
         raise Refused("The folder has no history yet, so there is nothing to go back to.")
     wanted = set(paths)
     with _lock:
-        thrown = [c for c in _changes(root) if c.path in wanted]
-        held = [c.path for c in thrown if c.kind != "added"]
+        thrown = [c.path for c in _changes(root) if c.path in wanted]
+        if not thrown:
+            return 0
+        # which of them the last commit holds: asked of it by name, one per line, so any number at once
+        kinds = _git(root, "cat-file", "--batch-check=%(objecttype)",
+                     stdin="".join(f"HEAD:{p}\n" for p in thrown)).splitlines()
+        held = [p for p, kind in zip(thrown, kinds, strict=True) if kind == "blob"]
+        new = [p for p, kind in zip(thrown, kinds, strict=True) if kind != "blob"]
         if held:
             _git(root, "restore", "--source=HEAD", "--staged", "--worktree", "--pathspec-from-file=-",
                  "--pathspec-file-nul", stdin=_pathspec(held))
-        for change in thrown:
-            if change.kind == "added":
-                (root / change.path).unlink(missing_ok=True)
+        if new:
+            # forced: its staged content, in no commit, is what is being thrown away
+            _git(root, "rm", "--cached", "--force", "--quiet", "--ignore-unmatch", "--pathspec-from-file=-",
+                 "--pathspec-file-nul", stdin=_pathspec(new))
+            for path in new:
+                (root / path).unlink(missing_ok=True)
         return len(thrown)
 
 

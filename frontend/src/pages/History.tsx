@@ -5,6 +5,7 @@ import type { HistoryChange, HistoryCommit } from '../api/types.ts'
 import { ConfirmDialog } from '../components/ConfirmDialog.tsx'
 import { ago } from '../components/historyPip.tsx'
 import { Card, ErrorState, Loading } from '../components/ui.tsx'
+import { plural } from '../format.ts'
 import '../components/history.css'
 import './ingest.css'
 
@@ -18,8 +19,6 @@ import './ingest.css'
 const PAGE = 50
 /** Rows shown of a long file list (a first commit holds every scan); the rest are counted. */
 const SHOWN = 500
-
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 
 function when(secondsAgo: number): string {
   return new Date(Date.now() - secondsAgo * 1000).toLocaleString(undefined, {
@@ -152,6 +151,8 @@ function Commits() {
       setUncommitting(null)
       void refresh()
     },
+    // refused because a milestone committed since, say: show the history as it is now
+    onError: () => { void refresh() },
   })
 
   if (log.isPending) return <Loading what="history" />

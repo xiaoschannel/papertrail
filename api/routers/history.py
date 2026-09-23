@@ -12,6 +12,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 import archive_history
+from api import cache
 from api.deps import get_root
 from api.guards import no_job_running
 from api.schemas import (ChangeOut, CommitIn, CommitOut, CommitsOut, DiscardChangesIn, HistoryOut, LoggedCommitOut,
@@ -74,11 +75,14 @@ def commit_now(body: CommitIn, root: Path = Depends(get_root)):
 
 @router.post("/uncommit", response_model=HistoryOut)
 def uncommit(body: UncommitIn, root: Path = Depends(get_root)):
-    """Undo the last commit, leaving its files as they are, uncommitted again."""
-    try:
-        archive_history.uncommit(root, body.sha)
-    except archive_history.Refused as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    """Undo the last commit, leaving its files as they are, uncommitted again. Not while a job runs: a job
+    relies on what it committed (Archive deletes the scans only once a commit keeps them), and its own
+    commit may be the one undone."""
+    with no_job_running("uncommit"):
+        try:
+            archive_history.uncommit(root, body.sha)
+        except archive_history.Refused as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
     return _out(root)
 
 
@@ -90,4 +94,5 @@ def discard_changes(body: DiscardChangesIn, root: Path = Depends(get_root)):
             archive_history.discard_changes(root, body.paths)
         except archive_history.Refused as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+    cache.clear()   # a sidecar put back in place moves no folder's mtime: every visualize page may be stale
     return _out(root)
