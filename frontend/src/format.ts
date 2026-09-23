@@ -17,6 +17,9 @@ export function money(value: Maybe<number>, currency?: Maybe<string>): string {
 export const num = (v: Maybe<number>, digits = 0): string =>
   missing(v) ? '—' : v.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits })
 
+/** "1 file", "3 files": a count and its noun, the noun made plural with an s. */
+export const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' : 's'}`
+
 /** What a run or a batch cost, in cents: what a total is read for. Under a cent, the cents aren't it. */
 export const spend = (value: number): string => (value < 0.01 ? '<$0.01' : `$${value.toFixed(2)}`)
 

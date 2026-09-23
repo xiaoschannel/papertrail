@@ -4,6 +4,7 @@ import { api } from '../api/client.ts'
 import { ConfirmDialog } from '../components/ConfirmDialog.tsx'
 import { JobPanel, useJobGate, useTrackJob } from '../components/jobs.tsx'
 import { Card, ErrorState, Loading, Tile } from '../components/ui.tsx'
+import { plural } from '../format.ts'
 import './ingest.css'
 
 export default function Archive() {
@@ -24,7 +25,6 @@ export default function Archive() {
   if (status.error) return <ErrorState error={status.error} />
   const s = status.data
   const running = gate.job?.status === 'running'
-  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
   const earlier = `${plural(s.scans_to_remove, 'scan')} filed earlier that ${s.scans_to_remove === 1 ? 'is' : 'are'} still there`
   const which = s.files > 0 ? (s.scans_to_remove > 0 ? `these ${s.files}, and ${earlier}` : `these ${s.files}`) : `the ${earlier}`
 

@@ -353,8 +353,14 @@ def draw(sb: Sandbox) -> None:
     ingest_batch(sb)
 
 
-def prepare(root: Path, fresh: bool = False) -> Sandbox:
-    """The sandbox at ``root``, ready to serve: in the shared state if it is new (or ``fresh``, which
+#: The sandbox's Papertrail folder, inside the sandbox folder; beside it are the sandbox's own files (its
+#: config, the Experiment bench's runs), as the live config sits in the checkout, outside the live folder:
+#: in the folder they would be files its history counts, and the History page could discard.
+FOLDER = "papertrail"
+
+
+def prepare(box: Path, fresh: bool = False) -> Sandbox:
+    """The sandbox in ``box``, ready to serve: in the shared state if it is new (or ``fresh``, which
     wipes it first), or as it was left, with every scan registered for the fake OCR.
 
     Points the app's config at it, as the server does, so the pipeline and the API use the sandbox.
@@ -363,12 +369,19 @@ def prepare(root: Path, fresh: bool = False) -> Sandbox:
 
     import settings
 
-    if fresh and root.exists():
-        remove_tree(root)
+    if fresh and box.exists():
+        remove_tree(box)
+    root = box / FOLDER
+    # A sandbox made before it had a folder of its own was the folder: what is the folder's goes into it.
+    if (box / "archive").is_dir() and not root.exists():
+        root.mkdir()
+        for entry in list(box.iterdir()):
+            if entry.name not in (FOLDER, "config.json", "experiment"):
+                entry.rename(root / entry.name)
     sb = Sandbox(root=root)
     sb.archive.mkdir(parents=True, exist_ok=True)
     sb.scans.mkdir(exist_ok=True)
-    config = root / "config.json"
+    config = box / "config.json"
     saved = (json.loads(config.read_text(encoding="utf-8")) if config.exists()
              else {"normalize_engine": "string", "indexing_scheme": SCHEME})
     # The sandbox is always one Papertrail folder, here. A sandbox made before there was one names its scan

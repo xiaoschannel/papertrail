@@ -88,12 +88,12 @@ def test_restarting_reads_every_scan_without_redrawing_it(sandbox):
 
 
 def test_a_reset_puts_a_used_sandbox_back_into_the_shared_state(tmp_path):
-    root = tmp_path / "sandbox"
-    seed.prepare(root)
-    (root / "scans" / "a scan dropped in.png").write_bytes(b"")          # what was done in it since
-    (root / "archive" / "marked" / "02152026090030_4.png").unlink()
+    box = tmp_path / "sandbox"
+    used = seed.prepare(box)
+    (used.scans / "a scan dropped in.png").write_bytes(b"")              # what was done in it since
+    (used.archive / "marked" / "02152026090030_4.png").unlink()
 
-    sb = seed.prepare(root, fresh=True)
+    sb = seed.prepare(box, fresh=True)
 
     assert not (sb.scans / "a scan dropped in.png").exists()
     assert (sb.archive / "marked" / "02152026090030_4.png").exists()
@@ -101,24 +101,33 @@ def test_a_reset_puts_a_used_sandbox_back_into_the_shared_state(tmp_path):
 
 
 def test_a_sandbox_from_before_the_papertrail_folder_is_moved_onto_it(tmp_path, monkeypatch):
+    """First the sandbox named its scan folder and archive; then the sandbox folder was the Papertrail folder,
+    its config in it (a file the folder's history counted); now the folder is inside, the config beside it."""
     import json
+    import shutil
 
+    import archive_history
     import settings
 
     monkeypatch.setattr(settings, "CONFIG_PATH", settings.CONFIG_PATH)   # prepare points it at the sandbox
-    root = tmp_path / "sandbox"
-    seed.prepare(root)
-    config = root / "config.json"
+    box = tmp_path / "sandbox"
+    sb = seed.prepare(box)
+    for entry in list(sb.root.iterdir()):                                  # laid out as a sandbox was
+        shutil.move(entry, box / entry.name)
+    sb.root.rmdir()
+    config = box / "config.json"
     old = {k: v for k, v in json.loads(config.read_text(encoding="utf-8")).items() if k != "root_path"}
-    config.write_text(json.dumps({**old, "input_image_path": str(root / "scans"),
-                                  "batch_output_path": str(root / "archive"), "ocr_model": "kept"}), encoding="utf-8")
+    config.write_text(json.dumps({**old, "input_image_path": str(box / "scans"),
+                                  "batch_output_path": str(box / "archive"), "ocr_model": "kept"}), encoding="utf-8")
 
-    seed.prepare(root)
+    moved = seed.prepare(box)
 
+    assert moved.root == box / seed.FOLDER and sorted(p.name for p in box.iterdir()) == ["config.json", seed.FOLDER]
     saved = json.loads(config.read_text(encoding="utf-8"))
-    assert saved["root_path"] == str(root) and saved["ocr_model"] == "kept"
+    assert saved["root_path"] == str(moved.root) and saved["ocr_model"] == "kept"
     assert "input_image_path" not in saved and "batch_output_path" not in saved
-    assert settings.get_config().root_path == str(root)
+    assert settings.get_config().root_path == str(moved.root)
+    assert archive_history.changed_paths(moved.root) == {"archive/trims.json"}    # the sandbox's own files aren't
 
 
 def test_the_reset_script_leaves_a_running_sandbox_alone(monkeypatch, tmp_path):

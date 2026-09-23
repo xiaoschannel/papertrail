@@ -747,6 +747,49 @@ def test_the_sidebar_s_count_and_a_manual_commit(ingest_client, configured_inges
     assert named["last"]["subject"] == "reviewed batch 1" and named["changed"] == 0
 
 
+def test_the_history_page_lists_commits_and_changes_and_takes_them_back(ingest_client, configured_ingest, monkeypatch):
+    from api import cache
+
+    cleared = []
+    monkeypatch.setattr(cache, "clear", lambda: cleared.append(True))
+    notes = [{"path": "archive/notes.json", "kind": "added", "lines_added": 1, "lines_removed": 0}]
+    assert ingest_client.get("/api/history/changes").json() == []                       # no history yet
+    assert ingest_client.get("/api/history/commits").json() == {"commits": [], "more": False}
+    ingest_client.post("/api/history/commit", json={"message": "everything"})
+    (configured_ingest / "notes.json").write_bytes(b"{}")
+    assert ingest_client.get("/api/history/changes").json() == notes
+    ingest_client.post("/api/history/commit", json={"message": "reviewed"})
+
+    listed = ingest_client.get("/api/history/commits", params={"limit": 1}).json()
+    assert listed["more"] and [(c["subject"], c["files"], c["first"]) for c in listed["commits"]] == [("reviewed", 1, False)]
+    last = listed["commits"][0]["sha"]
+    assert ingest_client.get(f"/api/history/commits/{last}").json() == notes
+    assert ingest_client.get("/api/history/commits/0000000").status_code == 404
+
+    stale = ingest_client.post("/api/history/uncommit", json={"sha": "0000000"})
+    assert stale.status_code == 409 and "“reviewed”" in stale.json()["detail"]
+
+    # while a job runs neither is taken back: Archive, say, deletes scans once a commit of its own keeps them
+    release = threading.Event()
+    job = runner.start("ocr", "OCR (test)", lambda progress: release.wait(10), Claim(batches=frozenset({1})))
+    try:
+        for busy in (ingest_client.post("/api/history/uncommit", json={"sha": last}),
+                     ingest_client.post("/api/history/discard-changes", json={"paths": ["archive/notes.json"]})):
+            assert busy.status_code == 409 and "OCR (test)" in busy.json()["detail"]
+    finally:
+        release.set()
+        runner.wait_until_finished(job["id"])
+    assert ingest_client.get("/api/history").json()["last"]["subject"] == "reviewed"
+
+    undone = ingest_client.post("/api/history/uncommit", json={"sha": last}).json()
+    assert undone["last"]["subject"] == "everything" and undone["changed"] == 1
+    assert (configured_ingest / "notes.json").read_bytes() == b"{}"                 # the file stays
+    assert not cleared
+    thrown = ingest_client.post("/api/history/discard-changes", json={"paths": ["archive/notes.json"]}).json()
+    assert thrown["changed"] == 0 and not (configured_ingest / "notes.json").exists()
+    assert cleared                                            # a sidecar may have been put back: charts re-read
+
+
 def test_the_api_parks_what_is_uncommitted_when_it_stops_and_takes_it_back_when_it_starts(configured_ingest):
     import archive_history
     from fastapi.testclient import TestClient

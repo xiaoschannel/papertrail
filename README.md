@@ -151,8 +151,10 @@ Scan your documents into a folder, and follow this process:
 
 The Papertrail folder's root is a git repository (made at the first milestone), so every scan as it came in
 and as it was turned or cut, and every page and sidecar as filed and as edited since, is kept in every state
-it was ever in. Nothing in the app reads the history: `git log`, `git show` and `git checkout` in the folder
-do that. A scan and its archived copy are the same bytes, so git stores each image once.
+it was ever in. The **History** page (the pill at the foot of the sidebar opens it) lists what waits
+uncommitted and every commit with the files it changed, and the lines added and removed in each (an image
+is just binary); to bring an old version back, `git show` and `git checkout` in the folder do that. A scan and its archived copy are the same bytes, so git stores each
+image once.
 
 A commit is made only at a **milestone**, and holds only what that milestone produced:
 
@@ -162,13 +164,20 @@ A commit is made only at a **milestone**, and holds only what that milestone pro
 | Finalize on Fix Rotation, Slice or Group | that step's files for every unarchived batch: the scans as turned, the crops and the index, the grouping and what it cleared |
 | OCR or Parse ending, however it ended | that run's result files |
 | Archive | the filed pages and the working files it deleted; then the scans it removed |
-| The Commit button in the sidebar | everything uncommitted, with a message |
+| Commit on the History page | everything uncommitted, with a message |
 | The API stopping | everything uncommitted, as a parking commit the next start undoes |
 
 Nothing else commits. Review and Workshop decisions, Receipt Detail edits, Normalize and Dedupe accumulate,
-and the sidebar shows how many files wait, until a milestone that owns them or the Commit button. A commit
+and the sidebar shows how many files wait, until a milestone that owns them or a commit by hand. A commit
 holds whole files, so Group's Finalize, which owns the decisions file for its tosses, takes Review's
 decisions in it along.
+
+The History page takes things back in two separate steps. **Uncommit** on the last commit undoes it and
+leaves every file as it is, its changes uncommitted again, to commit differently or to throw away; it is
+refused when a file the commit holds has changed or gone since, as the commit holds the only copy of what
+it was (an Archive run's scans, say, once cleared out of the scan folder). **Discard** on an uncommitted
+file, or **Discard all**, throws the changes away: a file goes back to its last commit, and a new file no
+commit holds is deleted. Throwing changes away waits while a job runs.
 
 A scan leaves the scan folder only once its filed page is in the last commit as it is on disk. Archive
 removes the scans it just filed, and any filed earlier that are still there; a page edited since keeps its
