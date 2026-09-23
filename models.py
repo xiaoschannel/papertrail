@@ -278,6 +278,65 @@ class SmartMatchCandidate(BaseModel):
     quick_apply: bool
 
 
+#: Where a scan's top points when it isn't upright, as the rotate arrows name it.
+TopPoints = Literal["left", "right", "down"]
+
+
+class RotationPrediction(BaseModel):
+    """What the detectors said about one scan, raw, and what they suggested from it (rotation_review.py).
+
+    The raw answers are kept whatever the thresholds made of them, and the thresholds with them, so the
+    records can be judged again against other thresholds or a better method (``method``)."""
+
+    method: str
+    #: The orientation model's answer and how sure it was; None for both when the model couldn't be had.
+    top_points: TopPoints | None = None
+    confidence: float | None = None
+    #: The turn suggested: the model's answer when it was sure enough (``min_confidence``), else None.
+    turn: TopPoints | None = None
+    #: The tilt measured on the scan as the suggested turn leaves it: degrees counter-clockwise that level
+    #: it, how much sharper its lines get levelled, and how far it shows (``SkewEstimate.drift``).
+    degrees: float = 0.0
+    gain: float = 1.0
+    drift: float = 0.0
+    #: The straightening suggested (``degrees`` when it was worth fixing at ``tilt_share``), else None.
+    tilt: float | None = None
+    min_confidence: float
+    tilt_share: float
+
+    @property
+    def flagged(self) -> bool:
+        return self.turn is not None or self.tilt is not None
+
+
+class RotationDecision(BaseModel):
+    """One decision on a scan's rotation, kept as training data for the detectors: what they predicted, and
+    what a person did. Every one is kept, agreements too (they are the positive examples)."""
+
+    at: float
+    key: str
+    filename: str
+    #: Where it was made: the Fix Rotation queue, its "all scans" view, Review (sent back), the Workshop.
+    source: Literal["queue", "browse", "review", "workshop"]
+    #: fixed: turned and/or straightened; left: left as it was; sent_back: Review found the detectors missed
+    #: it; undone: a fix taken back, the scan restored.
+    action: Literal["fixed", "left", "sent_back", "undone"]
+    #: What was applied: the turn upright from where the top pointed, then the straightening, in degrees
+    #: counter-clockwise, measured on the turned scan.
+    top_points: TopPoints | None = None
+    degrees: float = 0.0
+    predicted: RotationPrediction | None = None
+    #: Whether what was done matches what was suggested (None where there is nothing to compare).
+    agrees: bool | None = None
+    #: The scan's version (mtime) before and after, and its bytes before as a git blob in the folder's
+    #: history, which is what the detectors saw and what Undo restores. None without a history.
+    image_version: int
+    version_after: int
+    before: str | None = None
+    #: The page's trim before, which Undo restores with the scan.
+    trim_before: "Trim | None" = None
+
+
 class Sidecar(BaseModel):
     original_filename: str
     batch_id: int | None = None
@@ -297,6 +356,8 @@ class Sidecar(BaseModel):
     slice_box: "Box | None" = None
     #: the part of the scan that is the document (None: all of it)
     trim: Trim | None = None
+    #: every decision made on the scan's rotation while it was ingested (training data for the detectors)
+    rotation: list[RotationDecision] | None = None
 
 
 #: Grid coordinates are on a 0-1000 scale of the sheet image, like OCR boxes, so they never need its size.

@@ -114,7 +114,7 @@ def test_shortcuts_default_to_the_left_hand(api_client):
     assert api_client.get("/api/config").json()["shortcuts"] == {
         "accept": "a", "mark": "s", "toss": "d", "prev": "x", "next": "c", "undo": "z",
         "quick_1": "1", "quick_2": "2", "quick_3": "3", "hide_boxes": "b", "hold_original": "r", "confirm": "e", "cancel": "q",
-        "leave_as_is": "w", "turn_upright": "e", "toggle_guides": "r", "straighten": "d"}
+        "leave_as_is": "w", "fix_scan": "e", "toggle_guides": "r"}
 
 
 def test_shortcuts_are_saved_as_a_section(api_client):
@@ -143,8 +143,8 @@ def test_the_tilt_worth_fixing_is_kept_to_what_the_config_page_offers(api_client
 def test_shortcuts_reject_what_a_page_could_not_tell_apart(api_client):
     keys = api_client.get("/api/config").json()["shortcuts"]
     for bad in ({"mark": "a"}, {"cancel": "e"}, {"toss": "1"}, {"quick_3": "r"}, {"hold_original": "a"}, {"prev": ""}, {"next": "cc"}, {"undo": "Tab"},
-                {"hide_boxes": "Shift"}, {"confirm": "enter"}, {"hold_original": "b"}, {"straighten": "q"},
-                {"leave_as_is": "e"}):
+                {"hide_boxes": "Shift"}, {"confirm": "enter"}, {"hold_original": "b"}, {"fix_scan": "q"},
+                {"leave_as_is": "e"}, {"toggle_guides": "x"}):
         assert api_client.patch("/api/config", json={"shortcuts": {**keys, **bad}}).status_code == 422, bad
     assert api_client.get("/api/config").json()["shortcuts"] == keys
 

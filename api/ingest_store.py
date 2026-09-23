@@ -102,18 +102,19 @@ def scan_orientation(path: Path) -> OrientationEstimate:
     return value
 
 
-_skew_cache: dict[str, tuple[tuple[int, int], SkewEstimate]] = {}
+_skew_cache: dict[tuple[str, str], tuple[tuple[int, int], SkewEstimate]] = {}
 
 
-def scan_skew(path: Path) -> SkewEstimate:
-    """The tilt estimate for one scan, recomputed when the file changes."""
-    key = str(path.resolve())
+def scan_skew(path: Path, top_points: str = "") -> SkewEstimate:
+    """The tilt estimate for one scan as turning it upright from ``top_points`` would leave it, recomputed
+    when the file changes."""
+    key = (str(path.resolve()), top_points)
     signature = _signature(path)
     with _cache_lock:
         hit = _skew_cache.get(key)
     if hit is not None and hit[0] == signature:
         return hit[1]
-    value = estimate_file_skew(path)
+    value = estimate_file_skew(path, top_points)
     with _cache_lock:
         _skew_cache[key] = (signature, value)
     return value

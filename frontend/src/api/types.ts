@@ -32,10 +32,13 @@ export type IndexStatus = Schemas['IndexStatus']
 export type ConfirmIndexIn = Schemas['ConfirmIndexIn']
 export type Grouping = Schemas['GroupingOut']
 export type GroupingPage = Schemas['GroupingPageOut']
-export type TopPoints = Schemas['RotateIn']['top_points']
-/** The pages whose scan looks sideways or upside down; each `top_points` names the arrow that turns it upright. */
-export type TurnedPages = Schemas['TurnedPagesOut']
-export type TiltedPages = Schemas['TiltedPagesOut']
+/** Where a scan's top points when it isn't upright: the rotate arrow that turns it upright. */
+export type TopPoints = NonNullable<Schemas['RotationDecideIn']['top_points']>
+export type RotationQueue = Schemas['RotationQueueOut']
+export type RotationItem = Schemas['RotationItemOut']
+export type RotationPrediction = Schemas['RotationPrediction']
+export type RotationDecision = Schemas['RotationDecision']
+export type RotationDecideIn = Schemas['RotationDecideIn']
 export type PipelineCounts = Schemas['PipelineCountsOut']
 export type Slicing = Schemas['SlicingOut']
 export type SlicingSheet = Schemas['SlicingSheetOut']

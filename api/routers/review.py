@@ -6,22 +6,39 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+import archive_history
 import review_logic as rl
+import rotation_review as rr
 from api import ingest_store as store
-from api.deps import get_output_path
+from api.deps import get_input_path, get_output_path
 from api.guards import no_job_running
 from api.schemas import (
     DecisionIn, DecisionOut, DraftIn, FieldBoxOut, FormDefaultsOut, HintOut, HintsRequest,
-    HintsResponse, QueueItem, ReviewDocument, ReviewPage, ReviewQueue, ReviewSummary, SmartMatch, VerdictCount,
+    HintsResponse, PageIn, QueueItem, ReviewDocument, ReviewPage, ReviewQueue, ReviewSummary, SmartMatch,
+    VerdictCount,
 )
+from api.routers.rotation import _claim, _refused, orienter
 from data import build_document_index, build_smart_match_history, load_decisions, load_trims, save_decisions
 from models import (
-    VERDICT_COLORS, VERDICT_LABELS, DocumentKey, ReviewDecision, batch_serial_key, iter_indexed_files,
+    VERDICT_COLORS, VERDICT_LABELS, DocumentKey, ReviewDecision, RotationDecision, batch_serial_key,
+    iter_indexed_files,
 )
 from name_similarity import get_smart_match_candidates, quick_apply_label
 from settings import get_config, scans_path
 
 router = APIRouter(prefix="/api/review", tags=["review"])
+
+
+@router.post("/send-back", response_model=RotationDecision)
+def send_back(body: PageIn, output_path: Path = Depends(get_output_path), input_path: Path = Depends(get_input_path)):
+    """A page the rotation detectors missed: what was read from it is forgotten (its document leaves Review
+    until OCR and Parse read it again) and it joins Fix Rotation's queue, as training data."""
+    try:
+        with no_job_running("send pages back", claim=_claim(body.key)):
+            return rr.send_back(output_path, input_path, body.key, orienter(download=False), store.scan_skew,
+                                get_config().tilt_share)
+    except (KeyError, FileNotFoundError, ValueError, archive_history.HistoryError) as exc:
+        raise _refused(exc) from exc
 
 
 def _summary(extractions: dict, decisions: dict[str, ReviewDecision]) -> ReviewSummary:
@@ -127,6 +144,7 @@ def document_endpoint(key: str = Query(...), output_path: Path = Depends(get_out
             boxes=FieldBoxOut.all_of(boxes),
             trim=band,
             retrimmed=bool(result and result.succeeded and result.trim != band),
+            turnable=rr.turnable(output_path, file_key),
         ))
 
     defaults = rl.form_defaults(extraction)

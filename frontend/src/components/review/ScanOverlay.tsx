@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { useShortcutKeys } from '../../api/config.ts'
 import type { BoxRect, FieldBox, ReviewPage, TopPoints, Trim } from '../../api/types.ts'
 import { TrimmedImage } from '../TrimmedImage.tsx'
@@ -60,7 +61,7 @@ function turned(r: BoxRect, turn: Turn): BoxRect {
  */
 export function ScanOverlay({
   pages, imageUrl, activeFields, onHoverField, turn = '', originalUrl, showOriginal = false,
-  hideBoxes = false, bandOf, missing = 'is not in the input folder',
+  hideBoxes = false, bandOf, missing = 'is not in the input folder', pageAction,
 }: {
   pages: ReviewPage[]
   imageUrl: (filename: string) => string
@@ -76,6 +77,8 @@ export function ScanOverlay({
   bandOf?: ((page: ReviewPage, original: boolean) => Trim | null) | undefined
   /** What to say about a page whose scan isn't on disk. */
   missing?: string
+  /** Something to do with one page, beside its caption (Review: send it back to Fix Rotation). */
+  pageAction?: ((page: ReviewPage) => ReactNode) | undefined
 }) {
   const isActive = (box: FieldBox) => box.fields.some((f) => activeFields.includes(f))
   const original = showOriginal && originalUrl !== undefined
@@ -126,6 +129,7 @@ export function ScanOverlay({
                 </span>
               )}
             </span>
+            {pageAction?.(page)}
           </figcaption>
         </figure>
       ))}

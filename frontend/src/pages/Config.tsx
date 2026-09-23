@@ -191,9 +191,9 @@ const SHORTCUT_GROUPS: { title: string; actions: [keyof Shortcuts, string][] }[]
     ['hold_original', 'Hold to see the original (Workshop, Experiment)'],
   ] },
   { title: 'Dialogs and scan viewers', actions: [['confirm', 'Confirm'], ['cancel', 'Cancel or close']] },
-  { title: "Fix Rotation's scan viewer", actions: [
-    ['leave_as_is', 'Leave as is'], ['turn_upright', 'Turn upright'], ['toggle_guides', 'Level guides on or off'],
-    ['straighten', 'Straighten'],
+  { title: 'Fix Rotation (and its previous and next, as on Review)', actions: [
+    ['leave_as_is', 'Leave as is'], ['fix_scan', 'Fix: turn and straighten as previewed'],
+    ['toggle_guides', 'Hold to flip the level guides'],
   ] },
 ]
 
@@ -202,7 +202,7 @@ const QUICK: (keyof Shortcuts)[] = ['quick_1', 'quick_2', 'quick_3']
 const LIVE_TOGETHER: (keyof Shortcuts)[][] = [
   ['accept', 'mark', 'toss', 'prev', 'next', 'undo', 'hide_boxes', ...QUICK],
   ['accept', 'toss', 'prev', 'next', 'hold_original', 'hide_boxes', ...QUICK], ['confirm', 'cancel'],
-  ['leave_as_is', 'turn_upright', 'toggle_guides', 'straighten', 'cancel'],
+  ['leave_as_is', 'fix_scan', 'toggle_guides', 'prev', 'next', 'cancel'],
 ]
 
 /** The actions the server would refuse (the same rules as `Shortcuts` in settings.py). */

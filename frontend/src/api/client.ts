@@ -2,7 +2,7 @@ import createClient from 'openapi-fetch'
 import type { paths } from './schema'
 import type {
   AppConfig, BrandIn, ConfirmIndexIn, DecisionIn, Draft, ExperimentOcrIn, ExperimentParseIn, ExperimentTreatment, FinalizeStep,
-  MerchantTotals, ReceiptEditIn, SheetGrid, StartOcrIn, StartParseIn, TopPoints, Trim, Verdict, WorkshopDecisionIn,
+  MerchantTotals, ReceiptEditIn, RotationDecideIn, SheetGrid, StartOcrIn, StartParseIn, Trim, Verdict, WorkshopDecisionIn,
   WorkshopReprocessIn,
 } from './types.ts'
 
@@ -84,6 +84,8 @@ export const api = {
     /** Take back `decision`, exactly as it was made; refused (409/404) if it's no longer the one on file. */
     undo: (decision: DecisionIn) => unwrap(client.POST('/api/review/undo', { body: decision })),
     clearAll: () => unwrap(client.DELETE('/api/review/decisions')),
+    /** A page the rotation detectors missed: forget what was read from it, and put it in Fix Rotation's queue. */
+    sendBack: (key: string) => unwrap(client.POST('/api/review/send-back', { body: { key } })),
   },
 
   ingest: {
@@ -100,11 +102,6 @@ export const api = {
       unwrap(client.POST('/api/ingest/finalize/{step}', { params: { path: { step } }, body: { groups } })),
     toss: (key: string) => unwrap(client.POST('/api/ingest/pages/toss', { body: { key } })),
     recover: (key: string) => unwrap(client.POST('/api/ingest/pages/recover', { body: { key } })),
-    rotate: (key: string, topPoints: TopPoints) =>
-      unwrap(client.POST('/api/ingest/pages/rotate', { body: { key, top_points: topPoints } })),
-    /** The batch's pages whose scan looks sideways or upside down (503 when the model can't be had). */
-    turned: (batchId: number) =>
-      unwrap(client.GET('/api/ingest/turned', { params: { query: { batch_id: batchId } } })),
     /** Keep only a band of a page (null: all of it); OCR reads only the band, and reads a page it read before again. */
     trim: (key: string, trim: Trim | null) =>
       unwrap(client.PUT('/api/ingest/pages/trim', { body: { key, trim } })),
@@ -117,12 +114,17 @@ export const api = {
       unwrap(client.PUT('/api/ingest/slices', { body: { key, grid, token } })),
     /** What waits at each ingest step, for the sidebar. */
     counts: () => unwrap(client.GET('/api/ingest/counts')),
-    tilted: (batchId: number) =>
-      unwrap(client.GET('/api/ingest/tilted', { params: { query: { batch_id: batchId } } })),
     inkOutline: (key: string) =>
       unwrap(client.GET('/api/ingest/pages/ink-outline', { params: { query: { key } } })),
-    straighten: (key: string, degrees: number) =>
-      unwrap(client.POST('/api/ingest/pages/straighten', { body: { key, degrees } })),
+    /** Fix Rotation's queue across every unarchived batch, and what was decided on it. */
+    rotation: () => unwrap(client.GET('/api/ingest/rotation')),
+    /** What the detectors say of any page Fix Rotation can turn, flagged or not. */
+    rotationPrediction: (key: string) =>
+      unwrap(client.GET('/api/ingest/rotation/prediction', { params: { query: { key } } })),
+    /** Fix a scan (turn it upright from `top_points`, then straighten it) or leave it as it is. */
+    decideRotation: (body: RotationDecideIn) => unwrap(client.POST('/api/ingest/rotation/decide', { body })),
+    /** Take back a page's last fix. */
+    undoRotation: (key: string) => unwrap(client.POST('/api/ingest/rotation/undo', { body: { key } })),
     ocr: (query: OcrQuery) => unwrap(client.GET('/api/ingest/ocr', {
       params: {
         query: { provider: query.provider ?? null, batch_id: query.batchId ?? null, reprocess: query.reprocess, limit: query.limit },
@@ -184,6 +186,9 @@ export const api = {
     discardReread: (key: string) =>
       unwrap(client.DELETE('/api/curate/workshop/reread', { params: { query: { key } } })),
     decide: (body: WorkshopDecisionIn) => unwrap(client.POST('/api/curate/workshop/decide', { body })),
+    /** What the rotation detectors say of a marked page: where the reread's turn and tilt start. */
+    rotation: (filename: string) =>
+      unwrap(client.GET('/api/curate/workshop/rotation', { params: { query: { filename } } })),
     hints: (key: string, draft: Draft) => unwrap(client.POST('/api/curate/workshop/hints', { body: { key, draft } })),
     /** The week around the form's date and time, and the document's batch. */
     context: (key: string, when: { date: string; time: string; document_type: string }) =>

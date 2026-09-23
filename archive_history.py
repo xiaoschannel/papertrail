@@ -125,6 +125,27 @@ def ensure_repository(root: Path) -> bool:
     return True
 
 
+def keep_blob(root: Path, path: Path) -> str:
+    """Put a file's bytes in the repository's objects as they are now, without committing anything, and
+    return their id: a scan about to be rewritten keeps its old bytes this way (``read_blob`` brings them
+    back). Unreachable objects are kept for good (``gc.pruneExpire never``), so no gc takes one away."""
+    with _lock:
+        _git(root, "config", "gc.pruneExpire", "never")
+        return _git(root, "hash-object", "-w", "--", str(path.resolve())).strip()
+
+
+def read_blob(root: Path, blob: str) -> bytes:
+    """The bytes ``keep_blob`` kept."""
+    command = [GIT, "-C", str(root), "--git-dir=.git", "cat-file", "blob", blob]
+    try:
+        done = subprocess.run(command, capture_output=True, creationflags=_NO_WINDOW)
+    except FileNotFoundError:
+        raise HistoryError("git isn't installed (or isn't on PATH), and the folder's history needs it.") from None
+    if done.returncode != 0:
+        raise HistoryError(f"git cat-file failed in {root}: {done.stderr.decode(errors='replace').strip()}")
+    return done.stdout
+
+
 def _status(root: Path, paths: Iterable[str] | None = None) -> list[str]:
     """The paths that differ from the last commit (changed, added, deleted; ignored files aside), under
     ``paths`` if given: each a file, or a folder and everything in it. A path that matches nothing is

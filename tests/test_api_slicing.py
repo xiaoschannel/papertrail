@@ -121,11 +121,16 @@ def test_review_cant_decide_a_sliced_sheet(ingest_client, configured_ingest, sca
     assert decided.status_code == 409 and load_decisions(configured_ingest)["1:2"].sliced
 
 
-def test_crops_and_sliced_sheets_cant_be_rotated_and_crops_cant_be_linked(ingest_client, scans):
+def test_crops_and_sliced_sheets_cant_be_rotated_and_crops_cant_be_linked(ingest_client, configured_ingest, scans):
     slice_sheet(ingest_client)
-    for key in ("1:2", "1:10"):
-        refused = ingest_client.post("/api/ingest/pages/rotate", json={"key": key, "top_points": "left"})
+    import rotation_review
+    from tests.test_api_ingest import decide
+
+    for key, filename in (("1:2", "01102025133000_2.png"), ("1:10", CROP)):
+        refused = decide(ingest_client, key, filename, top="left")
         assert refused.status_code == 409
+        assert ingest_client.post("/api/review/send-back", json={"key": key}).status_code == 409
+        assert not rotation_review.turnable(configured_ingest, key)         # Review doesn't offer it
     linked = ingest_client.post("/api/ingest/finalize/group", json={"groups": [{"batch_id": 1, "groups": [["1:9", "1:10"]]}]})
     assert linked.status_code == 422 and "crop" in linked.json()["detail"]
     assert ingest_client.post("/api/ingest/pages/toss", json={"key": "1:10"}).status_code == 200   # a crop can go
@@ -138,7 +143,7 @@ def test_only_pages_the_rotate_arrows_can_turn_are_checked_for_orientation(inges
 
     for name in ("01102025133000_2.png", "01102025140000_3.png"):                  # 1:2, the sheet, and 1:3
         printed(top_points="down").resize((600, 1320)).save(scans / name)
-    turned = lambda: [p["key"] for p in ingest_client.get("/api/ingest/turned", params={"batch_id": 1}).json()["pages"]]
+    turned = lambda: [i["key"] for i in ingest_client.get("/api/ingest/rotation").json()["items"]]
     assert turned() == ["1:2", "1:3"]
     slice_sheet(ingest_client)                                                     # crops 1:9-1:11, cut upside down
     assert turned() == ["1:3"]
@@ -148,12 +153,14 @@ def test_crops_and_sliced_sheets_are_neither_suggested_for_straightening_nor_str
     slice_sheet(ingest_client)
     for filename in ("01102025133000_2.png", CROP, "01102025140000_3.png"):   # sheet 1:2, crop 1:10, page 1:3
         tilt_fixture("receipt_crooked.png").save(scans / filename)
-    tilted = ingest_client.get("/api/ingest/tilted", params={"batch_id": 1}).json()["pages"]
-    assert [p["key"] for p in tilted] == ["1:3"]
-    for key, why in (("1:2", "sliced"), ("1:10", "crop")):
-        refused = ingest_client.post("/api/ingest/pages/straighten", json={"key": key, "degrees": 3.7})
+    from tests.test_api_ingest import decide
+
+    tilted = ingest_client.get("/api/ingest/rotation").json()["items"]
+    assert [i["key"] for i in tilted] == ["1:3"]
+    for key, filename, why in (("1:2", "01102025133000_2.png", "sliced"), ("1:10", CROP, "crop")):
+        refused = decide(ingest_client, key, filename, degrees=3.7)
         assert refused.status_code == 409 and why in refused.json()["detail"]
-    assert ingest_client.post("/api/ingest/pages/straighten", json={"key": "1:3", "degrees": 3.7}).status_code == 200
+    assert decide(ingest_client, "1:3", "01102025140000_3.png", degrees=3.7).status_code == 200
 
 
 def test_archived_tossed_and_marked_crops_are_known_by_their_scan_names(ingest_client, configured_ingest, scans):

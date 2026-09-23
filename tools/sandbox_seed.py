@@ -27,9 +27,12 @@ What each stage holds for a feature today:
   trimmed before OCR (read as the receipt alone) and one trimmed after (read again by the next OCR); in
   the archive, a filed receipt trimmed, and a marked one untrimmed (the Workshop's Trim row).
 * Tilted scans: two receipts in batch 3 were fed in crooked (10 a little clockwise, 13 further the other way),
-  for Fix Rotation to point out; any scan can be straightened from its full-size view. The fake OCR
-  boxes each line where it lies on the crooked page, as a real one would. Turning or straightening a page
-  after OCR sends it back to OCR and Parse.
+  and 12 both sideways and crooked, for Fix Rotation's queue: one Fix turns it and then straightens it. Any
+  scan can be fixed from "All scans". The fake OCR boxes each line where it lies on the crooked page, as a
+  real one would. Turning or straightening a page after OCR sends it back to OCR and Parse.
+* Sent back: 2:3, in Review, was fed in a little crooked, too little to be flagged: send it back to Fix
+  Rotation from its scan in Review.
+* Workshop straighten: the marked 1:5 was fed in crooked; the Workshop starts its reread from the tilt.
 """
 
 from __future__ import annotations
@@ -171,7 +174,9 @@ def archived_batch(sb: Sandbox) -> None:
     sb.coupon_receipt("02152026090020_3.png", "Sandbox Supermarket", "2026/02/11 17:40", 2150)
     # Trim: marked untrimmed, read with its coupon (so its cost is the coupon's): try the Workshop's Trim row.
     sb.coupon_receipt("02152026090030_4.png", "Sandbox Drugstore", "2026/02/12 19:15", 1680)
-    sb.receipt("02152026090040_5.png", "Ramen Testya", "2026/02/13 12:45", 1100)
+    # Workshop straighten: marked, and fed in crooked; the Workshop starts the reread from the detectors' tilt,
+    # and Accept keeps the decision in the page's sidecar and the rotation log.
+    sb.receipt("02152026090040_5.png", "Ramen Testya", "2026/02/13 12:45", 1100, tilt=-3.0)
     sb.receipt("02152026090050_6.png", "Coffee Stand Foo", "2026/02/14 09:05", 420)
 
 
@@ -185,7 +190,9 @@ def review_batch(sb: Sandbox) -> None:
     sb.coupon_receipt("02252026090000_1.png", "Sandbox Supermarket", "2026/02/20 18:05", 2380)
     # Trim: read whole, then trimmed: "trimmed since it was read" in Review, and OCR has it to read again.
     sb.coupon_receipt("02252026090010_2.png", "Sandbox Drugstore", "2026/02/21 10:20", 760)
-    sb.receipt("02252026090020_3.png", "Kissa Example", "2026/02/21 15:00", 890)
+    # Fix Rotation's send-back: fed in a little crooked, not enough for the detectors to flag, so it came to
+    # Review as it was; send it back from its scan's caption and it waits in Fix Rotation's queue.
+    sb.receipt("02252026090020_3.png", "Kissa Example", "2026/02/21 15:00", 890, tilt=0.8)
     sb.receipt("02252026090030_4.png", "Demo Mart 駅前店", "2026/02/22 19:02", 1320)
 
 
@@ -206,11 +213,14 @@ def ingest_batch(sb: Sandbox) -> None:
     sb.scan("03012026100100_7.png", [((80, 40, 880, 104), "(blank page)")])
     sb.receipt("03012026100110_8.png", "Coffee Stand Foo", "2026/02/25 09:05", 420)
     # Tilted: 10 and 13 were fed in crooked (with item lines, so there is text to level): Fix Rotation points them out.
-    tilts = {10: -4.0, 13: 7.0}
+    # Turned and tilted: 12 was fed in sideways and crooked; its tilt is measured on it turned upright, and one
+    # Fix turns it and then straightens it.
+    tilts = {10: -4.0, 12: 3.0, 13: 7.0}
+    turns = {12: Image.Transpose.ROTATE_270}
     for i in range(9, 15):
         items = [((80, 200 + 36 * n, 700, 232 + 36 * n), f"品目 {n + 1}    ¥{50 * (n + i)}") for n in range(2)]             if i in tilts else ()
         sb.receipt(f"030120261002{i:02d}_{i}.png", f"Shop Number {i}", f"2026/02/{i + 5:02d} 10:{i:02d}", 100 * i,
-                   extra=items, tilt=tilts.get(i, 0.0))
+                   rotate=turns.get(i), extra=items, tilt=tilts.get(i, 0.0))
     # The same shop, shouted: real scans come out styled differently and smart match has to see through it.
     sb.receipt("03012026100215_15.png", "COFFEE STAND FOO", "2026/02/24 09:12", 380)
     # Slice: 16 is a 3 x 3 grid that ran out after seven; 17, five in a 2 x 3 grid, was scanned sideways and

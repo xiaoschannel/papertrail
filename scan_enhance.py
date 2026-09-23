@@ -21,6 +21,7 @@ from typing import Literal
 import numpy as np
 from PIL import Image, ImageEnhance
 
+from deskew import straighten
 from document_grouping import ROTATIONS
 from models import Trim
 
@@ -32,6 +33,7 @@ class Enhancement:
     """How to prepare a scan. ``top_points`` is where the page's top currently points, as in File Index."""
 
     top_points: str = ""                 # "", "left", "right", "down"
+    degrees: float = 0.0                 # then straightened this far counter-clockwise (the Workshop's tilt)
     treatment: Treatment = "none"
     clip: float = 3.0                    # CLAHE
     grid: int = 8
@@ -75,12 +77,14 @@ def trimmed_file(path: Path, band: Trim | None) -> Iterator[Path]:
 
 
 def enhance(image: Image.Image, settings: Enhancement) -> Image.Image:
-    """The scan as OCR should see it: trimmed, rotated upright, then the chosen treatment (denoised
-    around it if asked)."""
+    """The scan as OCR should see it: trimmed, rotated upright, straightened, then the chosen treatment
+    (denoised around it if asked)."""
     working = crop_to_trim(image.convert("RGB"), settings.trim)
     rotation = ROTATIONS.get(settings.top_points)
     if rotation is not None:
         working = working.transpose(rotation)
+    if settings.degrees:
+        working = straighten(working, settings.degrees)
     if settings.denoise_before:
         working = _denoise(working, settings.denoise_strength)
 

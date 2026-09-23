@@ -30,7 +30,8 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 import archive_history
-from api.routers import brands, config, curate, dev, history, ingest, jobs, media, review, viz, workshop
+from api.routers import (brands, config, curate, dev, history, ingest, jobs, media, review, rotation, viz,
+                         workshop)
 from api.schemas import Health
 from document_files import FileInUse
 from settings import ensure_layout, get_config
@@ -102,6 +103,7 @@ def create_app() -> FastAPI:
     app.include_router(media.router)
     app.include_router(review.router)
     app.include_router(ingest.router)
+    app.include_router(rotation.router)
     app.include_router(jobs.router)
     app.include_router(history.router)
     app.include_router(dev.router)
