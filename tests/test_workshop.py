@@ -131,7 +131,7 @@ def test_the_extractor_is_given_every_page_as_parse_gives_it():
                     "--- Page 2 Grounding Boxes ---\n[P2-BOX-0] 合計 ¥300")
 
 
-@pytest.mark.parametrize("treatment", ["none", "clahe", "contrast", "whiten"])
+@pytest.mark.parametrize("treatment", ["none", "clahe", "contrast", "whiten", "mend"])
 def test_every_enhancement_returns_a_usable_image(treatment):
     original = Image.new("RGB", (40, 80), "white")
     result = enhance(original, Enhancement(treatment=treatment))

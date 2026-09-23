@@ -28,6 +28,8 @@ Design notes
       under the receipt), with the trim that keeps the receipt, for trimming.
     * ``tests/fixtures/tilt/`` -- printed pages fed in slightly crooked (and one
       barely, one level), with each one's tilt, for straightening.
+    * ``tests/fixtures/print_head/`` -- a receipt printed by a thermal head with dead
+      dots (white lines down it), and the same receipt printed whole, for mending.
   Trims also appear in the two archive states: a mid-ingest ``trims.json`` with an
   OCR result read under its band, and an archived page trimmed after it was read.
 - **Edge cases are deliberate.** JP/CN/EN docs; a multi-page document group; an
@@ -727,6 +729,30 @@ def build_tilt(root: Path) -> None:
                                       for name, (page, degrees) in TILTED.items()})
 
 
+def build_print_head(root: Path) -> None:
+    """A receipt printed by a thermal head with dead dots, and the same receipt printed by a whole one.
+
+    A dead dot prints nothing in its column, so each leaves a white line a pixel wide down the receipt,
+    breaking every stroke that crosses it: the Workshop's Mend white lines is for this. They are scattered
+    as a worn head's are, a few pixels apart in places. The JSON says which columns are dead.
+    """
+    import random
+
+    rng = random.Random(4)
+    lines = [(8, 6, "SAMPLE HALL"), *[(x, y, text) for y in range(26, 200, 13) for x, text in (
+        (8, f"{rng.choice(_WORDS)} {rng.choice(_WORDS).lower()}"), (66, f"{rng.randint(1, 999):>3}"))],
+             (8, 206, f"TOTAL {rng.randint(1000, 9999)}")]
+    whole = _printed(96, 220, lines)
+    dead = sorted(rng.sample(range(20, whole.width - 20), 40))
+    broken = whole.copy()
+    for x in dead:
+        broken.paste(1, (x, 0, x + 1, broken.height))
+    for name, img in (("receipt_whole.png", whole), ("receipt_dead_dots.png", broken)):
+        _write_gray_png(root / name, img.width, img.height, img.tobytes(), bit_depth=1)
+    _write_json(root / "dead_dots.json", {"whole": "receipt_whole.png", "broken": "receipt_dead_dots.png",
+                                          "dead_columns": dead})
+
+
 def main() -> int:
     ingest_root = FIXTURES / "ingest"
     archive_root = FIXTURES / "archive"
@@ -734,18 +760,21 @@ def main() -> int:
     orientation_root = FIXTURES / "orientation"
     trims_root = FIXTURES / "trims"
     tilt_root = FIXTURES / "tilt"
+    print_head_root = FIXTURES / "print_head"
     build_ingest(ingest_root)
     build_archive(archive_root)
     build_sheets(sheets_root)
     build_orientation(orientation_root)
     build_trims(trims_root)
     build_tilt(tilt_root)
+    build_print_head(print_head_root)
     print(f"Wrote ingest fixture  -> {ingest_root}")
     print(f"Wrote archive fixture -> {archive_root}")
     print(f"Wrote sheet fixtures  -> {sheets_root}")
     print(f"Wrote orientation fixtures -> {orientation_root}")
     print(f"Wrote trim fixtures   -> {trims_root}")
     print(f"Wrote tilt fixtures   -> {tilt_root}")
+    print(f"Wrote print head fixtures -> {print_head_root}")
     return 0
 
 

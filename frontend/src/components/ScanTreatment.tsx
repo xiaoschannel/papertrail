@@ -10,6 +10,7 @@ import { keyLabel, useHeldKey } from './useShortcuts.ts'
  */
 export const TREATMENTS = [
   ['none', 'As scanned'], ['clahe', 'Local contrast'], ['contrast', 'Contrast + gamma'], ['whiten', 'Whiten paper'],
+  ['mend', 'Mend white lines'],
 ] as const
 
 export const ORIENTATIONS = [
@@ -18,6 +19,7 @@ export const ORIENTATIONS = [
 
 export const DEFAULT_ENHANCEMENT: Enhancement = {
   top_points: '', degrees: 0, treatment: 'none', clip: 3, grid: 8, contrast: 2.5, gamma: 0.5, lightness: 200, chroma: 10,
+  reach: 1, darkness: 1.8,
 }
 
 /** Whether `value` changes the scan at all (a turn, a straightening or a treatment). */
@@ -89,6 +91,20 @@ export function TreatmentControls({ value, onChange, straighten = false, suggest
           <Slider label="Colour floor" value={value.chroma} min={1} max={80} step={1}
             onChange={(chroma) => onChange({ chroma })} />
         </div>
+      )}
+      {value.treatment === 'mend' && (
+        <>
+          <p className="ingest-note">
+            For white lines down a receipt, where the printer's head has dead dots: the ink is smeared sideways
+            to close the breaks. More reach for wider lines, less if characters run together.
+          </p>
+          <div className="curate-grid">
+            <Slider label="Reach" value={value.reach} min={0.5} max={3} step={0.1}
+              onChange={(reach) => onChange({ reach })} />
+            <Slider label="Darkness" value={value.darkness} min={1} max={3} step={0.1}
+              onChange={(darkness) => onChange({ darkness })} />
+          </div>
+        </>
       )}
     </>
   )

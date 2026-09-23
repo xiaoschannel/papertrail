@@ -81,6 +81,12 @@ def test_the_scan_preview_is_the_treated_image(api_client, configured_archive):
                           params={"filename": "../brand_directory.json"}).status_code == 404
 
 
+def test_the_preview_mends_white_lines_as_far_as_it_is_asked(api_client):
+    params = {"filename": "08102025142000_202.png", "treatment": "mend", "reach": 1.5, "darkness": 2.0}
+    assert api_client.get("/api/curate/workshop/scan", params=params).status_code == 200
+    assert api_client.get("/api/curate/workshop/scan", params={**params, "reach": 5}).status_code == 422
+
+
 def _reread(api_client, top_points="right", degrees=0.0):
     job = api_client.post("/api/curate/workshop/reprocess", json={
         "key": "9:202", "ocr_model": "Fake OCR", "extractor": "Fake LLM",

@@ -38,8 +38,8 @@ def test_the_filed_batch_s_scans_left_the_scan_folder_for_the_archive_s_history(
     log = subprocess.run(["git", "-C", str(sandbox.root), "log", "--format=%s"], check=True, capture_output=True,
                          text=True, encoding="utf-8").stdout.splitlines()
     milestones = ["File Index: batch 3 (18 scans)", "Parse with ", "OCR with ", "File Index: batch 2 (4 scans)",
-                  "Archive: 6 scans cleared out of the scan folder", "Archive batch 1: 6 files", "Parse with ",
-                  "OCR with ", "File Index: batch 1 (6 scans)", "History started"]
+                  "Archive: 7 scans cleared out of the scan folder", "Archive batch 1: 7 files", "Parse with ",
+                  "OCR with ", "File Index: batch 1 (7 scans)", "History started"]
     assert len(log) == len(milestones) and all(s.startswith(m) for s, m in zip(log, milestones)), log
     # trims aren't a milestone: batch 2's wait for one (or the Commit button)
     assert archive_history.changed_paths(sandbox.root) == {"archive/trims.json"}
@@ -145,3 +145,15 @@ def test_the_reset_script_leaves_a_running_sandbox_alone(monkeypatch, tmp_path):
         monkeypatch.setitem(sys.modules, "sandbox_seed",
                             SimpleNamespace(prepare=lambda *a, **k: pytest.fail("rebuilt under a running server")))
         assert sandbox_reset.main() == 1
+
+
+def test_a_marked_receipt_has_white_lines_for_the_workshop_to_mend(sandbox):
+    from PIL import Image
+
+    from scan_enhance import Enhancement, enhance
+
+    [page] = (sandbox.archive / "marked").glob("*_7.png")
+    assert read_sidecar(page).review.comment == seed.MARKED[7]
+    with Image.open(page) as scan:
+        ink = lambda image: sum(1 for value in image.convert("L").getdata() if value < 128)
+        assert ink(enhance(scan, Enhancement(treatment="mend"))) > 1.2 * ink(scan)
