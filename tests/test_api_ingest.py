@@ -115,6 +115,11 @@ def test_index_rejects_unknown_scheme_and_reports_missing_input(ingest_client, t
 
 
 # --- Grouping ---------------------------------------------------------------------------------------------
+def _finalize_group(client, *groupings):
+    return client.post("/api/ingest/finalize/group",
+                       json={"groups": [{"batch_id": b, "groups": g} for b, g in groupings]})
+
+
 def test_grouping_state_and_save(ingest_client, configured_ingest):
     body = ingest_client.get("/api/ingest/grouping").json()
     assert body["batch_id"] == 1 and body["saved_groups"] == [["1:4", "1:5"]]
@@ -123,15 +128,49 @@ def test_grouping_state_and_save(ingest_client, configured_ingest):
     assert pages["1:6"]["tossed"]
 
     # 1:6 is tossed (the save below clears that decision, so check first)
-    assert ingest_client.put("/api/ingest/grouping", json={"batch_id": 1, "groups": [["1:6", "1:7"]]}).status_code == 422
+    assert _finalize_group(ingest_client, (1, [["1:6", "1:7"]])).status_code == 422
     unchanged = [["1:1"], ["1:2"], ["1:3"], ["1:4", "1:5"], ["1:7"]]
-    assert ingest_client.put("/api/ingest/grouping", json={"batch_id": 1, "groups": unchanged}).json() == {"changed": False}
-    changed = ingest_client.put("/api/ingest/grouping", json={"batch_id": 1, "groups": [["1:1", "1:2"]]})
-    assert changed.json() == {"changed": True} and load_extractions(configured_ingest) == {}
+    assert _finalize_group(ingest_client, (1, unchanged)).status_code == 200
+    assert "1:1" in load_extractions(configured_ingest)                      # unchanged: nothing cleared
+    assert _finalize_group(ingest_client, (1, [["1:1", "1:2"]])).status_code == 200
+    assert load_extractions(configured_ingest) == {}
 
-    assert ingest_client.put("/api/ingest/grouping", json={"batch_id": 9, "groups": []}).status_code == 404
+    assert _finalize_group(ingest_client, (9, [])).status_code == 404
     # a batch that is gone (e.g. archived while the page was open) falls back to the first unarchived one
     assert ingest_client.get("/api/ingest/grouping", params={"batch_id": 9}).json()["batch_id"] == 1
+
+
+def test_finalize_commits_each_step_s_files_for_every_batch_and_nothing_else(ingest_client, configured_ingest, tmp_path):
+    import archive_history
+
+    root = configured_ingest.parent
+    status = ingest_client.get("/api/ingest/finalize/rotation").json()
+    assert [b["batch_id"] for b in status["batches"]] == [1] and status["changed"] is None     # no history yet
+    _add_batch_2(ingest_client, tmp_path / "scans")                      # File Index's commit starts the history
+    status = ingest_client.get("/api/ingest/finalize/rotation").json()
+    assert [b["batch_id"] for b in status["batches"]] == [1, 2]
+    assert status["changed"] > 0                   # batch 1's scan and working files predate the history
+
+    printed(top_points="left").save(tmp_path / "scans" / PAGE_1)
+    assert ingest_client.post("/api/ingest/pages/rotate", json={"key": "1:1", "top_points": "left"}).status_code == 200
+    (tmp_path / "scans" / "dropped in, not indexed.png").write_bytes(b"")
+    draft = {"document_type": "receipt", "name": "Shop", "date": "2025-01-10", "time": "10:00", "cost": 100,
+             "currency": "JPY"}
+    assert ingest_client.post("/api/review/decisions", json={"key": "1:3", "verdict": "accepted", "draft": draft}).status_code == 200
+
+    done = ingest_client.post("/api/ingest/finalize/rotation", json={}).json()
+    assert done["committed"] and done["changed"] == 0
+    assert archive_history.head(root).subject == "Fix Rotation: batches 1 and 2"
+    assert f"scans/{PAGE_1}" in archive_history.tracked_paths(root)    # the scan as turned
+    left = archive_history.changed_paths(root)
+    assert "scans/dropped in, not indexed.png" in left                  # not indexed: File Index's
+    assert "archive/decisions.json" in left                             # Review's, not a rotation file
+    assert ingest_client.post("/api/ingest/finalize/rotation", json={}).json()["committed"] is None
+
+    group = ingest_client.post("/api/ingest/finalize/group", json={}).json()
+    assert group["committed"] and archive_history.head(root).subject == "Group: batches 1 and 2"
+    assert "archive/decisions.json" not in archive_history.changed_paths(root)   # a whole file: Review's went too
+    assert ingest_client.post("/api/ingest/finalize/nope", json={}).status_code == 422
 
 
 def test_turned_pages_are_suggested_and_rotated_only_on_request(ingest_client, configured_ingest, tmp_path):
@@ -407,14 +446,15 @@ def test_ocr_on_one_batch_while_parse_and_edits_run_on_another(ingest_client, co
 
     # Batch 2's pages can be rotated and regrouped; batch 1's can't, and the refusal says who holds it.
     assert ingest_client.post("/api/ingest/pages/rotate", json={"key": "2:1", "top_points": "left"}).status_code == 200
-    assert ingest_client.put("/api/ingest/grouping", json={"batch_id": 2, "groups": []}).status_code == 200
+    assert _finalize_group(ingest_client, (2, [])).status_code == 200
+    assert _finalize_group(ingest_client, (1, [])).json()["detail"] == \
+        "Can't change document grouping while OCR with Fake OCR is using batch 1."
     refused = ingest_client.post("/api/ingest/pages/rotate", json={"key": "1:1", "top_points": "left"})
     assert refused.status_code == 409 and refused.json()["detail"] == \
         "Can't rotate scans while OCR with Fake OCR is using batch 1."
     refused = ingest_client.post("/api/ingest/pages/straighten", json={"key": "1:1", "degrees": 2})
     assert refused.status_code == 409 and refused.json()["detail"] == \
         "Can't straighten scans while OCR with Fake OCR is using batch 1."
-    assert ingest_client.put("/api/ingest/grouping", json={"batch_id": 1, "groups": []}).status_code == 409
     assert ingest_client.post("/api/ingest/pages/toss", json={"key": "1:3"}).status_code == 200  # only Archive blocks
 
     # One of a kind, and Archive waits for everything - before it even plans.

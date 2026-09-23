@@ -10,7 +10,9 @@ A commit is made only at a **milestone**, and holds only what that milestone pro
 whatever else happens to be uncommitted:
 
 * File Index confirm: the index and the new batch's scans.
-* Slice apply and Group save: the index, the crops, and the working files the step rewrote.
+* Finalize on Fix Rotation, Slice or Group: that step's files for every batch still being ingested (the
+  scans as turned, the crops, the grouping and what it cleared). The pages apply each edit as it is made;
+  Finalize is the one commit for the step, however many batches it covers.
 * OCR, Parse ending, however they ended: that run's result files.
 * Archive: the filed pages, the index, the match cache, the working files it deleted; then, once every
   filed page is in the last commit, the scans it removed from the scan folder.
@@ -18,9 +20,11 @@ whatever else happens to be uncommitted:
 * The API stopping: everything uncommitted, as a parking commit (``PARKED``) that the next start undoes,
   so those changes go back to uncommitted and land in their proper milestone.
 
-Nothing else commits. Review decisions, Workshop decisions, Receipt Detail edits, Normalize, Dedupe and
-rotation fixes accumulate, and the sidebar shows how many files wait, until a milestone that owns them or
-a manual commit.
+Nothing else commits. Review decisions, Workshop decisions, Receipt Detail edits, Normalize and Dedupe
+accumulate, and the sidebar shows how many files wait, until a milestone that owns them or a manual commit.
+
+A commit holds whole files: a milestone that owns ``decisions.json`` (Group's tosses) takes whatever else
+in that file changed too (Review's decisions, say).
 
 The repository is made on first use, with an identity of its own (the app makes the commits), line endings
 left alone (a sidecar is committed byte for byte) and images kept out of delta compression (they don't
@@ -156,11 +160,13 @@ def commit(root: Path, message: str, paths: Iterable[str] | None = None) -> str 
         return _git(root, "rev-parse", "--short", "HEAD").strip()
 
 
-def changed_paths(root: Path, under: str | None = None) -> set[str]:
-    """Paths (relative to the root) that differ from the last commit, under ``under`` if given."""
+def changed_paths(root: Path, under: Iterable[str] | None = None) -> set[str] | None:
+    """Paths (relative to the root) that differ from the last commit, under ``under`` (each a file, or a
+    folder and everything in it) if given; None before the repository is made (asking never makes it)."""
+    if not (root / ".git").exists():
+        return None
     with _lock:
-        ensure_repository(root)
-        return set(_status(root, [under] if under else None))
+        return set(_status(root, under))
 
 
 def tracked_paths(root: Path, under: str | None = None) -> set[str]:

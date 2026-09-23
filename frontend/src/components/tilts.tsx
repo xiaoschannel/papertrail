@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueries, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api/client.ts'
 import { useShortcutKeys } from '../api/config.ts'
 import { setAsideChanged } from './setAside.ts'
@@ -23,12 +23,15 @@ const scanVersion = (page: ScanPage) => `${page.filename}@${page.image_version}`
 export const isTiltLeftAsIs = (page: { filename: string; image_version: number }) =>
   leftAsIs.has(`${page.filename}@${page.image_version}`)
 
-/** The batch's pages that look tilted and haven't been set aside, by key, with the turn that levels each. */
-export function useTiltedPages(batchId: number, pages: Map<string, ScanPage>) {
+/** The batches' pages that look tilted and haven't been set aside, by key, with the turn that levels each. */
+export function useTiltedPages(batchIds: number[], pages: Map<string, ScanPage>) {
   const [, setLeftCount] = useState(0)   // re-render when a suggestion is left as is
-  const query = useQuery({ queryKey: ['ingest', 'tilted', batchId], queryFn: () => api.ingest.tilted(batchId) })
+  const queries = useQueries({
+    queries: batchIds.map((id) => ({ queryKey: ['ingest', 'tilted', id], queryFn: () => api.ingest.tilted(id) })),
+  })
+  const query = { isPending: queries.some((q) => q.isPending), error: queries.find((q) => q.error)?.error ?? null }
   const tilts = new Map<string, number>()
-  for (const t of query.data?.pages ?? []) {
+  for (const t of queries.flatMap((q) => q.data?.pages ?? [])) {
     // only for the scan as it was measured: one straightened since drops out until it has been measured again
     const page = pages.get(t.key)
     if (page && page.image_version === t.image_version && !leftAsIs.has(scanVersion(page))) tilts.set(t.key, t.degrees)

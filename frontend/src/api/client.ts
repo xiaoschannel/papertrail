@@ -1,7 +1,7 @@
 import createClient from 'openapi-fetch'
 import type { paths } from './schema'
 import type {
-  AppConfig, BrandIn, ConfirmIndexIn, DecisionIn, Draft, ExperimentOcrIn, ExperimentParseIn, ExperimentTreatment,
+  AppConfig, BrandIn, ConfirmIndexIn, DecisionIn, Draft, ExperimentOcrIn, ExperimentParseIn, ExperimentTreatment, FinalizeStep,
   MerchantTotals, ReceiptEditIn, SheetGrid, StartOcrIn, StartParseIn, TopPoints, Trim, Verdict, WorkshopDecisionIn,
   WorkshopReprocessIn,
 } from './types.ts'
@@ -92,8 +92,12 @@ export const api = {
     confirmIndex: (body: ConfirmIndexIn) => unwrap(client.POST('/api/ingest/index', { body })),
     grouping: (batchId?: number) =>
       unwrap(client.GET('/api/ingest/grouping', { params: { query: { batch_id: batchId ?? null } } })),
-    saveGrouping: (batchId: number, groups: string[][]) =>
-      unwrap(client.PUT('/api/ingest/grouping', { body: { batch_id: batchId, groups } })),
+    /** Where a step's Finalize stands: the unarchived batches its page shows, and its files waiting. */
+    finalizeStatus: (step: FinalizeStep) =>
+      unwrap(client.GET('/api/ingest/finalize/{step}', { params: { path: { step } } })),
+    /** Commit the step for every unarchived batch; Group saves the groupings changed on the page first. */
+    finalize: (step: FinalizeStep, groups: { batch_id: number; groups: string[][] }[] = []) =>
+      unwrap(client.POST('/api/ingest/finalize/{step}', { params: { path: { step } }, body: { groups } })),
     toss: (key: string) => unwrap(client.POST('/api/ingest/pages/toss', { body: { key } })),
     recover: (key: string) => unwrap(client.POST('/api/ingest/pages/recover', { body: { key } })),
     rotate: (key: string, topPoints: TopPoints) =>

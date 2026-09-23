@@ -38,13 +38,9 @@ from pathlib import Path
 
 from PIL import Image, ImageOps
 
-import archive_history
-
 from data import (
     EXTRACTION_RUNS,
-    OCR_DIR,
     OCR_RUNS,
-    TRIMS,
     drop_extractions,
     drop_model_runs,
     drop_trims,
@@ -57,7 +53,6 @@ from data import (
     save_ocr_batch,
     save_scan_index,
 )
-from settings import ARCHIVE_DIR, SCANS_DIR, root_of
 from models import (
     GRID_SCALE,
     MAX_GRID,
@@ -368,12 +363,6 @@ def apply_slices(output_path: Path, input_path: Path, batch_id: int, sheet: int,
     index.batches = [changed if b.batch_id == batch_id else b for b in index.batches]
     save_scan_index(output_path, index)
     _sweep(input_path, index)
-    # milestone: the index, the crops, and the working files the cut rewrote for the batch
-    what = (f"sheet {sheet_key} into {len(plan.crops)} crop{'s' if len(plan.crops) != 1 else ''}" if grid
-            else f"sheet {sheet_key} unsliced")
-    archive_history.commit(root_of(output_path), f"Slice: {what}", [
-        f"{SCANS_DIR}/{SLICES_DIR}", f"{ARCHIVE_DIR}/batches.json", f"{ARCHIVE_DIR}/{OCR_DIR}/{batch_id}.json",
-        *(f"{ARCHIVE_DIR}/{name}" for name in ("decisions.json", "extractions.json", OCR_RUNS, EXTRACTION_RUNS, TRIMS))])
     return plan
 
 

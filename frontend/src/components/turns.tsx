@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api/client.ts'
 import { setAsideChanged } from './setAside.ts'
 import type { TopPoints } from '../api/types.ts'
@@ -36,12 +36,15 @@ const scanVersion = (page: ScanPage) => `${page.filename}@${page.image_version}`
 export const isTurnLeftAsIs = (page: { filename: string; image_version: number }) =>
   leftAsIs.has(`${page.filename}@${page.image_version}`)
 
-/** The batch's pages that look turned and haven't been set aside, by key, with where each one's top points. */
-export function useTurnedPages(batchId: number, pages: Map<string, ScanPage>) {
+/** The batches' pages that look turned and haven't been set aside, by key, with where each one's top points. */
+export function useTurnedPages(batchIds: number[], pages: Map<string, ScanPage>) {
   const [, setLeftCount] = useState(0)   // re-render when a suggestion is left as is
-  const query = useQuery({ queryKey: ['ingest', 'turned', batchId], queryFn: () => api.ingest.turned(batchId) })
+  const queries = useQueries({
+    queries: batchIds.map((id) => ({ queryKey: ['ingest', 'turned', id], queryFn: () => api.ingest.turned(id) })),
+  })
+  const query = { isPending: queries.some((q) => q.isPending), error: queries.find((q) => q.error)?.error ?? null }
   const turns = new Map<string, TopPoints>()
-  for (const t of query.data?.pages ?? []) {
+  for (const t of queries.flatMap((q) => q.data?.pages ?? [])) {
     // only for the scan as it was measured: one rotated since drops out until it has been measured again
     const page = pages.get(t.key)
     if (page && page.image_version === t.image_version && !leftAsIs.has(scanVersion(page))) turns.set(t.key, t.top_points)
@@ -77,8 +80,8 @@ export function PageViewer({ viewing, pages, turns, tilts, locked, cannotTurn, o
   pages: Map<string, ScanPage>
   turns: Map<string, TopPoints>
   tilts: Map<string, number>
-  /** Why rotating has to wait (a job is using the batch), or null. */
-  locked: string | null
+  /** Why rotating this page has to wait (a job is using its batch), or null. */
+  locked: (key: string) => string | null
   /** Why a page can't be turned at all (a crop, a sliced sheet), or null. */
   cannotTurn: (key: string) => string | null
   onSetAside: (page: ScanPage) => void
@@ -106,7 +109,7 @@ export function PageViewer({ viewing, pages, turns, tilts, locked, cannotTurn, o
     // Keyed by the scan's version and its tilt: a saved turn, or a tilt measured after the viewer opened,
     // starts the slider again from the scan as it is now.
     <ScanViewerWithTurn key={`${scanVersion(page)}|${tilt ?? ''}`} page={page} top={top} tilt={tilt}
-      position={viewing.keys.length > 1 ? `${at + 1} of ${viewing.keys.length}` : ''} locked={locked}
+      position={viewing.keys.length > 1 ? `${at + 1} of ${viewing.keys.length}` : ''} locked={locked(key)}
       cannotTurn={cannotTurn(key)} onTurned={next} onLeave={leave(onSetAside, tilt !== undefined)} onLeaveTilt={leave(onSetAsideTilt, false)}
       onClose={onClose} />
   )

@@ -11,6 +11,7 @@ Archive holds everything.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -26,7 +27,8 @@ from api.guards import no_job_running, planning_a_job
 from api.jobs import EVERYTHING, NOTHING_HELD, Claim, JobConflict, runner
 from api.model_manager import models
 from api.schemas import (
-    ApplySliceIn, ArchiveMoveOut, ArchiveStatus, BatchFile, BatchOut, ConfirmIndexIn, GroupingOut, GroupingPageOut,
+    ApplySliceIn, ArchiveMoveOut, ArchiveStatus, BatchFile, BatchOut, ConfirmIndexIn, FinalizeIn, FinalizeOut,
+    GroupingOut, GroupingPageOut,
     IndexStatus, InkOutlineOut, JobOut, OcrStatus, PageIn, ParseStatus, PipelineCountsOut, ProposedBatch,
     RotateIn, RotationFlagOut, SaveGroupingIn,
     SaveGroupingOut, SliceCropOut, SliceMoveOut, SlicePlanIn, SlicePlanOut, SlicingOut, SlicingSheetOut, StartOcrIn,
@@ -179,7 +181,7 @@ def grouping(
     """
     batches = _unarchived_batches(output_path)
     if not batches:
-        return GroupingOut(blocker="No unarchived batches. Add batches above first.", batches=[], batch_id=None,
+        return GroupingOut(blocker="No unarchived batches. Add batches above first.", batch_id=None,
                            pages=[], display_keys=[], active_links=[], saved_groups=[])
     chosen = batch_id if any(b.batch_id == batch_id for b in batches) else batches[0].batch_id
     try:
@@ -192,22 +194,45 @@ def grouping(
         pages.append(GroupingPageOut(key=page.key, serial=page.serial, filename=page.filename, tossed=page.tossed,
                                      image_available=available, image_version=version, crop_of=page.crop_of,
                                      cell=page.cell, sliced=page.sliced, trim=page.trim))
-    return GroupingOut(blocker=None, batches=batches, batch_id=chosen, pages=pages, display_keys=state.display_keys,
+    return GroupingOut(blocker=None, batch_id=chosen, pages=pages, display_keys=state.display_keys,
                        active_links=state.active_links, saved_groups=state.saved_groups)
 
 
-@router.put("/grouping", response_model=SaveGroupingOut)
-def save_grouping(body: SaveGroupingIn, output_path: Path = Depends(get_output_path)):
-    """Save multi-page groups. A change clears the batch's parse results and review decisions."""
+# --- Finalize: Fix Rotation, Slice and Group commit their step at once ---------------------------------
+FinalizeStep = Literal["rotation", "slice", "group"]
+
+
+def _finalize_out(output_path: Path, step: str, committed: str | None = None) -> FinalizeOut:
+    _, changed = pipeline.finalize_pending(output_path, step)
+    return FinalizeOut(step=step, batches=_unarchived_batches(output_path), changed=changed, committed=committed)
+
+
+@router.get("/finalize/{step}", response_model=FinalizeOut)
+def finalize_status(step: FinalizeStep, output_path: Path = Depends(get_output_path)):
+    """The batches a step's page shows, all at once, and how many of the step's files wait for Finalize."""
+    return _finalize_out(output_path, step)
+
+
+@router.post("/finalize/{step}", response_model=FinalizeOut)
+def finalize(step: FinalizeStep, body: FinalizeIn, output_path: Path = Depends(get_output_path)):
+    """Commit the step for every unarchived batch. Group first saves the groupings changed on the page: a
+    change clears that batch's parse results and review decisions."""
     try:
-        with no_job_running("change document grouping", claim=Claim(batches=frozenset({body.batch_id}))), \
-                store.decisions_lock:
-            changed = pipeline.save_grouping(output_path, body.batch_id, body.groups)
+        if body.groups:
+            claim = Claim(batches=frozenset(g.batch_id for g in body.groups))
+            with no_job_running("change document grouping", claim=claim), store.decisions_lock:
+                for g in body.groups:         # checked first, so a bad one saves none of them
+                    pipeline.check_grouping(output_path, g.batch_id, g.groups)
+                for g in body.groups:
+                    pipeline.save_grouping(output_path, g.batch_id, g.groups)
+        committed = pipeline.finalize(output_path, step)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc.args[0])) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return SaveGroupingOut(changed=changed)
+    except archive_history.HistoryError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return _finalize_out(output_path, step, committed)
 
 
 def _set_tossed(body: PageIn, output_path: Path, tossed: bool) -> SaveGroupingOut:
@@ -356,7 +381,7 @@ def slicing_state(
     """
     batches = _unarchived_batches(output_path)
     if not batches:
-        return SlicingOut(blocker="No unarchived batches. Add batches on File Index first.", batches=[],
+        return SlicingOut(blocker="No unarchived batches. Add batches on File Index first.",
                           batch_id=None, sheets=[], problems=[])
     chosen = batch_id if any(b.batch_id == batch_id for b in batches) else batches[0].batch_id
     batch = next(b for b in pipeline._load_index(output_path).batches if b.batch_id == chosen)
@@ -377,7 +402,7 @@ def slicing_state(
             key=key, serial=serial, filename=batch.files[serial], image_available=available, image_version=version,
             grid=batch.grids.get(serial), crops=crops_of.get(serial, []), sliced=bool(decision and decision.sliced),
             refusal=slicing.why_not(batch, serial, decisions, groups)))
-    return SlicingOut(blocker=None, batches=batches, batch_id=chosen, sheets=sheets,
+    return SlicingOut(blocker=None, batch_id=chosen, sheets=sheets,
                       problems=slicing.mismatches(batch, decisions))
 
 

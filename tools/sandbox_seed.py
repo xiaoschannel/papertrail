@@ -8,8 +8,8 @@ the app really produces:
   Calendar and the other Visualize pages.
 * **Batch 2, parsed** — OCR'd and extracted, nothing decided yet: Review.
 * **Batch 3, indexed** — a batch not yet read: Fix Rotation, Slice and Group, then OCR, Parse, Review and
-  Archive from the start. Pick it in the batch picker: the ingest pages open on the oldest unarchived
-  batch, which is batch 2.
+  Archive from the start. Fix Rotation, Slice and Group show every unarchived batch at once, batch 2's
+  pages above batch 3's.
 
 No scans are left unindexed: nothing needs them yet (File Index's scheme check would). A feature that does
 adds a stage of them, drawn after the last ``index()`` in ``build``.

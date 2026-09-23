@@ -14,9 +14,9 @@ Guarantees the steps keep:
 - Parse failures are reported per item; Archive reports per-file errors and only finalizes (marks
   batches archived, deletes the mid-ingest files) when every file was archived.
 - The milestones commit what they produced to the folder's history (archive_history): File Index the
-  index and the new scans, Group save the grouping and the working files it cleared, OCR and Parse their
-  results (however the run ended), Archive the filed pages and then the scans it removed, which it does
-  only once their pages are in the last commit.
+  index and the new scans, Finalize on Fix Rotation, Slice and Group that step's files for every batch
+  still being ingested, OCR and Parse their results (however the run ended), Archive the filed pages and
+  then the scans it removed, which it does only once their pages are in the last commit.
 """
 
 from __future__ import annotations
@@ -321,6 +321,27 @@ def grouping_state(output_path: Path, batch_id: int) -> GroupingState:
                          saved_groups=_active_saved_groups(saved, keys, tossed))
 
 
+def check_grouping(output_path: Path, batch_id: int, groups: list[list[str]]) -> None:
+    """Raise (KeyError, ValueError) if ``groups`` can't be saved as the batch's grouping; see save_grouping."""
+    _, batch = _non_archived_batch(output_path, batch_id)
+    keys = _batch_keys(batch)
+    _check_groups(batch, groups, set(keys) - _tossed_keys(output_path, keys, load_decisions(output_path)))
+
+
+def _check_groups(batch: ScanBatch, groups: list[list[str]], active: set[str]) -> None:
+    crops = {batch_serial_key(batch.batch_id, s) for s in batch.slices}
+    seen: set[str] = set()
+    for group in groups:
+        for key in group:
+            if key not in active:
+                raise ValueError(f"{key} is not an active page of batch {batch.batch_id}")
+            if len(group) > 1 and key in crops:
+                raise ValueError(f"{key} is a crop of a sliced sheet; a crop is a document of its own")
+            if key in seen:
+                raise ValueError(f"{key} appears in more than one group")
+            seen.add(key)
+
+
 def save_grouping(output_path: Path, batch_id: int, groups: list[list[str]]) -> bool:
     """Save a batch's page grouping (groups of active pages). Returns False (and changes nothing) if the
     multi-page groups are unchanged. A change clears the batch's extractions and review decisions,
@@ -330,17 +351,7 @@ def save_grouping(output_path: Path, batch_id: int, groups: list[list[str]]) -> 
     keys = _batch_keys(batch)
     tossed = _tossed_keys(output_path, keys, load_decisions(output_path))
     active = set(keys) - tossed
-    crops = {batch_serial_key(batch_id, s) for s in batch.slices}
-    seen: set[str] = set()
-    for group in groups:
-        for key in group:
-            if key not in active:
-                raise ValueError(f"{key} is not an active page of batch {batch_id}")
-            if len(group) > 1 and key in crops:
-                raise ValueError(f"{key} is a crop of a sliced sheet; a crop is a document of its own")
-            if key in seen:
-                raise ValueError(f"{key} appears in more than one group")
-            seen.add(key)
+    _check_groups(batch, groups, active)
     multi = [g for g in groups if len(g) > 1]
     saved = _saved_batch_groups(output_path, batch, keys)
     if sorted(multi) == sorted(_active_saved_groups(saved, keys, tossed)):  # group order is irrelevant
@@ -348,9 +359,6 @@ def save_grouping(output_path: Path, batch_id: int, groups: list[list[str]]) -> 
     tossed_groups = [g for g in saved if any(k in tossed for k in g)]
     replace_groups_for_batch(output_path, batch_id, multi + tossed_groups)
     clear_extractions_decisions_for_batch(output_path, batch_id)
-    # milestone: the grouping, and the working files it cleared for the batch
-    archive_history.commit(root_of(output_path), f"Group: batch {batch_id}",
-                           [f"{ARCHIVE_DIR}/{name}" for name in ("documents.json", "extractions.json", "decisions.json")])
     return True
 
 
@@ -825,6 +833,49 @@ def _sleep_while_running(seconds: float, progress: Progress) -> None:
 
 
 # =====================================================================================
+# Finalize: Fix Rotation, Slice and Group each commit their step at once, for every unarchived batch
+# =====================================================================================
+#: The steps a page finalizes, and what each is called in its commit.
+FINALIZE_STEPS = {"rotation": "Fix Rotation", "slice": "Slice", "group": "Group"}
+
+
+def _finalize_paths(output_path: Path, step: str) -> tuple[list[int], list[str]]:
+    """The unarchived batches, and the files (relative to the root) the step writes for them: what its
+    Finalize commits. Only files the step's own edits touch, so a scan dropped into the scan folder and not
+    indexed yet, or another step's work in files of its own, is left for its own milestone."""
+    index = _load_index(output_path)
+    batches = [b for b in index.batches if not b.archived] if index else []
+    ids = [b.batch_id for b in batches]
+    ocr = [f"{ARCHIVE_DIR}/{OCR_DIR}/{b}.json" for b in ids]
+    work = lambda *names: [f"{ARCHIVE_DIR}/{name}" for name in names]   # noqa: E731
+    if step == "rotation":     # a turned scan, and what was read from it forgotten (_forget_reading)
+        scans = [f"{SCANS_DIR}/{fn}" for b in batches for s, fn in b.files.items() if s not in b.slices]
+        return ids, scans + ocr + work(TRIMS, OCR_RUNS, "extractions.json", EXTRACTION_RUNS)
+    if step == "slice":        # the crops, the index that names them, and the results that named others
+        return ids, [f"{SCANS_DIR}/{slicing.SLICES_DIR}", *work("batches.json"), *ocr,
+                     *work("decisions.json", "extractions.json", OCR_RUNS, EXTRACTION_RUNS, TRIMS)]
+    if step == "group":        # the grouping and what it cleared, tosses, trims
+        return ids, work("documents.json", "decisions.json", "extractions.json", TRIMS)
+    raise KeyError(f"no step {step!r} to finalize")
+
+
+def finalize_pending(output_path: Path, step: str) -> tuple[list[int], int | None]:
+    """The unarchived batches, and how many of the step's files differ from the last commit (None before
+    the folder has a history: its first Finalize starts it)."""
+    ids, paths = _finalize_paths(output_path, step)
+    changed = archive_history.changed_paths(root_of(output_path), paths)
+    return ids, None if changed is None else len(changed)
+
+
+def finalize(output_path: Path, step: str) -> str | None:
+    """Commit the step's files for every unarchived batch; the commit's short id, or None when nothing had
+    changed."""
+    ids, paths = _finalize_paths(output_path, step)
+    return archive_history.commit(root_of(output_path), f"{FINALIZE_STEPS[step]}: {_batches(ids)}"
+                                  if ids else f"{FINALIZE_STEPS[step]}", paths)
+
+
+# =====================================================================================
 # The jobs' milestones: a run's results are committed however it ended
 # =====================================================================================
 def _commit_run(output_path: Path, what: str, paths: list[str], run: Callable[[], str]) -> str:
@@ -1160,7 +1211,7 @@ def run_archive(output_path: Path, input_path: Path, progress: Progress) -> str:
     # its own bytes go into the history first, since the page may not be them any more (the Workshop turns
     # a page in place) and a scan filed before the history began was never committed at File Index.
     progress.say("Removing the filed scans from the scan folder…")
-    dirty = archive_history.changed_paths(root, ARCHIVE_DIR)
+    dirty = archive_history.changed_paths(root, [ARCHIVE_DIR]) or set()
 
     def committed(page: Path) -> bool:
         image, sidecar = _page_paths(root, [page])
@@ -1174,7 +1225,7 @@ def run_archive(output_path: Path, input_path: Path, progress: Progress) -> str:
                                      f"scanned, before they leave the scan folder",
                                [f"{SCANS_DIR}/{fn}" for fn in leaving])
     kept = archive_history.tracked_paths(root, SCANS_DIR)
-    unkept = archive_history.changed_paths(root, SCANS_DIR)
+    unkept = archive_history.changed_paths(root, [SCANS_DIR]) or set()
 
     removed, in_use = [], []
     for filename in leaving:

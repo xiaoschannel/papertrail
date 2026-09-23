@@ -127,6 +127,12 @@ export function useBatchHolder(batchId: number | null): Job | null {
     && (job.everything || (batchId !== null && job.batches.includes(batchId)))) ?? null
 }
 
+/** Which running job holds a batch (or everything), for a page showing several batches at once. */
+export function useHolderOf(): (batchId: number) => Job | null {
+  const running = useJobs().filter(isRunning)
+  return (batchId) => running.find((job) => job.everything || job.batches.includes(batchId)) ?? null
+}
+
 /** The running job holding everything (Archive), which locks every ingest edit. */
 export function useEverythingHolder(): Job | null {
   return useJobs().find((job) => isRunning(job) && job.everything) ?? null

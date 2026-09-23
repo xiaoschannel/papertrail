@@ -121,6 +121,9 @@ Scan your documents into a folder, and follow this process:
 
 ## Ingest
 1. **File Index** — Ingest new batches of scanned files.
+   Scanning several batches before working on any of them is the usual case: Fix Rotation, Slice and Group
+   show every unarchived batch at once, one section each, and each step's **Finalize** commits it for all of
+   them (see [The folder's history](#the-folders-history)).
 2. **Fix Rotation** — Turn scans fed in sideways or upside down upright, and level the ones fed in slightly
    crooked, before anything is cut or read from them. The page points out the scans that look so, and shows
    each one turned to confirm before it is saved; any scan can be straightened from its full-size view,
@@ -147,15 +150,16 @@ A commit is made only at a **milestone**, and holds only what that milestone pro
 | Milestone | What the commit holds |
 | --- | --- |
 | File Index confirm | the index and the new batch's scans |
-| Slice apply, Group save | the index, the crops, and the working files the step rewrote |
+| Finalize on Fix Rotation, Slice or Group | that step's files for every unarchived batch: the scans as turned, the crops and the index, the grouping and what it cleared |
 | OCR or Parse ending, however it ended | that run's result files |
 | Archive | the filed pages and the working files it deleted; then the scans it removed |
 | The Commit button in the sidebar | everything uncommitted, with a message |
 | The API stopping | everything uncommitted, as a parking commit the next start undoes |
 
-Nothing else commits. Review and Workshop decisions, Receipt Detail edits, Normalize, Dedupe and rotation
-fixes accumulate, and the sidebar shows how many files wait, until a milestone that owns them or the
-Commit button.
+Nothing else commits. Review and Workshop decisions, Receipt Detail edits, Normalize and Dedupe accumulate,
+and the sidebar shows how many files wait, until a milestone that owns them or the Commit button. A commit
+holds whole files, so Group's Finalize, which owns the decisions file for its tosses, takes Review's
+decisions in it along.
 
 A scan leaves the scan folder only once its filed page is in the last commit as it is on disk. Archive
 removes the scans it just filed, and any filed earlier that are still there; a page edited since keeps its
