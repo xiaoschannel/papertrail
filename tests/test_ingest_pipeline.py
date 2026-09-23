@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
+import archive_history
 import ingest_pipeline as ip
 from data import (
     load_decisions, load_document_groups, load_extractions, load_ocr_results, load_smart_match_cache, save_decisions,
@@ -455,7 +456,8 @@ def test_plan_archive_destinations(ingest_dir):
 
 
 def test_run_archive_copies_finalizes_and_cleans_up(ingest_dir, tmp_path):
-    scans = _scans(tmp_path, ingest_dir)
+    scans = _indexed_scans(tmp_path, ingest_dir)
+    (scans / "not indexed.png").write_bytes(b"")
     progress = FakeProgress()
     message = ip.run_archive(ingest_dir, scans, progress)
 
@@ -465,11 +467,123 @@ def test_run_archive_copies_finalizes_and_cleans_up(ingest_dir, tmp_path):
     assert sidecar["review"]["verdict"] == "tossed" and sidecar["batch_id"] == 1
     multipage = json.loads(next((ingest_dir / "2025" / "01").glob("*Tealive KLCC (2).json")).read_text(encoding="utf-8"))
     assert multipage["document_key"] == "1:4-5"
-    assert (scans / "01102025132642_1.png").exists()             # originals are copied, not moved
     assert load_scan_index(ingest_dir).batches[0].archived
     assert not any((ingest_dir / name).exists() for name in ip.CLEANUP_ARTIFACTS)
     assert "ocr" in ip.CLEANUP_ARTIFACTS and "ocr.json.migrated" in ip.CLEANUP_ARTIFACTS
     assert load_smart_match_cache(ingest_dir)["1:7"]["confirmed"] == "Business Card - John Doe"
+    # the filed pages are committed, and only then do the scans they came from leave the scan folder
+    root = ingest_dir.parent
+    assert _git(root, "log", "--format=%s").splitlines() == [
+        "Archive: 8 scans cleared out of the scan folder", "Archive batch 1: 8 files", "File Index: batch 1 (8 scans)",
+        "History started"]
+    sha = _git(root, "rev-parse", "--short", "HEAD~1")
+    assert f"Committed the filed pages ({sha})." in message and "Removed 8 scan(s) from the scan folder." in message
+    tracked = archive_history.tracked_paths(root)
+    assert "archive/tossed/01102025142000_6.png" in tracked and "archive/tossed/01102025142000_6.json" in tracked
+    assert "archive/batches.json" in tracked and "archive/decisions.json" not in tracked   # deleted, never committed
+    assert [p.name for p in scans.iterdir()] == ["not indexed.png"]
+
+
+def _git(root, *args):
+    import subprocess
+    return subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True, text=True,
+                          encoding="utf-8").stdout.strip()
+
+
+def _indexed_scans(tmp_path: Path, ingest_dir: Path) -> Path:
+    """``_scans``, committed as File Index's milestone would have: the fixture's batch predates the history,
+    so a test that reads the log stages that commit itself."""
+    scans = _scans(tmp_path, ingest_dir)
+    archive_history.commit(tmp_path, "File Index: batch 1 (8 scans)", ["scans", "archive/batches.json"])
+    return scans
+
+
+def test_archive_clears_out_scans_filed_earlier_and_leaves_what_is_still_being_ingested(ingest_dir, tmp_path):
+    scans = _scans(tmp_path, ingest_dir)
+    ip.run_archive(ingest_dir, scans, FakeProgress())
+    for name in ("01102025132642_1.png", "01102025133000_2.png"):     # filed before the scan folder was cleared
+        Image.new("RGB", (40, 80)).save(scans / name)
+    (scans / "not indexed.png").write_bytes(b"")
+
+    plan = ip.plan_archive(ingest_dir, scans)
+    assert plan.blocker is None and plan.files == 0 and plan.scans_to_remove == 2
+    assert ip.plan_archive(ingest_dir).blocker == "No new files to organize."      # not knowing the scan folder
+    message = ip.run_archive(ingest_dir, scans, FakeProgress())
+    assert message == "Nothing new to file. Removed 2 scan(s) from the scan folder."
+    assert [p.name for p in scans.iterdir()] == ["not indexed.png"]
+
+    # a filed page edited since (Receipt Detail, say) keeps its scan until someone commits the edit
+    Image.new("RGB", (40, 80)).save(scans / "01102025132642_1.png")
+    [page] = (ingest_dir / "2025" / "01").glob("*13：26*.json")
+    edited = json.loads(page.read_text(encoding="utf-8"))
+    edited["review"]["comment"] = "corrected on Receipt Detail"
+    page.write_text(json.dumps(edited), encoding="utf-8")
+    message = ip.run_archive(ingest_dir, scans, FakeProgress())
+    assert message == "Nothing new to file. 1 scan(s) stay until their filed pages are committed (edited since; a manual commit does it)."
+    archive_history.commit(ingest_dir.parent, "the edit")
+    assert ip.run_archive(ingest_dir, scans, FakeProgress()) == "Nothing new to file. Removed 1 scan(s) from the scan folder."
+
+    # a batch still being ingested that needs a file of the same name keeps it
+    from data import save_scan_index
+
+    index = load_scan_index(ingest_dir)
+    index.batches.append(index.batches[0].model_copy(update={"batch_id": 2, "archived": False,
+                                                              "files": {1: "01102025132642_1.png"}}))
+    save_scan_index(ingest_dir, index)
+    Image.new("RGB", (40, 80)).save(scans / "01102025132642_1.png")
+    assert ip.archived_scans_left(ingest_dir, scans) == []
+    assert ip.plan_archive(ingest_dir, scans).blocker == "Review all files before archiving."
+
+
+def test_no_scan_leaves_the_scan_folder_until_the_archive_is_committed(ingest_dir, tmp_path, monkeypatch):
+    scans = _indexed_scans(tmp_path, ingest_dir)
+    monkeypatch.setattr(archive_history, "GIT", "git-that-is-not-installed")
+
+    with pytest.raises(archive_history.HistoryError, match="isn't installed"):
+        ip.run_archive(ingest_dir, scans, FakeProgress())
+    assert load_scan_index(ingest_dir).batches[0].archived              # filed all the same
+    assert len(list(scans.iterdir())) == 8
+
+    monkeypatch.undo()
+    message = ip.run_archive(ingest_dir, scans, FakeProgress())        # the next run commits and clears out
+    assert message.startswith("Nothing new to file. Committed 8 page(s) filed earlier (")
+    assert message.endswith("). Removed 8 scan(s) from the scan folder.")
+    assert _git(ingest_dir.parent, "log", "--format=%s").splitlines() == [
+        "Archive: 8 scans cleared out of the scan folder", "Archive: 8 pages filed before the history",
+        "File Index: batch 1 (8 scans)", "History started"]
+    assert list(scans.iterdir()) == []
+
+
+def test_an_archive_from_before_the_history_is_committed_and_its_scans_cleared_out(archive_dir):
+    """The live archive on the first run after this: every page filed so far goes into the first commit,
+    and the scans they came from, still in the scan folder, go. A scan differs from its filed page here
+    (the Workshop turns a marked page in place), and was never committed at File Index: its own bytes go
+    into the history before it is deleted."""
+    import subprocess
+
+    scans = archive_dir.parent / "scans"
+    scans.mkdir()
+    for _, _, fn in iter_indexed_files(load_scan_index(archive_dir)):
+        Image.new("RGB", (40, 80), "white").save(scans / fn)
+    scanned = {p.name: p.read_bytes() for p in scans.iterdir()}
+    (scans / "fresh.png").write_bytes(b"")
+
+    plan = ip.plan_archive(archive_dir, scans)
+    assert plan.blocker is None and plan.files == 0 and plan.scans_to_remove == 9
+    message = ip.run_archive(archive_dir, scans, FakeProgress())
+
+    from data import filed_scan_pages
+    pages = filed_scan_pages(archive_dir)                    # the 9 indexed scans' pages, and a couple filed otherwise
+    assert len(pages) > 9
+    assert message.startswith(f"Nothing new to file. Committed {len(pages)} page(s) filed earlier (")
+    assert message.endswith("). Removed 9 scan(s) from the scan folder.")
+    assert [p.name for p in scans.iterdir()] == ["fresh.png"]
+    tracked = archive_history.tracked_paths(archive_dir.parent, "archive")
+    assert all(page.relative_to(archive_dir.parent).as_posix() in tracked for page in pages.values())
+    for name, original in scanned.items():                  # deleted, and still there byte for byte
+        kept = subprocess.run(["git", "-C", str(archive_dir.parent), "show", f"HEAD~1:scans/{name}"],
+                              check=True, capture_output=True).stdout
+        assert kept == original and kept != pages[name].read_bytes()
 
 
 def test_archiving_files_what_the_calls_behind_a_document_took(ingest_dir, tmp_path):

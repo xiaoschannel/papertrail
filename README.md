@@ -42,6 +42,12 @@ and kept in `~/.cache/papertrail`.
 The hosted extractors need an API key. Copy `.env.example` to `.env` and put yours in it; the file is
 gitignored, and `env.py` says which one is read when you have several checkouts.
 
+---
+Everything lives in one **Papertrail folder**, set on the Config page: the scanner drops images into its
+`scans\` subfolder and the app files them into `archive\`. The folder's root is a git repository holding
+the history of both (see [The folder's history](#the-folders-history)), so `git` has to be installed and
+on `PATH`.
+
 Run the API and the web app, each in its own terminal:
 ```
 .venv\Scripts\python -m uvicorn api.main:app --host 127.0.0.1 --port 8000
@@ -52,8 +58,8 @@ Then open http://127.0.0.1:5173. Both listen on this machine only.
 To try things without touching your archive, `tools/sandbox_server.py` runs the API on a throwaway archive of
 invented scans with fake models (port 8001); `npm --prefix frontend run dev:sandbox` serves the web app for it
 on port 5174. A new sandbox starts with something on every page: a batch already filed (some of it marked,
-for the Marked Workshop), a batch waiting in Review, and scans to walk from File Index. A restart keeps what
-you did in it. To start over, stop the sandbox API and run
+for the Marked Workshop), a batch waiting in Review, and a batch indexed and waiting for Fix Rotation. A
+restart keeps what you did in it. To start over, stop the sandbox API and run
 ```
 .venv\Scripts\python tools\sandbox_reset.py
 ```
@@ -126,7 +132,41 @@ Scan your documents into a folder, and follow this process:
 5. **OCR** — Batch OCR across all scanned images.
 6. **Parse** — Parse OCR results into file metadata.
 7. **Review** — Review parsed metadata and manually correct if needed. Mark bad documents for re-processing.
-8. **Archive** — Organize files into date-based folders and clean up.
+8. **Archive** — Organize files into date-based folders, commit them to the folder's history, and clear the
+   filed scans out of the scan folder.
+
+### The folder's history
+
+The Papertrail folder's root is a git repository (made at the first milestone), so every scan as it came in
+and as it was turned or cut, and every page and sidecar as filed and as edited since, is kept in every state
+it was ever in. Nothing in the app reads the history: `git log`, `git show` and `git checkout` in the folder
+do that. A scan and its archived copy are the same bytes, so git stores each image once.
+
+A commit is made only at a **milestone**, and holds only what that milestone produced:
+
+| Milestone | What the commit holds |
+| --- | --- |
+| File Index confirm | the index and the new batch's scans |
+| Slice apply, Group save | the index, the crops, and the working files the step rewrote |
+| OCR or Parse ending, however it ended | that run's result files |
+| Archive | the filed pages and the working files it deleted; then the scans it removed |
+| The Commit button in the sidebar | everything uncommitted, with a message |
+| The API stopping | everything uncommitted, as a parking commit the next start undoes |
+
+Nothing else commits. Review and Workshop decisions, Receipt Detail edits, Normalize, Dedupe and rotation
+fixes accumulate, and the sidebar shows how many files wait, until a milestone that owns them or the
+Commit button.
+
+A scan leaves the scan folder only once its filed page is in the last commit as it is on disk. Archive
+removes the scans it just filed, and any filed earlier that are still there; a page edited since keeps its
+scan until the edit is committed, and a scan a batch still being ingested needs stays. An archive from
+before the history gets every page filed so far committed by the first Archive run, which then clears the
+backlog of scans out. If git is missing, Archive stops after filing and says so; the next run commits and
+clears out.
+
+The history lives in the folder's `.git`, which roughly doubles the folder's size (images don't compress).
+Keep it on the same backup as the folder: it protects against the app and against mistakes, not against
+the disk.
 
 ## Curate
 1. **Marked Workshop** — Reprocess marked files with image enhancement, and contextual aids.
@@ -145,4 +185,4 @@ Scan your documents into a folder, and follow this process:
 - **Sanity Check** — Validate batch coverage and archive metadata integrity.
 
 ## Config
-- **Config** — Set input/output paths and toggle structured OCR.
+- **Config** — Set the Papertrail folder, the models, and toggle structured OCR.

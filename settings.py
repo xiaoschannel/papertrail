@@ -12,6 +12,23 @@ log = logging.getLogger(__name__)
 CONFIG_PATH = Path(__file__).resolve().parent / "config.json"
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
+
+#: The Papertrail folder's layout: ``root_path`` holds the scan folder (where the scanner drops images) and
+#: the archive (batches, mid-ingest files, YYYY/MM folders) side by side, and its history (archive_history).
+SCANS_DIR, ARCHIVE_DIR = "scans", "archive"
+
+
+def scans_path(root: str | Path) -> Path:
+    return Path(root) / SCANS_DIR
+
+
+def archive_path(root: str | Path) -> Path:
+    return Path(root) / ARCHIVE_DIR
+
+
+def root_of(archive: Path) -> Path:
+    """The Papertrail folder an archive belongs to: the archive is ``<root>/archive``."""
+    return archive.parent
 #: The tilt share the Config page offers (``AppConfig.tilt_share``).
 TILT_SHARE_RANGE = (0.005, 0.1)
 
@@ -82,8 +99,8 @@ class Shortcuts(BaseModel):
 
 
 class AppConfig(BaseModel):
-    input_image_path: str = ""
-    batch_output_path: str = ""
+    #: the Papertrail folder: ``scans/`` and ``archive/`` inside it, and its history at its root
+    root_path: str = ""
     extract_structured: bool = True
     ocr_model: str = ""
     workshop_ocr_model: str = ""

@@ -483,6 +483,28 @@ def scan_organized_filenames(output_path: Path) -> set[str]:
     return organized
 
 
+def filed_scan_pages(output_path: Path) -> dict[str, Path]:
+    """Each scan the archive holds a page of, image and all, and that page: what the scan folder no
+    longer needs, once the page is in the folder's history.
+
+    Stricter than ``scan_organized_filenames``, which takes a sidecar's word for it: here the page's image
+    has to be there too, since it is the copy the scan is disposed of for.
+    """
+    filed: dict[str, Path] = {}
+    for folder in (output_path / "tossed", output_path / "marked"):
+        if folder.exists():
+            for p in folder.iterdir():
+                if p.is_file() and p.suffix.lower() != ".json":
+                    filed[_filed_scan_name(p)] = p
+    for month_dir in _iter_year_month_dirs(output_path):
+        images = {p.stem: p for p in month_dir.iterdir() if p.is_file() and p.suffix.lower() != ".json"}
+        for sidecar_path in month_dir.glob("*.json"):
+            if sidecar_path.stem in images:
+                sidecar = Sidecar.model_validate_json(sidecar_path.read_text(encoding="utf-8"))
+                filed[sidecar.original_filename] = images[sidecar_path.stem]
+    return filed
+
+
 def load_reorganized_state(
     output_path: Path,
 ) -> tuple[set[str], dict[str, tuple[Sidecar, str]]]:

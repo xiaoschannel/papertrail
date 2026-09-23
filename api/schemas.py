@@ -648,6 +648,8 @@ class ArchiveStatus(_Model):
     accepted: int
     marked: int
     tossed: int
+    #: scans the archive already holds that are still in the scan folder: removed once the archive is committed
+    scans_to_remove: int
     moves: list[ArchiveMoveOut]
 
 
@@ -932,6 +934,29 @@ class PathCheck(_Model):
     path: str
     exists: bool
     is_dir: bool
+
+
+# --- the folder's history (archive_history) ----------------------------------------------------------
+class CommitOut(_Model):
+    sha: str
+    subject: str
+    seconds_ago: int
+
+
+class HistoryOut(_Model):
+    """How the Papertrail folder stands against its history, for the sidebar."""
+
+    #: whether the folder has a repository yet (made by the first milestone)
+    repository: bool
+    #: files changed since the last commit (new, edited or deleted)
+    changed: int
+    last: CommitOut | None
+    #: why the history can't be read, when it can't (git missing, say)
+    problem: str | None = None
+
+
+class CommitIn(_Model):
+    message: str = ""
 
 
 # --- Dev: sanity check, index audit ------------------------------------------------------------------

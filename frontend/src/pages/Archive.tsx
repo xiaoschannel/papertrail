@@ -24,11 +24,17 @@ export default function Archive() {
   if (status.error) return <ErrorState error={status.error} />
   const s = status.data
   const running = gate.job?.status === 'running'
+  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
+  const earlier = `${plural(s.scans_to_remove, 'scan')} filed earlier that ${s.scans_to_remove === 1 ? 'is' : 'are'} still there`
+  const which = s.files > 0 ? (s.scans_to_remove > 0 ? `these ${s.files}, and ${earlier}` : `these ${s.files}`) : `the ${earlier}`
 
   return (
     <div className="ingest-page">
       <h1>Archive</h1>
-      <p className="page-sub">File every reviewed scan into the archive with its OCR, extraction and review.</p>
+      <p className="page-sub">
+        File every reviewed scan into the archive with its OCR, extraction and review. The archive keeps its
+        history in git, and a scan it holds is cleared out of the scan folder.
+      </p>
       <Card>
         <div className="tiles">
           <Tile label="Unarchived batches" value={s.unarchived_batches} />
@@ -39,13 +45,15 @@ export default function Archive() {
           <Tile label="Accepted" value={s.accepted} />
           <Tile label="Marked" value={s.marked} />
           <Tile label="Tossed" value={s.tossed} />
+          <Tile label="Scans to clear out" value={s.scans_to_remove} />
         </div>
         {s.blocker && !running && <p className="ingest-note ingest-blocker">{s.blocker}</p>}
         {start.error && <div className="error-banner" role="alert">{start.error.message}</div>}
         <div className="start-bar">
           <button className="primary" disabled={Boolean(s.blocker) || running || gate.blockedBy !== null || start.isPending}
             onClick={() => setConfirming(true)}>
-            Archive {s.files} file{s.files === 1 ? '' : 's'}
+            {s.files > 0 ? `Archive ${plural(s.files, 'file')}`
+              : s.scans_to_remove > 0 ? `Clear out ${plural(s.scans_to_remove, 'scan')}` : 'Archive'}
           </button>
           {gate.blockedBy && <span className="ingest-note">Waiting for {gate.blockedBy} to finish.</span>}
         </div>
@@ -72,12 +80,20 @@ export default function Archive() {
       )}
 
       {confirming && (
-        <ConfirmDialog title="Archive these files?" confirmLabel="Archive" busy={start.isPending}
+        <ConfirmDialog title={s.files > 0 ? 'Archive these files?' : 'Clear out the filed scans?'}
+          confirmLabel={s.files > 0 ? 'Archive' : 'Clear out'} busy={start.isPending}
           onConfirm={() => start.mutate()} onCancel={() => setConfirming(false)}>
-          {s.files} scan(s) will be copied into the archive with their sidecars (the originals stay in the input
-          folder). When every file is in place, the batches are marked archived and the working files
-          (OCR results, extractions, decisions) are removed. If any file fails, nothing is finalized and you can
-          run Archive again to finish.
+          {s.files > 0 && (
+            <p>
+              {plural(s.files, 'scan')} will be copied into the archive with their sidecars. When every file is in
+              place, the batches are marked archived and the working files (OCR results, extractions, decisions)
+              are removed. If any file fails, nothing is finalized and you can run Archive again to finish.
+            </p>
+          )}
+          <p>
+            The archive is then committed to its history, and once every file in it is committed the scans it
+            holds are deleted from the scan folder: {which}. A scan a batch still being ingested needs stays.
+          </p>
         </ConfirmDialog>
       )}
     </div>

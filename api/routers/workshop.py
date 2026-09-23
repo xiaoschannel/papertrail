@@ -37,7 +37,7 @@ from grounding import parse_grounding_output
 from models import OcrResult, ReviewDecision, load_scan_index, turned_trim
 from name_similarity import get_smart_match_candidates, quick_apply_label
 from scan_enhance import Enhancement, enhance
-from settings import get_config, update_config
+from settings import get_config, scans_path, update_config
 
 router = APIRouter(prefix="/api/curate/workshop", tags=["workshop"])
 
@@ -180,7 +180,7 @@ def context(key: str = Query(...), date: str = "", time: str = "", document_type
                                     load_decisions(output_path), scan_index, load_trims(output_path))
     tossed, accepted = cache.archive_state(output_path)
     # optional: without a scan folder the batch still shows what was archived, marked or tossed
-    input_path = Path(get_config().input_image_path) if get_config().input_image_path else None
+    input_path = scans_path(get_config().root_path) if get_config().root_path else None
     batch_id, batch = workshop.same_batch(output_path, input_path, document, scan_index, tossed, accepted,
                                           load_trims(output_path))
     return WorkshopContextOut(

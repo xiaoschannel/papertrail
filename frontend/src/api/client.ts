@@ -65,6 +65,11 @@ export const api = {
   /** Correct an archived document: the server re-files its pages and rewrites their sidecars. */
   editReceipt: (body: ReceiptEditIn) => unwrap(client.PATCH('/api/receipt', { body })),
 
+  /** The folder's history: files changed since the last commit, and that commit (the sidebar's count). */
+  history: () => unwrap(client.GET('/api/history')),
+  /** Commit everything uncommitted, under a message (or a plain one when empty). */
+  commitHistory: (message: string) => unwrap(client.POST('/api/history/commit', { body: { message } })),
+
   config: () => unwrap(client.GET('/api/config')),
   configOptions: () => unwrap(client.GET('/api/config/options')),
   pathCheck: (path: string) => unwrap(client.GET('/api/config/path-check', { params: { query: { path } } })),

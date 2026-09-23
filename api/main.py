@@ -22,26 +22,54 @@ load_env()  # API keys: process env, then <repo>/.env, then the shared user-leve
 # so this adds one for everything else rather than replacing theirs.
 logging.basicConfig(level=logging.INFO, format="%(levelname)s:     %(name)s: %(message)s")
 
+from contextlib import asynccontextmanager
+from pathlib import Path
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from api.routers import brands, config, curate, dev, ingest, jobs, media, review, viz, workshop
+import archive_history
+from api.routers import brands, config, curate, dev, history, ingest, jobs, media, review, viz, workshop
 from api.schemas import Health
 from document_files import FileInUse
+from settings import get_config
 
 
 #: The names this machine answers to. The API serves only them: see ``only_this_machine``.
 LOCAL_HOSTS = frozenset({"127.0.0.1", "localhost", "[::1]", "::1"})
+
+log = logging.getLogger(__name__)
 
 
 def _host(value: str) -> str:
     return (urlsplit(f"//{value}").hostname or "").lower()
 
 
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    """The folder's history across a stop and a start: whatever is uncommitted when the API stops is parked
+    in a commit, and that commit is undone when it starts again, so the changes land in their proper
+    milestone (archive_history). A folder that isn't set, or git that isn't there, is left alone."""
+    root = get_config().root_path
+    if root:
+        try:
+            if archive_history.unpark(Path(root)):
+                log.info("Unparked the changes committed at the last shutdown.")
+        except archive_history.HistoryError as exc:
+            log.warning("The folder's history couldn't be read at start: %s", exc)
+    yield
+    root = get_config().root_path
+    if root:
+        try:
+            if archive_history.park(Path(root)):
+                log.info("Parked the uncommitted changes; the next start takes them back.")
+        except archive_history.HistoryError as exc:
+            log.warning("The uncommitted changes couldn't be parked: %s", exc)
+
+
 def create_app() -> FastAPI:
-    app = FastAPI(title="Papertrail API", version="0.1.0")
+    app = FastAPI(title="Papertrail API", version="0.1.0", lifespan=_lifespan)
 
     @app.middleware("http")
     async def only_this_machine(request: Request, call_next):
@@ -74,6 +102,7 @@ def create_app() -> FastAPI:
     app.include_router(review.router)
     app.include_router(ingest.router)
     app.include_router(jobs.router)
+    app.include_router(history.router)
     app.include_router(dev.router)
 
     # Moving a document refuses before anything moves if a file is open elsewhere or its new name is taken
@@ -82,6 +111,11 @@ def create_app() -> FastAPI:
     @app.exception_handler(FileExistsError)
     async def refused_move(_request: Request, exc: OSError) -> JSONResponse:
         return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    # A commit that couldn't be made (git missing, a lock left behind) says why, wherever it happened.
+    @app.exception_handler(archive_history.HistoryError)
+    async def history_failed(_request: Request, exc: archive_history.HistoryError) -> JSONResponse:
+        return JSONResponse(status_code=500, content={"detail": str(exc)})
 
     @app.get("/api/health", response_model=Health)
     def health() -> dict:

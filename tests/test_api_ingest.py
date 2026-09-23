@@ -483,7 +483,7 @@ def test_cancel_and_event_stream(ingest_client, fake_ocr):
 # --- Archive -------------------------------------------------------------------------------------------------
 def test_archive_status_and_blocker(ingest_client, configured_ingest):
     status = ingest_client.get("/api/ingest/archive").json()
-    assert status["blocker"] is None and (status["files"], status["tossed"]) == (8, 2)
+    assert status["blocker"] is None and (status["files"], status["tossed"], status["scans_to_remove"]) == (8, 2, 0)
     assert {m["key"]: m["destination"] for m in status["moves"]}["1:6"] == "tossed/01102025142000_6.png"
 
     decisions = load_decisions(configured_ingest)
@@ -519,6 +519,73 @@ def test_archive_job_reports_missing_scans_and_blocks_review_edits(ingest_client
     # conftest only provides page 1:1's scan, so the other seven copies fail and nothing is finalized
     assert (done["status"], done["done"], done["failed"]) == ("failed", 8, 7)
     assert ingest_client.delete("/api/review/decisions").status_code == 200
+
+
+# --- the folder's history -----------------------------------------------------------------------------------
+def test_file_index_says_when_its_batches_were_added_but_not_committed(ingest_client, configured_ingest, tmp_path,
+                                                                    monkeypatch):
+    import archive_history
+
+    monkeypatch.setattr(archive_history, "GIT", "git-that-is-not-installed")
+    refused = _add_batch_2(ingest_client, tmp_path / "scans")
+    assert refused.status_code == 500
+    assert refused.json()["detail"].startswith("The batches were added, but not committed to the folder's history: git")
+    assert [b.batch_id for b in load_scan_index(configured_ingest).batches] == [1, 2]
+
+
+def test_a_job_whose_commit_fails_still_succeeds_and_says_so(ingest_client, configured_ingest, fake_ocr, monkeypatch):
+    import archive_history
+
+    monkeypatch.setattr(archive_history, "GIT", "git-that-is-not-installed")
+    job = ingest_client.post("/api/ingest/ocr", json={"provider": "Fake OCR", "reprocess": True}).json()
+    done = _finish(job)
+    assert done["status"] == "succeeded" and "Not committed to the folder's history: git" in done["message"]
+
+
+def test_the_sidebar_s_count_and_a_manual_commit(ingest_client, configured_ingest):
+    import archive_history
+
+    root = configured_ingest.parent
+    before = ingest_client.get("/api/history").json()
+    assert before["repository"] is False and before["changed"] == 0 and before["last"] is None
+
+    draft = {"document_type": "receipt", "name": "Shop", "date": "2025-01-10", "time": "10:00", "cost": 100,
+             "currency": "JPY"}
+    assert ingest_client.post("/api/review/decisions", json={"key": "1:3", "verdict": "accepted", "draft": draft}).status_code == 200
+    assert ingest_client.get("/api/history").json()["repository"] is False           # a decision is no milestone
+
+    done = ingest_client.post("/api/history/commit", json={"message": "  "}).json()
+    assert done["repository"] and done["changed"] == 0
+    assert done["last"]["subject"] == archive_history.MANUAL and done["last"]["seconds_ago"] < 60
+    assert "archive/decisions.json" in archive_history.tracked_paths(root)
+
+    (configured_ingest / "decisions.json").write_bytes(b"{}")
+    assert ingest_client.get("/api/history").json()["changed"] == 1
+    named = ingest_client.post("/api/history/commit", json={"message": "reviewed batch 1"}).json()
+    assert named["last"]["subject"] == "reviewed batch 1" and named["changed"] == 0
+
+
+def test_the_api_parks_what_is_uncommitted_when_it_stops_and_takes_it_back_when_it_starts(configured_ingest):
+    import archive_history
+    from fastapi.testclient import TestClient
+
+    from api.main import create_app
+
+    root = configured_ingest.parent
+    with TestClient(create_app()):
+        (configured_ingest / "decisions.json").write_bytes(b"{}")
+    assert not (root / ".git").exists()             # no history yet: a shutdown doesn't start one
+    archive_history.ensure_repository(root)
+    with TestClient(create_app()):
+        pass
+    parked = archive_history.head(root)
+    assert parked is not None and parked.subject == archive_history.PARKED
+    assert archive_history.status(root).changed == 0
+
+    with TestClient(create_app()):
+        assert archive_history.head(root).subject == "History started"                # the parking commit is undone
+        assert "archive/decisions.json" in archive_history.changed_paths(root)      # and its changes wait again
+    assert archive_history.head(root).subject == archive_history.PARKED             # parked once more on the way out
 
 
 # --- runner and model manager units --------------------------------------------------------------------------

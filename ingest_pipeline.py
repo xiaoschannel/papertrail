@@ -13,6 +13,10 @@ Guarantees the steps keep:
 - OCR runs the second "structured" pass only for providers that return grounding boxes.
 - Parse failures are reported per item; Archive reports per-file errors and only finalizes (marks
   batches archived, deletes the mid-ingest files) when every file was archived.
+- The milestones commit what they produced to the folder's history (archive_history): File Index the
+  index and the new scans, Group save the grouping and the working files it cleared, OCR and Parse their
+  results (however the run ended), Archive the filed pages and then the scans it removed, which it does
+  only once their pages are in the last commit.
 """
 
 from __future__ import annotations
@@ -24,7 +28,7 @@ import shutil
 import threading
 import time
 import traceback
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -33,6 +37,7 @@ from typing import Protocol, TypeVar
 
 from openai import RateLimitError
 
+import archive_history
 import run_log
 from data import (
     build_document_index,
@@ -40,6 +45,8 @@ from data import (
     delete_sidecar,
     drop_extractions,
     drop_model_runs,
+    filed_scan_pages,
+    sidecar_path_for,
     load_decisions,
     load_document_groups,
     load_extractions,
@@ -96,7 +103,7 @@ from models import (
 from orientation import UNREADABLE, OrientationEstimate, estimate_file_orientation
 from organize_utils import plan_accepted_destinations, scan_existing_names
 from scan_enhance import trimmed_file
-from settings import IMAGE_EXTENSIONS
+from settings import ARCHIVE_DIR, IMAGE_EXTENSIONS, SCANS_DIR, root_of
 
 
 class Progress(Protocol):
@@ -217,7 +224,21 @@ def confirm_index(input_path: Path, output_path: Path, scheme_name: str, token: 
         raise ValueError("There are no new batches to add.")
     existing = _load_index(output_path)
     save_scan_index(output_path, ScanIndex(batches=(existing.batches if existing else []) + proposal.batches))
+    # milestone: the index and the new batches' scans, as they came in
+    ids = [b.batch_id for b in proposal.batches]
+    scans = sum(len(b.files) for b in proposal.batches)
+    archive_history.commit(root_of(output_path),
+                           f"File Index: {_batches(ids)} ({scans} scan{'s' if scans != 1 else ''})",
+                           [f"{ARCHIVE_DIR}/batches.json",
+                            *(f"{SCANS_DIR}/{fn}" for b in proposal.batches for fn in b.files.values())])
     return proposal.batches
+
+
+def _batches(ids: list[int]) -> str:
+    """``batch 3``, ``batches 3 and 4``, ``batches 2, 3 and 4``: for a commit message."""
+    if len(ids) == 1:
+        return f"batch {ids[0]}"
+    return "batches " + ", ".join(map(str, ids[:-1])) + f" and {ids[-1]}"
 
 
 # =====================================================================================
@@ -327,6 +348,9 @@ def save_grouping(output_path: Path, batch_id: int, groups: list[list[str]]) -> 
     tossed_groups = [g for g in saved if any(k in tossed for k in g)]
     replace_groups_for_batch(output_path, batch_id, multi + tossed_groups)
     clear_extractions_decisions_for_batch(output_path, batch_id)
+    # milestone: the grouping, and the working files it cleared for the batch
+    archive_history.commit(root_of(output_path), f"Group: batch {batch_id}",
+                           [f"{ARCHIVE_DIR}/{name}" for name in ("documents.json", "extractions.json", "decisions.json")])
     return True
 
 
@@ -558,7 +582,7 @@ def plan_ocr(output_path: Path, input_path: Path, batch_id: int | None, reproces
                    waiting=waiting, retrimmed=retrimmed)
 
 
-def run_ocr(output_path: Path, items: list[tuple[str, Path]], provider: OcrProvider, structured: bool,
+def _run_ocr(output_path: Path, items: list[tuple[str, Path]], provider: OcrProvider, structured: bool,
             progress: Progress, model: str, shuffle: bool = True) -> str:
     """OCR each page, saving its batch's file after every image (so an interruption loses at most one page).
 
@@ -662,7 +686,7 @@ def plan_parse(output_path: Path, reprocess: bool, limit: int, held: frozenset[i
                      documents=documents, index=index, ocr_results=ocr, waiting=len(wanted) - len(documents))
 
 
-def run_parse(output_path: Path, plan: ParsePlan, extract: ExtractFn, custom_instruction: str, progress: Progress,
+def _run_parse(output_path: Path, plan: ParsePlan, extract: ExtractFn, custom_instruction: str, progress: Progress,
               model: str, workers: int = 1, shuffle: bool = True, save_every: float = 15.0,
               clock: Callable[[], float] = time.monotonic) -> str:
     """Extract each document, saving every ``save_every`` seconds and at the end (also on errors).
@@ -801,6 +825,47 @@ def _sleep_while_running(seconds: float, progress: Progress) -> None:
 
 
 # =====================================================================================
+# The jobs' milestones: a run's results are committed however it ended
+# =====================================================================================
+def _commit_run(output_path: Path, what: str, paths: list[str], run: Callable[[], str]) -> str:
+    """Run a job's function and commit ``paths``, whether it returned, was cancelled or raised: what a
+    run wrote before it stopped is a result too. The commit message carries the run's own summary."""
+    try:
+        message = run()
+    except BaseException as exc:
+        try:
+            archive_history.commit(root_of(output_path), f"{what} (stopped: {_short_error(exc)})", paths)
+        except archive_history.HistoryError:
+            pass                          # the run's own error is the one to report
+        raise
+    try:
+        archive_history.commit(root_of(output_path), f"{what}: {message}", paths)
+    except archive_history.HistoryError as exc:     # the results are saved all the same: the run did its work
+        return f"{message} Not committed to the folder's history: {exc}"
+    return message
+
+
+def run_ocr(output_path: Path, items: list[tuple[str, Path]], provider: OcrProvider, structured: bool,
+            progress: Progress, model: str, shuffle: bool = True) -> str:
+    """``_run_ocr``, then the milestone: the batches' OCR files and the record of the runs."""
+    batches = sorted({parsed[0] for key, _ in items if (parsed := parse_batch_serial_key(key))})
+    paths = ([f"{ARCHIVE_DIR}/{OCR_DIR}/{b}.json" for b in batches]
+             + [f"{ARCHIVE_DIR}/{OCR_RUNS}", f"{ARCHIVE_DIR}/{run_log.FILE}"])
+    return _commit_run(output_path, f"OCR with {model}", paths,
+                       lambda: _run_ocr(output_path, items, provider, structured, progress, model, shuffle))
+
+
+def run_parse(output_path: Path, plan: ParsePlan, extract: ExtractFn, custom_instruction: str, progress: Progress,
+              model: str, workers: int = 1, shuffle: bool = True, save_every: float = 15.0,
+              clock: Callable[[], float] = time.monotonic) -> str:
+    """``_run_parse``, then the milestone: the extractions and the record of the runs."""
+    paths = [f"{ARCHIVE_DIR}/extractions.json", f"{ARCHIVE_DIR}/{EXTRACTION_RUNS}", f"{ARCHIVE_DIR}/{run_log.FILE}"]
+    return _commit_run(output_path, f"Parse with {model}", paths,
+                       lambda: _run_parse(output_path, plan, extract, custom_instruction, progress, model, workers,
+                                          shuffle, save_every, clock))
+
+
+# =====================================================================================
 # Archive
 # =====================================================================================
 #: The mid-ingest working files Archive deletes once every file is archived (``ocr/`` is a folder).
@@ -828,11 +893,26 @@ class ArchivePlan:
     tossed: int
     moves: list[ArchiveMove]
     blocker: str | None
+    #: scans the archive already holds that are still in the scan folder (earlier runs' too): removed once
+    #: the archive is committed. Known only when the plan was given the scan folder.
+    scans_to_remove: int = 0
     # what run_archive needs, not shown
     complete_batch_ids: list[int] = field(default_factory=list, repr=False)
     doc_keys: list[str] = field(default_factory=list, repr=False)
     decisions: dict[str, ReviewDecision] = field(default_factory=dict, repr=False)
     index: DocumentIndex | None = field(default=None, repr=False)
+
+
+def archived_scans_left(output_path: Path, input_path: Path, index: ScanIndex | None = None) -> list[str]:
+    """Scans still in the scan folder that the archive holds a page of (image and sidecar), and no batch
+    still being ingested needs: what Archive removes once the archive is committed."""
+    index = index if index is not None else _load_index(output_path)
+    if index is None or not input_path.is_dir():
+        return []
+    needed = {fn for b in index.batches if not b.archived for fn in b.files.values()}
+    archived = {fn for b in index.batches if b.archived for fn in b.files.values()}
+    disposable = (archived & set(filed_scan_pages(output_path))) - needed
+    return sorted(fn for fn in disposable if (input_path / fn).is_file())
 
 
 def _page_place(index: DocumentIndex, key: str) -> int:
@@ -875,11 +955,13 @@ def archive_ready_documents(output_path: Path) -> int:
     return len(doc_keys)
 
 
-def plan_archive(output_path: Path) -> ArchivePlan:
-    """Where every file of the fully reviewed batches would go, for the page to preview."""
+def plan_archive(output_path: Path, input_path: Path | None = None) -> ArchivePlan:
+    """Where every file of the fully reviewed batches would go, for the page to preview; given the scan
+    folder, also how many scans already filed would leave it."""
     scan_index = _load_index(output_path)
     if scan_index is None:
         return ArchivePlan(0, 0, 0, 0, 0, 0, 0, 0, [], "Run File Index first to create batches.json.")
+    scans_to_remove = len(archived_scans_left(output_path, input_path, scan_index)) if input_path else 0
     key_to_filename, all_decisions, index, unarchived, complete, doc_keys = _archive_scope(output_path, scan_index)
     organized = scan_organized_filenames(output_path)
     decisions = {dk: all_decisions[dk] for dk in doc_keys if dk in all_decisions}
@@ -901,7 +983,8 @@ def plan_archive(output_path: Path) -> ArchivePlan:
     all_complete = bool(unarchived) and len(complete) == len(unarchived)
     slice_problems = [p for b in unarchived for p in slicing.mismatches(b, all_decisions)]
     if not unarchived:
-        blocker = "No new files to organize."
+        # with only scans to clear out, a run commits the archive and removes them
+        blocker = None if scans_to_remove else "No new files to organize."
     elif slice_problems:   # an interrupted slice: saving or unslicing the sheet repairs it
         blocker = f"Fix the sliced sheets on the Slice page first: {'; '.join(slice_problems)}."
     elif not all_complete:
@@ -935,8 +1018,8 @@ def plan_archive(output_path: Path) -> ArchivePlan:
         multipage=sum(1 for dk in doc_keys if len(pages_of(dk)) > 1), files=len(files),
         accepted=len(accepted_files),
         marked=sum(len(pages_of(dk)) for dk in marked_docs), tossed=sum(len(pages_of(dk)) for dk in tossed_docs),
-        moves=moves, blocker=blocker, complete_batch_ids=[b.batch_id for b in complete], doc_keys=doc_keys,
-        decisions=decisions, index=index,
+        moves=moves, blocker=blocker, scans_to_remove=scans_to_remove,
+        complete_batch_ids=[b.batch_id for b in complete], doc_keys=doc_keys, decisions=decisions, index=index,
     )
 
 
@@ -944,11 +1027,23 @@ class ArchiveIncomplete(Exception):
     """Some files could not be archived; nothing was finalized."""
 
 
+def _archive_commit_message(batch_ids: list[int], files: int) -> str:
+    return f"Archive {_batches(batch_ids)}: {files} file{'s' if files != 1 else ''}"
+
+
+def _page_paths(root: Path, pages: Iterable[Path]) -> list[str]:
+    """A page's image and sidecar, relative to the root, for a pathspec."""
+    return [p.relative_to(root).as_posix() for page in pages for p in (page, sidecar_path_for(page))]
+
+
 def run_archive(output_path: Path, input_path: Path, progress: Progress) -> str:
     """Copy every file to its destination with a sidecar; then, only if all succeeded, update the smart-
-    match cache, mark the batches archived and delete the mid-ingest files. Re-running resumes: files
-    already archived are skipped by the plan."""
-    plan = plan_archive(output_path)
+    match cache, mark the batches archived and delete the mid-ingest files. Then commit what it filed to the
+    folder's history (and any page filed before the history began, or before a commit that failed), and
+    remove every scan whose filed page is in the last commit from the scan folder, committing that too.
+    Re-running resumes: files already archived are skipped by the plan, and a run with nothing new to file
+    still clears the scans out."""
+    plan = plan_archive(output_path, input_path)
     if plan.blocker:
         raise ValueError(plan.blocker)
     assert plan.index is not None
@@ -1009,28 +1104,105 @@ def run_archive(output_path: Path, input_path: Path, progress: Progress) -> str:
         raise ArchiveIncomplete(f"{len(plan.moves) - copied} file(s) could not be archived; batches were not marked "
                                 f"archived and no files were cleaned up. Fix the errors and run Archive again.")
 
-    cache = load_smart_match_cache(output_path)
-    for doc_key in plan.doc_keys:
-        extraction = extractions.get(doc_key)
-        if isinstance(extraction, ReceiptResult):
-            extracted, phone = extraction.name, extraction.phone
-        elif isinstance(extraction, OtherResult):
-            extracted, phone = extraction.title, ""
-        else:
-            extracted, phone = "", ""
-        cache[doc_key] = {"extracted": extracted, "confirmed": plan.decisions[doc_key].name, "extracted_phone": phone}
-    save_smart_match_cache(output_path, cache)
+    cleaned: list[str] = []
+    if plan.moves:
+        cache = load_smart_match_cache(output_path)
+        for doc_key in plan.doc_keys:
+            extraction = extractions.get(doc_key)
+            if isinstance(extraction, ReceiptResult):
+                extracted, phone = extraction.name, extraction.phone
+            elif isinstance(extraction, OtherResult):
+                extracted, phone = extraction.title, ""
+            else:
+                extracted, phone = "", ""
+            cache[doc_key] = {"extracted": extracted, "confirmed": plan.decisions[doc_key].name,
+                              "extracted_phone": phone}
+        save_smart_match_cache(output_path, cache)
 
-    scan_index = load_scan_index(output_path)
-    for batch in scan_index.batches:
-        if batch.batch_id in plan.complete_batch_ids:
-            batch.archived = True
-    save_scan_index(output_path, scan_index)
+        scan_index = load_scan_index(output_path)
+        for batch in scan_index.batches:
+            if batch.batch_id in plan.complete_batch_ids:
+                batch.archived = True
+        save_scan_index(output_path, scan_index)
 
-    cleaned = [name for name in CLEANUP_ARTIFACTS if (output_path / name).exists()]
-    for name in cleaned:
-        if (output_path / name).is_dir():
-            shutil.rmtree(output_path / name)
-        else:
-            (output_path / name).unlink()
-    return f"Archived {copied} file(s)." + (f" Cleaned up {', '.join(cleaned)}." if cleaned else "")
+        cleaned = [name for name in CLEANUP_ARTIFACTS if (output_path / name).exists()]
+        for name in cleaned:
+            if (output_path / name).is_dir():
+                shutil.rmtree(output_path / name)
+            else:
+                (output_path / name).unlink()
+
+    # Milestone: what this run filed. A HistoryError (git missing, a repository problem) fails the run here,
+    # with the batches filed and every scan still where it was; the next run commits and clears them out.
+    root = root_of(output_path)
+    sha = None
+    if plan.moves:
+        progress.say("Committing the filed pages…")
+        sha = archive_history.commit(root, _archive_commit_message(plan.complete_batch_ids, copied), [
+            *_page_paths(root, (output_path / m.destination for m in plan.moves)),
+            f"{ARCHIVE_DIR}/batches.json", f"{ARCHIVE_DIR}/smart_match_cache.json",
+            *(f"{ARCHIVE_DIR}/{name}" for name in CLEANUP_ARTIFACTS)])
+
+    # A filed page the history doesn't have yet is Archive's too: filed before the history began, or by a
+    # run whose commit failed. (One the history has but that changed since is someone's edit, and waits.)
+    pages = filed_scan_pages(output_path)
+    tracked = archive_history.tracked_paths(root, ARCHIVE_DIR)
+    earlier = [page for page in pages.values() if page.relative_to(root).as_posix() not in tracked]
+    earlier_sha = None
+    if earlier:
+        progress.say(f"Committing {len(earlier)} page(s) filed earlier…")
+        earlier_sha = archive_history.commit(
+            root, f"Archive: {len(earlier)} page{'s' if len(earlier) != 1 else ''} filed before the history",
+            _page_paths(root, earlier))
+        tracked = archive_history.tracked_paths(root, ARCHIVE_DIR)
+
+    # A scan leaves the scan folder only for a filed page that is in the last commit as it is on disk; and
+    # its own bytes go into the history first, since the page may not be them any more (the Workshop turns
+    # a page in place) and a scan filed before the history began was never committed at File Index.
+    progress.say("Removing the filed scans from the scan folder…")
+    dirty = archive_history.changed_paths(root, ARCHIVE_DIR)
+
+    def committed(page: Path) -> bool:
+        image, sidecar = _page_paths(root, [page])
+        return image in tracked and image not in dirty and sidecar not in dirty
+
+    left = archived_scans_left(output_path, input_path)
+    leaving = [fn for fn in left if committed(pages[fn])]
+    waiting = len(left) - len(leaving)
+    if leaving:
+        archive_history.commit(root, f"Archive: {len(leaving)} scan{'s' if len(leaving) != 1 else ''} kept as "
+                                     f"scanned, before they leave the scan folder",
+                               [f"{SCANS_DIR}/{fn}" for fn in leaving])
+    kept = archive_history.tracked_paths(root, SCANS_DIR)
+    unkept = archive_history.changed_paths(root, SCANS_DIR)
+
+    removed, in_use = [], []
+    for filename in leaving:
+        if f"{SCANS_DIR}/{filename}" not in kept or f"{SCANS_DIR}/{filename}" in unkept:
+            waiting += 1                      # changed while this ran: its bytes aren't the committed ones
+            continue
+        try:
+            (input_path / filename).unlink()
+            removed.append(filename)
+        except OSError:              # open in a viewer, say: still filed, so it goes next time
+            in_use.append(filename)
+    if removed:
+        archive_history.commit(root, f"Archive: {len(removed)} scan{'s' if len(removed) != 1 else ''} cleared "
+                                     f"out of the scan folder", [f"{SCANS_DIR}/{fn}" for fn in removed])
+
+    parts = [f"Archived {copied} file(s)." if copied else "Nothing new to file."]
+    if cleaned:
+        parts.append(f"Cleaned up {', '.join(cleaned)}.")
+    if sha:
+        parts.append(f"Committed the filed pages ({sha}).")
+    if earlier_sha:
+        parts.append(f"Committed {len(earlier)} page(s) filed earlier ({earlier_sha}).")
+    if removed:
+        parts.append(f"Removed {len(removed)} scan(s) from the scan folder.")
+    if waiting:
+        parts.append(f"{waiting} scan(s) stay until their filed pages are committed (edited since; a manual "
+                     f"commit does it).")
+    if in_use:
+        parts.append(f"{len(in_use)} scan(s) couldn't be removed (in use?): {', '.join(in_use[:5])}"
+                     f"{'…' if len(in_use) > 5 else ''}; the next run will.")
+    return " ".join(parts)

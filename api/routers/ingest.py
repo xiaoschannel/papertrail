@@ -14,6 +14,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+import archive_history
 import ingest_pipeline as pipeline
 import rate_budget
 import review_logic as rl
@@ -157,6 +158,10 @@ def confirm_index(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except archive_history.HistoryError as exc:          # saved first: the batches are in, just not committed
+        update_config(indexing_scheme=body.scheme)
+        raise HTTPException(status_code=500, detail=f"The batches were added, but not committed to the folder's "
+                                                    f"history: {exc}") from exc
     update_config(indexing_scheme=body.scheme)
     return index_status(body.scheme, output_path, input_path)
 
@@ -543,12 +548,12 @@ def start_parse(body: StartParseIn, output_path: Path = Depends(get_output_path)
 
 # --- Archive ----------------------------------------------------------------------------------------
 @router.get("/archive", response_model=ArchiveStatus)
-def archive_status(output_path: Path = Depends(get_output_path)):
-    plan = pipeline.plan_archive(output_path)
+def archive_status(output_path: Path = Depends(get_output_path), input_path: Path = Depends(get_input_path)):
+    plan = pipeline.plan_archive(output_path, input_path)
     return ArchiveStatus(
         blocker=plan.blocker, unarchived_batches=plan.unarchived_batches, complete_batches=plan.complete_batches,
         documents=plan.documents, multipage=plan.multipage, files=plan.files, accepted=plan.accepted,
-        marked=plan.marked, tossed=plan.tossed,
+        marked=plan.marked, tossed=plan.tossed, scans_to_remove=plan.scans_to_remove,
         moves=[ArchiveMoveOut(key=m.key, filename=m.filename, destination=m.destination, note=m.note)
                for m in plan.moves],
     )
@@ -556,13 +561,13 @@ def archive_status(output_path: Path = Depends(get_output_path)):
 
 @router.post("/archive", response_model=JobOut)
 def start_archive(output_path: Path = Depends(get_output_path), input_path: Path = Depends(get_input_path)):
-    """Archive every reviewed file as a background job."""
+    """Archive every reviewed file, commit the archive and clear the filed scans out, as a background job."""
 
     def prepare(held):
         busy = runner.running()   # Archive holds everything: say so before planning a run that can't start
         if busy is not None:
             raise JobConflict(f"Archive has to wait: {busy['title']} is running.")
-        blocker = pipeline.plan_archive(output_path).blocker
+        blocker = pipeline.plan_archive(output_path, input_path).blocker
         if blocker:
             raise HTTPException(status_code=422, detail=blocker)
 

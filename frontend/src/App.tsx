@@ -21,6 +21,7 @@ import Config from './pages/Config.tsx'
 import Experiment from './pages/Experiment.tsx'
 import SanityCheck from './pages/SanityCheck.tsx'
 import IndexAudit from './pages/IndexAudit.tsx'
+import { HistoryPip } from './components/historyPip.tsx'
 import { JobIndicator, JobWatcher } from './components/jobs.tsx'
 
 // Ordered the way the work runs: Ingest -> Curate -> Visualize. Settings is for
@@ -98,6 +99,7 @@ export default function App() {
           </div>
         ))}
         <JobIndicator />
+        <HistoryPip />
       </nav>
       <JobWatcher />
 

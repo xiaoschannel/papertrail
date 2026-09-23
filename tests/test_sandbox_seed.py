@@ -28,6 +28,23 @@ def test_the_first_batch_is_filed_with_some_of_it_marked(sandbox):
     assert drugstore.review.comment == seed.MARKED[4]
 
 
+def test_the_filed_batch_s_scans_left_the_scan_folder_for_the_archive_s_history(sandbox):
+    import archive_history
+
+    import subprocess
+
+    first, *_ = load_scan_index(sandbox.archive).batches
+    assert not any((sandbox.scans / name).exists() for name in first.files.values())
+    log = subprocess.run(["git", "-C", str(sandbox.root), "log", "--format=%s"], check=True, capture_output=True,
+                         text=True, encoding="utf-8").stdout.splitlines()
+    milestones = ["File Index: batch 3 (18 scans)", "Parse with ", "OCR with ", "File Index: batch 2 (4 scans)",
+                  "Archive: 6 scans cleared out of the scan folder", "Archive batch 1: 6 files", "Parse with ",
+                  "OCR with ", "File Index: batch 1 (6 scans)", "History started"]
+    assert len(log) == len(milestones) and all(s.startswith(m) for s, m in zip(log, milestones)), log
+    # trims aren't a milestone: batch 2's wait for one (or the Commit button)
+    assert archive_history.changed_paths(sandbox.root) == {"archive/trims.json"}
+
+
 def test_the_filed_coupon_receipt_is_trimmed_and_read_as_the_receipt_alone(sandbox):
     filed = [read_sidecar(p) for p in sandbox.archive.glob("2026/*/*.png")]
     [supermarket] = [s for s in filed if s.original_filename == "02152026090020_3.png"]
@@ -67,6 +84,7 @@ def test_restarting_reads_every_scan_without_redrawing_it(sandbox):
     seed.draw(again)
     assert again.text.keys() >= set(before)                       # the fake OCR can read every scan
     assert {p.name: p.stat().st_mtime_ns for p in sandbox.scans.glob("*.png")} == before
+    assert "02152026090000_1.png" in again.text and not (sandbox.scans / "02152026090000_1.png").exists()   # filed: not back
 
 
 def test_a_reset_puts_a_used_sandbox_back_into_the_shared_state(tmp_path):
@@ -80,6 +98,27 @@ def test_a_reset_puts_a_used_sandbox_back_into_the_shared_state(tmp_path):
     assert not (sb.scans / "a scan dropped in.png").exists()
     assert (sb.archive / "marked" / "02152026090030_4.png").exists()
     assert [b.archived for b in load_scan_index(sb.archive).batches] == [True, False, False]
+
+
+def test_a_sandbox_from_before_the_papertrail_folder_is_moved_onto_it(tmp_path, monkeypatch):
+    import json
+
+    import settings
+
+    monkeypatch.setattr(settings, "CONFIG_PATH", settings.CONFIG_PATH)   # prepare points it at the sandbox
+    root = tmp_path / "sandbox"
+    seed.prepare(root)
+    config = root / "config.json"
+    old = {k: v for k, v in json.loads(config.read_text(encoding="utf-8")).items() if k != "root_path"}
+    config.write_text(json.dumps({**old, "input_image_path": str(root / "scans"),
+                                  "batch_output_path": str(root / "archive"), "ocr_model": "kept"}), encoding="utf-8")
+
+    seed.prepare(root)
+
+    saved = json.loads(config.read_text(encoding="utf-8"))
+    assert saved["root_path"] == str(root) and saved["ocr_model"] == "kept"
+    assert "input_image_path" not in saved and "batch_output_path" not in saved
+    assert settings.get_config().root_path == str(root)
 
 
 def test_the_reset_script_leaves_a_running_sandbox_alone(monkeypatch, tmp_path):

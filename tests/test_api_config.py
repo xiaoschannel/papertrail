@@ -4,7 +4,7 @@
 def test_get_config_reflects_fixture(api_client, configured_archive):
     resp = api_client.get("/api/config")
     assert resp.status_code == 200
-    assert resp.json()["batch_output_path"] == str(configured_archive)
+    assert resp.json()["root_path"] == str(configured_archive.parent)
 
 
 def test_put_config_persists(api_client):

@@ -21,7 +21,7 @@ def test_archived_missing_is_404(api_client):
 
 
 def test_serve_input_image(api_client, configured_archive):
-    scans = configured_archive.parent / "scans"  # the input_image_path conftest configures
+    scans = configured_archive.parent / "scans"  # the scan folder of the Papertrail folder conftest configures
     scans.mkdir()
     shutil.copy(configured_archive / "tossed" / "08102025143000_201.png", scans / "01102025132642_1.png")
     resp = api_client.get("/api/media/input/01102025132642_1.png")
