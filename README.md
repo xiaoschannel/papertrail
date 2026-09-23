@@ -125,9 +125,16 @@ Scan your documents into a folder, and follow this process:
    show every unarchived batch at once, one section each, and each step's **Finalize** commits it for all of
    them (see [The folder's history](#the-folders-history)).
 2. **Fix Rotation** — Turn scans fed in sideways or upside down upright, and level the ones fed in slightly
-   crooked, before anything is cut or read from them. The page points out the scans that look so, and shows
-   each one turned to confirm before it is saved; any scan can be straightened from its full-size view,
-   previewed over level guides, and its OCR boxes move with it.
+   crooked, before anything is cut or read from them. Like Review, it is a queue: every scan that looks so
+   (a turned scan's tilt measured on it turned upright), one at a time, previewed beside the scan as it is
+   over level guides, to **Fix** (turn, then straighten, in one step) or **Leave as is**. The turn and the
+   tilt start from the detectors' suggestion and can be changed. A fix can be undone until the batch is
+   archived (the scan comes back from the folder's history), and "All scans" opens any scan to fix one the
+   detectors missed. A fixed scan is read again by OCR and Parse.
+
+   Every decision is kept as training data for the detectors: what they predicted (raw, with the
+   thresholds), what was done, and the method version (`rotation_review.METHOD`), in each page's sidecar
+   and in `archive/rotation_log.jsonl`, which keeps them all.
 3. **Slice** — Cut a sheet of receipts too small to scan alone (tape them onto a sheet in a grid) into one page
    per receipt. The sheet is kept, tossed. Fix its rotation first: the crops are cut the way it faces.
 4. **Group** — Link pages that belong to one document, and toss pages that don't belong in the archive. From
@@ -135,6 +142,8 @@ Scan your documents into a folder, and follow this process:
 5. **OCR** — Batch OCR across all scanned images.
 6. **Parse** — Parse OCR results into file metadata.
 7. **Review** — Review parsed metadata and manually correct if needed. Mark bad documents for re-processing.
+   A page Fix Rotation missed goes back to it from its scan's caption (its reading is cleared, and the
+   detectors' miss is kept).
 8. **Archive** — Organize files into date-based folders, commit them to the folder's history, and clear the
    filed scans out of the scan folder.
 

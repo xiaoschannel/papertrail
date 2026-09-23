@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { inputUrl } from '../api/client.ts'
 import { useShortcutKeys } from '../api/config.ts'
@@ -32,42 +32,24 @@ export const FACING: Record<TopPoints, string> = {
   down: 'upside down',
 }
 
-/** The three arrows that turn a scan upright, named for where its top points now. */
-export function RotateButtons({ disabled, title, suggested, onRotate }: {
-  disabled: boolean
-  /** Why they're disabled, when they are for a reason worth saying. */
-  title?: string
-  /** The arrow for where the scan's top seems to point, when it looks turned: shown lit. */
-  suggested?: TopPoints | undefined
-  onRotate: (top: TopPoints) => void
-}) {
-  return (
-    <span className="page-tile__rotate" title={title ?? 'Which way the top of the page points now'}>
-      {ARROWS.map((a) => (
-        <button key={a.top} disabled={disabled} className={a.top === suggested ? 'page-tile__suggested' : undefined}
-          title={title ?? (a.top === suggested ? `Looks ${FACING[a.top]} — press to turn it upright` : a.title)}
-          onClick={() => onRotate(a.top)}>{a.label}</button>
-      ))}
-    </span>
-  )
-}
-
-/** How tall a scan may be in a viewer whose controls are docked under it: the window, less their room. */
-const dockedScanHeight = () => {
+/** How tall a scan may be with ``room`` rem of the window kept for what is around it (controls docked
+ *  under it, a page's header over it). */
+export const scanHeightLeaving = (room: number) => {
   const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16
-  return Math.max(12 * rem, window.innerHeight * 0.96 - 19 * rem)
+  return Math.max(12 * rem, window.innerHeight * 0.96 - room * rem)
 }
+const dockedScanHeight = () => scanHeightLeaving(19)
 
 /** The size to show a scan at when it is turned ``turn`` degrees (a multiple of 90), to fit the viewer
  *  (``across`` side by side, at most ``maxHeight`` tall): its box and the scan inside it, which the turn
  *  then lays across the box. */
-function turnedFit(natural: [number, number], turn: number, across = 1, maxHeight?: number) {
+function turnedFit(natural: [number, number], turn: number, across = 1, maxHeight?: number, width?: number) {
   const [w, h] = natural
   const sideways = Math.abs(turn) % 180 === 90
   const [boxW, boxH] = sideways ? [h, w] : [w, h]
   const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16
-  const wide = (Math.min(69 * rem, window.innerWidth * 0.92) - (across - 1) * 12) / across
-  const scale = Math.min(1, wide / boxW, (maxHeight ?? window.innerHeight * 0.72) / boxH)
+  const wide = Math.max(rem, width ?? (Math.min(69 * rem, window.innerWidth * 0.92) - (across - 1) * 12) / across)
+  const scale = Math.min(1, wide / boxW, Math.max(rem, maxHeight ?? window.innerHeight * 0.72) / boxH)
   return { box: { width: boxW * scale, height: boxH * scale }, scan: { width: w * scale, height: h * scale } }
 }
 
@@ -144,13 +126,15 @@ function straightenedCrop(natural: Size, tilt: number, outline: number[][]):
  *  levelled page, keeping all its ink (``outline``, from the server), sized to fit the viewer ``across``
  *  side by side. Until the outline arrives, and for a scan no page fits in, it is shown whole, shrunk to
  *  keep its corners in view. */
-export function StraightenedScan({ src, alt, tilt, outline, across = 1, maxHeight }: {
+export function StraightenedScan({ src, alt, tilt, outline, across = 1, maxHeight, width }: {
   src: string
   alt: string
   tilt: number
   outline: number[][] | undefined
   across?: number
   maxHeight?: number | undefined
+  /** The width each frame may take, when known (else the window decides). */
+  width?: number | undefined
 }) {
   const [natural, setNatural] = useState<Size | null>(null)
   const img = (style: object) => (
@@ -164,8 +148,8 @@ export function StraightenedScan({ src, alt, tilt, outline, across = 1, maxHeigh
   }
   const [left, top, right, bottom] = crop.box
   const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16
-  const wide = (Math.min(69 * rem, window.innerWidth * 0.92) - (across - 1) * 12) / across
-  const scale = Math.min(1, wide / (right - left), (maxHeight ?? window.innerHeight * 0.78) / (bottom - top))
+  const wide = Math.max(rem, width ?? (Math.min(69 * rem, window.innerWidth * 0.92) - (across - 1) * 12) / across)
+  const scale = Math.min(1, wide / (right - left), Math.max(rem, maxHeight ?? window.innerHeight * 0.78) / (bottom - top))
   return (
     <div className="scan-viewer__frame scan-viewer__straightened"
       style={{ width: (right - left) * scale, height: (bottom - top) * scale }}>
@@ -189,7 +173,7 @@ export function StraightenedScan({ src, alt, tilt, outline, across = 1, maxHeigh
  *  (the trim rulers, which draw the scan themselves) unless a fix is being previewed: trims are measured
  *  on the scan as it is stored, so a page is turned first. ``children`` go in the caption. */
 export function ScanViewer({ label, filename, version = 0, src, onClose, children, turn = 0, tilt = 0, outline,
-  guides = false, footer, scan }: {
+  guides = false, footer, scan, pair = false }: {
   label: ReactNode
   filename?: string | undefined
   /** The file's mtime, so a rotated scan isn't shown from the browser's cache. */
@@ -204,8 +188,9 @@ export function ScanViewer({ label, filename, version = 0, src, onClose, childre
   outline?: number[][] | undefined
   guides?: boolean
   footer?: ReactNode
+  /** Keep the side-by-side even with no fix previewed (ScanCompare's ``pair``). */
+  pair?: boolean
 }) {
-  const [natural, setNatural] = useState<[number, number] | null>(null)
   const close = useShortcutKeys()?.cancel
   useDialogKeys(close ? { [close]: onClose } : {})
   // With controls under it (Fix Rotation's), the viewer takes the window's height and keeps them at the
@@ -215,30 +200,6 @@ export function ScanViewer({ label, filename, version = 0, src, onClose, childre
 
   const url = src ?? inputUrl(filename ?? '', version)
   const alt = typeof label === 'string' ? `Scan ${label}` : 'Scan'
-  /** The scan in its frame, turned ``turnBy`` and straightened ``by``. */
-  const frame = (turnBy: number, by: number) => {
-    if (by && !turnBy) {
-      return <StraightenedScan src={url} alt={`${alt}, straightened`} tilt={by} outline={outline} across={2}
-        maxHeight={maxHeight} />
-    }
-    // CSS turns clockwise for positive angles; a tilt is counter-clockwise
-    const tilted = by ? ` rotate(${-by}deg) scale(${tiltFit(natural, by)})` : ''
-    const img = (style?: object) => (
-      <img src={url} alt={alt} style={style}
-        onLoad={(e) => setNatural([e.currentTarget.naturalWidth, e.currentTarget.naturalHeight])} />
-    )
-    if (!turnBy || natural === null) {
-      return <div className="scan-viewer__frame">{img(turnBy ? { visibility: 'hidden' } : undefined)}</div>
-    }
-    const fit = turnedFit(natural, turnBy, 2, maxHeight)
-    return (
-      <div className="scan-viewer__frame">
-        <div className="scan-viewer__turned" style={fit.box}>
-          {img({ ...fit.scan, maxWidth: 'none', maxHeight: 'none', transform: `translate(-50%, -50%) rotate(${turnBy}deg)${tilted}` })}
-        </div>
-      </div>
-    )
-  }
 
   // Drawn at the top of the page: a card opens it from inside containers (a calendar day) that would
   // otherwise clip it, or become what its fixed backdrop is placed against.
@@ -246,13 +207,8 @@ export function ScanViewer({ label, filename, version = 0, src, onClose, childre
     <div className="modal-backdrop scan-viewer" data-modal-open onClick={onClose} role="dialog" aria-modal="true">
       <figure className={[guides && 'scan-viewer--guides', docked && 'scan-viewer--docked'].filter(Boolean).join(' ') || undefined}
         onClick={(e) => e.stopPropagation()}>
-        {turn || tilt ? (
-          <div className="scan-viewer__compare">
-            <div><span>As scanned</span>{frame(0, 0)}</div>
-            <div><span>{turn && tilt ? 'Turned and straightened' : turn ? 'Turned upright' : 'Straightened'}</span>
-              {frame(turn, tilt)}</div>
-          </div>
-        ) : scan ?? frame(0, 0)}
+        <ScanCompare src={url} alt={alt} turn={turn} tilt={tilt} outline={outline} maxHeight={maxHeight} fallback={scan}
+          pair={pair} />
         <div className="scan-viewer__controls">
           <figcaption>
             <strong>{label}</strong> {filename}
@@ -265,6 +221,90 @@ export function ScanViewer({ label, filename, version = 0, src, onClose, childre
     </div>,
     document.body,
   )
+}
+
+/** Re-render when the window changes size. */
+function useWindowSize() {
+  const [, setSize] = useState(0)
+  useEffect(() => {
+    const onResize = () => setSize(window.innerWidth * 10000 + window.innerHeight)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+}
+
+/** A scan, and, when a fix is previewed (``turn`` degrees clockwise, a multiple of 90, then ``tilt`` degrees
+ *  counter-clockwise), beside it as the fix would leave it: cropped as straightening would, keeping the ink
+ *  in ``outline``, at most ``maxHeight`` tall. With no fix, ``fallback`` takes its place if given (the trim
+ *  rulers, which draw the scan themselves). The scan viewer shows it, and Fix Rotation's queue inline. */
+export function ScanCompare({ src, alt, turn = 0, tilt = 0, outline, maxHeight, fallback, pair = false }: {
+  src: string
+  alt: string
+  turn?: number
+  tilt?: number
+  outline?: number[][] | undefined
+  maxHeight?: number | undefined
+  fallback?: ReactNode
+  /** Always side by side: with no fix, the right half keeps its place and says so, rather than going
+   *  (nothing on screen moves as the fix changes; see the Fix Rotation queue). */
+  pair?: boolean
+}) {
+  const [natural, setNatural] = useState<[number, number] | null>(null)
+  useWindowSize()   // the frames are sized to the window: a resize (or a hidden pane shown) sizes them again
+  // ... and to the space the preview is laid out in, side by side: half of it each, less the gap
+  const box = useRef<HTMLDivElement>(null)
+  const comparing = pair || Boolean(turn || tilt)     // the side-by-side, while a fix is previewed or always
+  const [room, setRoom] = useState<number | undefined>(undefined)
+  useEffect(() => {
+    const parent = box.current?.parentElement
+    if (!parent) return undefined
+    const observer = new ResizeObserver(() => setRoom(parent.clientWidth))
+    observer.observe(parent)
+    return () => observer.disconnect()
+  }, [comparing])
+  const half = room === undefined ? undefined : Math.max(0, (room - 12) / 2)
+  /** The scan in its frame, turned ``turnBy`` and straightened ``by``. */
+  const frame = (turnBy: number, by: number) => {
+    if (by && !turnBy) {
+      return <StraightenedScan src={src} alt={`${alt}, straightened`} tilt={by} outline={outline} across={2}
+        maxHeight={maxHeight} width={half} />
+    }
+    // CSS turns clockwise for positive angles; a tilt is counter-clockwise
+    const tilted = by ? ` rotate(${-by}deg) scale(${tiltFit(natural, by)})` : ''
+    const img = (style?: object) => (
+      <img src={src} alt={alt} style={style}
+        onLoad={(e) => setNatural([e.currentTarget.naturalWidth, e.currentTarget.naturalHeight])} />
+    )
+    if (!turnBy || natural === null) {
+      const limit = { ...(maxHeight === undefined ? {} : { maxHeight }), ...(half === undefined ? {} : { maxWidth: half }) }
+      return <div className="scan-viewer__frame">{img(turnBy ? { ...limit, visibility: 'hidden' } : limit)}</div>
+    }
+    const fit = turnedFit(natural, turnBy, 2, maxHeight, half)
+    return (
+      <div className="scan-viewer__frame">
+        <div className="scan-viewer__turned" style={fit.box}>
+          {img({ ...fit.scan, maxWidth: 'none', maxHeight: 'none', transform: `translate(-50%, -50%) rotate(${turnBy}deg)${tilted}` })}
+        </div>
+      </div>
+    )
+  }
+
+  const limit = { ...(maxHeight === undefined ? {} : { maxHeight }), ...(half === undefined ? {} : { maxWidth: half }) }
+  // no fix: the scan as it is, kept invisible for its size, under a word saying nothing changes
+  const unchanged = (
+    <div className="scan-viewer__frame scan-viewer__unchanged">
+      <img src={src} alt="" aria-hidden style={{ ...limit, visibility: 'hidden' }} />
+      <span>No change</span>
+    </div>
+  )
+  const fixing = Boolean(turn || tilt)
+  return comparing ? (
+    <div className="scan-viewer__compare" ref={box}>
+      <div><span>As scanned</span>{frame(0, 0)}</div>
+      <div><span>{turn && tilt ? 'Turned and straightened' : turn ? 'Turned upright' : tilt ? 'Straightened' : 'Fixed'}</span>
+        {fixing ? frame(turn, tilt) : unchanged}</div>
+    </div>
+  ) : fallback ?? frame(0, 0)
 }
 
 /** "1:9–11" for consecutive keys of one batch, "1:9" for one. */

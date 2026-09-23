@@ -100,6 +100,8 @@ export default function Review() {
   /** The document the "accept a new name?" question was asked about; it's only answered for that one. */
   const [confirmAccept, setConfirmAccept] = useState<string | null>(null)
   const [confirmClear, setConfirmClear] = useState(false)
+  /** The page asked about sending back to Fix Rotation. */
+  const [sendingBack, setSendingBack] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -110,6 +112,18 @@ export default function Review() {
   const decide = useMutation({ mutationFn: api.review.decide })
   const undo = useMutation({ mutationFn: api.review.undo })
   const clearAll = useMutation({ mutationFn: api.review.clearAll })
+  const sendBack = useMutation({
+    mutationFn: api.review.sendBack,
+    onSuccess: async () => {
+      setSendingBack(null)
+      void queryClient.invalidateQueries({ queryKey: ['ingest'] })     // Fix Rotation's queue, OCR's, Parse's
+      await refreshAfterDecisionChange()
+    },
+    onError: (e) => {
+      setSendingBack(null)
+      setError(e.message)
+    },
+  })
   // Set synchronously, so a second keypress before the next render can't decide the same document
   // twice (e.g. A then T in quick succession).
   const deciding = useRef(false)
@@ -328,6 +342,12 @@ export default function Review() {
                         className="review-col">
                         <ScanOverlay pages={currentDoc.pages} imageUrl={inputImageUrl} activeFields={activeFields}
                           hideBoxes={boxesHidden}
+                          pageAction={(page) => page.image_available && page.turnable && (
+                            <button className="scan-page__action" onClick={() => setSendingBack(page.file_key)}
+                              title="Turned or crooked, and Fix Rotation didn't catch it: send the page back to be fixed">
+                              Send back to Fix Rotation
+                            </button>
+                          )}
                           onHoverField={(field) => setActiveFields(field ? [field] : [])} />
                       </Card>
 
@@ -362,6 +382,14 @@ export default function Review() {
           onConfirm={() => (currentKey.current === confirmAccept ? save('accepted') : setConfirmAccept(null))}
           onCancel={() => setConfirmAccept(null)}>
           <strong>{form.name}</strong> was not seen in previous reviews. Accept it anyway?
+        </ConfirmDialog>
+      )}
+
+      {sendingBack !== null && (
+        <ConfirmDialog title={`Send ${sendingBack} back to Fix Rotation?`} confirmLabel="Send back" busy={sendBack.isPending}
+          onConfirm={() => sendBack.mutate(sendingBack)} onCancel={() => setSendingBack(null)}>
+          Its OCR and this document’s parse result are cleared, so the document leaves Review until OCR and Parse
+          read it again. The page waits in Fix Rotation’s queue, kept as one the detectors missed.
         </ConfirmDialog>
       )}
 

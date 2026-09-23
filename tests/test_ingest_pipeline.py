@@ -484,6 +484,29 @@ def test_run_archive_copies_finalizes_and_cleans_up(ingest_dir, tmp_path):
     assert [p.name for p in scans.iterdir()] == ["not indexed.png"]
 
 
+def test_archive_files_each_page_s_rotation_decisions_in_its_sidecar_and_keeps_the_log(ingest_dir, tmp_path):
+    """The decisions are training data: each page's go into its sidecar, the working file goes, and the log,
+    which keeps every decision ever made, stays and is committed with the filed pages."""
+    from data import ROTATION_DECISIONS, ROTATION_LOG, add_rotation_decision, load_rotation_log
+    from models import RotationDecision
+
+    scans = _indexed_scans(tmp_path, ingest_dir)
+    for key, action in (("1:6", "left"), ("1:6", "fixed"), ("1:1", "sent_back")):
+        add_rotation_decision(ingest_dir, RotationDecision(at=1.0, key=key, filename="x.png", source="queue",
+                                                           action=action, image_version=1, version_after=2))
+    ip.run_archive(ingest_dir, scans, FakeProgress())
+
+    tossed = json.loads((ingest_dir / "tossed" / "01102025142000_6.json").read_text(encoding="utf-8"))
+    assert [d["action"] for d in tossed["rotation"]] == ["left", "fixed"]
+    sidecars = [json.loads(p.read_text(encoding="utf-8")) for p in ingest_dir.rglob("*.json")
+                if p.parent != ingest_dir and p.parent.name != "ocr"]
+    with_decisions = {(s["serial"], len(s.get("rotation", []))) for s in sidecars if "rotation" in s}
+    assert with_decisions == {(6, 2), (1, 1)}                            # no decision, no field
+    assert not (ingest_dir / ROTATION_DECISIONS).exists() and ROTATION_DECISIONS in ip.CLEANUP_ARTIFACTS
+    assert [d.key for d in load_rotation_log(ingest_dir)] == ["1:6", "1:6", "1:1"]
+    assert f"archive/{ROTATION_LOG}" in archive_history.tracked_paths(tmp_path)
+
+
 def _git(root, *args):
     import subprocess
     return subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True, text=True,

@@ -17,7 +17,7 @@ import numpy as np
 from PIL import Image
 from pydantic import BaseModel, ConfigDict
 
-from document_grouping import replace_image
+from document_grouping import replace_image, rotate_upright
 from models import Trim, trim_of
 
 #: The steepest tilt looked for either way. A page further off than this is a sideways scan, not a
@@ -134,9 +134,11 @@ def estimate_skew(image: Image.Image) -> SkewEstimate:
                         within_range=abs(best) < MAX_DEGREES, width=width, height=height)
 
 
-def estimate_file_skew(path: Path) -> SkewEstimate:
+def estimate_file_skew(path: Path, top_points: str = "") -> SkewEstimate:
+    """The tilt of the scan at ``path`` as turning it upright from ``top_points`` would leave it ("" as it is):
+    a sideways scan's lines run down the page, and only turned upright do they have a tilt to measure."""
     with Image.open(path) as img:
-        return estimate_skew(img)
+        return estimate_skew(rotate_upright(img, top_points))
 
 
 def _background(image: Image.Image) -> int | tuple[int, ...]:

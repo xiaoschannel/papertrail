@@ -33,7 +33,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Protocol, TypeVar
+from typing import Protocol
 
 from openai import RateLimitError
 
@@ -70,8 +70,11 @@ from data import (
     set_trim,
     TRIMS,
     write_sidecar,
+    ROTATION_DECISIONS,
+    ROTATION_LOG,
+    load_rotation_decisions,
 )
-from deskew import DEFAULT_TILT_SHARE, SkewEstimate, estimate_file_skew, straighten_file, straightened_trim
+from deskew import straighten_file, straightened_trim
 from document_grouping import build_display_state, rotate_file_upright, split_groups_at_tossed_boundaries
 import extraction
 import slicing
@@ -100,7 +103,6 @@ from models import (
     parse_batch_serial_key,
     turned_trim,
 )
-from orientation import UNREADABLE, OrientationEstimate, estimate_file_orientation
 from organize_utils import plan_accepted_destinations, scan_existing_names
 from scan_enhance import trimmed_file
 from settings import ARCHIVE_DIR, IMAGE_EXTENSIONS, SCANS_DIR, root_of
@@ -480,56 +482,6 @@ def straighten_page_image(output_path: Path, input_path: Path, key: str, degrees
     _forget_reading(output_path, batch, key)
 
 
-#: What an estimate of a scan says (a tilt, which way it faces).
-T = TypeVar("T")
-
-
-def _measure_turnable_pages(output_path: Path, input_path: Path, batch_id: int,
-                            estimate: Callable[[Path], T]) -> list[tuple[str, T, int]]:
-    """``estimate`` of each page of a batch the rotate arrows and straightening can turn, in scan order, with
-    the scan version (its mtime, as the page grids' thumbnails use it) read before it was measured.
-
-    Not tossed pages, crops (turned the way their sheet is) or sliced sheets, and only scans that are in the
-    input folder. A scan that can't be read (half copied, not an image) is left out rather than failing the
-    rest.
-    """
-    state = grouping_state(output_path, batch_id)
-    pages = [(p.key, input_path / p.filename) for p in state.pages
-             if not p.tossed and p.crop_of is None and not p.sliced and p.serial not in state.batch.grids]
-    pages = [(key, path, path.stat().st_mtime_ns) for key, path in pages if path.is_file()]
-
-    def readable(path: Path) -> T | None:
-        try:
-            return estimate(path)
-        except UNREADABLE:
-            return None
-
-    with ThreadPoolExecutor(max_workers=8) as pool:   # the estimates are numpy/OpenCV work, off the GIL
-        estimates = list(pool.map(readable, [path for _, path, _ in pages]))
-    return [(key, e, version) for (key, _, version), e in zip(pages, estimates) if e is not None]
-
-
-def tilted_pages(output_path: Path, input_path: Path, batch_id: int,
-                 estimate: Callable[[Path], SkewEstimate] = estimate_file_skew,
-                 share: float = DEFAULT_TILT_SHARE) -> list[tuple[str, SkewEstimate, int]]:
-    """A batch's pages whose scan looks tilted enough to fix (``SkewEstimate.needs_straightening(share)``),
-    in scan order, each with the turn that levels it and the scan version it was measured on (see
-    ``_measure_turnable_pages``). ``estimate`` lets a caller cache estimates."""
-    return [(key, e, version) for key, e, version in _measure_turnable_pages(output_path, input_path, batch_id, estimate)
-            if e.needs_straightening(share)]
-
-
-def turned_pages(output_path: Path, input_path: Path, batch_id: int,
-                 estimate: Callable[[Path], OrientationEstimate] = estimate_file_orientation,
-                 ) -> list[tuple[str, OrientationEstimate, int]]:
-    """A batch's pages whose scan looks sideways or upside down, in scan order, each with where its top
-    points and the scan version it was measured on (see ``_measure_turnable_pages``). Raises
-    ``orientation.ModelUnavailable`` when the model can't be had. ``estimate`` lets a caller cache estimates.
-    """
-    return [(key, e, version) for key, e, version in _measure_turnable_pages(output_path, input_path, batch_id, estimate)
-            if e.needs_turning]
-
-
 # =====================================================================================
 # OCR
 # =====================================================================================
@@ -848,9 +800,10 @@ def _finalize_paths(output_path: Path, step: str) -> tuple[list[int], list[str]]
     ids = [b.batch_id for b in batches]
     ocr = [f"{ARCHIVE_DIR}/{OCR_DIR}/{b}.json" for b in ids]
     work = lambda *names: [f"{ARCHIVE_DIR}/{name}" for name in names]   # noqa: E731
-    if step == "rotation":     # a turned scan, and what was read from it forgotten (_forget_reading)
+    if step == "rotation":     # a turned scan, what was read from it forgotten (_forget_reading), the decisions
         scans = [f"{SCANS_DIR}/{fn}" for b in batches for s, fn in b.files.items() if s not in b.slices]
-        return ids, scans + ocr + work(TRIMS, OCR_RUNS, "extractions.json", EXTRACTION_RUNS)
+        return ids, scans + ocr + work(TRIMS, OCR_RUNS, "extractions.json", EXTRACTION_RUNS, ROTATION_DECISIONS,
+                                       ROTATION_LOG)
     if step == "slice":        # the crops, the index that names them, and the results that named others
         return ids, [f"{SCANS_DIR}/{slicing.SLICES_DIR}", *work("batches.json"), *ocr,
                      *work("decisions.json", "extractions.json", OCR_RUNS, EXTRACTION_RUNS, TRIMS)]
@@ -921,7 +874,7 @@ def run_parse(output_path: Path, plan: ParsePlan, extract: ExtractFn, custom_ins
 # =====================================================================================
 #: The mid-ingest working files Archive deletes once every file is archived (``ocr/`` is a folder).
 CLEANUP_ARTIFACTS = (OCR_DIR, MIGRATED_OCR, "extractions.json", "decisions.json", OCR_RUNS, EXTRACTION_RUNS,
-                     TRIMS)
+                     TRIMS, ROTATION_DECISIONS)
 
 
 @dataclass
@@ -1101,6 +1054,7 @@ def run_archive(output_path: Path, input_path: Path, progress: Progress) -> str:
     ocr = {k: r for k, r in load_ocr_results(output_path).items() if r.succeeded}
     extractions = load_extractions(output_path)
     ocr_runs = load_model_runs(output_path, OCR_RUNS)
+    rotation = load_rotation_decisions(output_path)
     extraction_runs = load_model_runs(output_path, EXTRACTION_RUNS)
     crops = {(b.batch_id, c.serial): (batch_serial_key(b.batch_id, c.of.sheet), [c.of.row, c.of.col], c.box)
              for b in load_scan_index(output_path).batches if not b.archived for c in slicing.current_crops(b)}
@@ -1140,7 +1094,7 @@ def run_archive(output_path: Path, input_path: Path, progress: Progress) -> str:
                 slice_of=of[0] if of else None,
                 slice_cell=of[1] if of else None,
                 slice_box=of[2] if of else None,
-                trim=trims.get(move.key),
+                trim=trims.get(move.key), rotation=rotation.get(move.key),
             ))
             copied += 1
             progress.tick(True, item=move.filename)
@@ -1191,7 +1145,7 @@ def run_archive(output_path: Path, input_path: Path, progress: Progress) -> str:
         progress.say("Committing the filed pages…")
         sha = archive_history.commit(root, _archive_commit_message(plan.complete_batch_ids, copied), [
             *_page_paths(root, (output_path / m.destination for m in plan.moves)),
-            f"{ARCHIVE_DIR}/batches.json", f"{ARCHIVE_DIR}/smart_match_cache.json",
+            f"{ARCHIVE_DIR}/batches.json", f"{ARCHIVE_DIR}/smart_match_cache.json", f"{ARCHIVE_DIR}/{ROTATION_LOG}",
             *(f"{ARCHIVE_DIR}/{name}" for name in CLEANUP_ARTIFACTS)])
 
     # A filed page the history doesn't have yet is Archive's too: filed before the history began, or by a

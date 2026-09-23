@@ -19,6 +19,8 @@ const NAMES: Record<string, string> = {
 export const keyLabel = (key: string) => NAMES[key] ?? (key.length === 1 ? key.toUpperCase() : key)
 
 const TYPING = 'input, textarea, select, [contenteditable="true"]'
+/** Fields a key types into. A slider or a checkbox takes no letters, so keys still work after using one. */
+const TEXT_ENTRY = 'input:not([type=range]):not([type=checkbox]), textarea, select, [contenteditable="true"]'
 
 /**
  * Enter or Space on a focused button or link: it presses that, so it is not a shortcut even when a
@@ -28,11 +30,12 @@ export const pressesFocused = (event: KeyboardEvent) =>
   (event.key === 'Enter' || event.key === ' ') &&
   event.target instanceof HTMLElement && Boolean(event.target.closest('button, a[href], summary'))
 
-/** The same guards the shortcuts use: typing, a modifier chord or an open modal is not a shortcut. */
-const isShortcutKey = (event: KeyboardEvent) =>
+/** The same guards the shortcuts use: typing, a modifier chord or an open modal is not a shortcut (a key
+ *  meant for the dialog itself, ``inDialog``, is one while it is open). */
+const isShortcutKey = (event: KeyboardEvent, inDialog = false) =>
   !event.defaultPrevented && !event.ctrlKey && !event.metaKey && !event.altKey &&
-  !(event.target instanceof HTMLElement && event.target.closest(TYPING)) && !pressesFocused(event) &&
-  !document.querySelector('[data-modal-open]')
+  !(event.target instanceof HTMLElement && event.target.closest(inDialog ? TEXT_ENTRY : TYPING)) &&
+  !pressesFocused(event) && (inDialog || !document.querySelector('[data-modal-open]'))
 
 /**
  * Single-key shortcuts that stay out of the way of typing: ignored while focus is in a form field,
@@ -70,15 +73,14 @@ export function useShortcuts(shortcuts: ShortcutMap, enabled = true, repeating: 
   }, [enabled])
 }
 
-/** Fields a key types into. A slider or a checkbox takes no letters, so keys still work after using one. */
-const TEXT_ENTRY = 'input:not([type=range]):not([type=checkbox]), textarea, select, [contenteditable="true"]'
 
 /**
  * Single-key shortcuts inside a dialog (the scan viewer), which `useShortcuts` stands aside for: the same
  * guards otherwise (typing, a modifier chord, Enter or Space on a focused button), once per press.
- * Keys whose action is undefined are left alone.
+ * Keys whose action is undefined are left alone. With `standAside`, keys on a page that also take a
+ * slider's focus (Fix Rotation's queue), they are ignored while a modal is open, which the keys are not for.
  */
-export function useDialogKeys(shortcuts: ShortcutMap, enabled = true) {
+export function useDialogKeys(shortcuts: ShortcutMap, enabled = true, standAside = false) {
   const latest = useRef(shortcuts)
   useLayoutEffect(() => {
     latest.current = shortcuts
@@ -88,6 +90,7 @@ export function useDialogKeys(shortcuts: ShortcutMap, enabled = true) {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || pressesFocused(event)) return
       if (event.target instanceof HTMLElement && event.target.closest(TEXT_ENTRY)) return
+      if (standAside && document.querySelector('[data-modal-open]')) return
       const handler = latest.current[keyOf(event)]
       if (!handler) return
       event.preventDefault()
@@ -95,7 +98,7 @@ export function useDialogKeys(shortcuts: ShortcutMap, enabled = true) {
     }
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
-  }, [enabled])
+  }, [enabled, standAside])
 }
 
 /**
@@ -105,7 +108,7 @@ export function useDialogKeys(shortcuts: ShortcutMap, enabled = true) {
  * Releasing the key somewhere this window never hears about (alt-tab, a click into the devtools)
  * would otherwise leave it stuck down, so losing the window or the tab lets go as well.
  */
-export function useHeldKey(key: string, enabled = true): boolean {
+export function useHeldKey(key: string, enabled = true, inDialog = false): boolean {
   const [held, setHeld] = useState(false)
 
   useEffect(() => {
@@ -115,7 +118,7 @@ export function useHeldKey(key: string, enabled = true): boolean {
     }
     const matches = (event: KeyboardEvent) => keyOf(event) === key
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!matches(event) || !isShortcutKey(event)) return
+      if (!matches(event) || !isShortcutKey(event, inDialog)) return
       event.preventDefault()
       setHeld(true)
     }
@@ -134,7 +137,7 @@ export function useHeldKey(key: string, enabled = true): boolean {
       window.removeEventListener('blur', letGo)
       document.removeEventListener('visibilitychange', letGo)
     }
-  }, [key, enabled])
+  }, [key, enabled, inDialog])
 
   return held
 }

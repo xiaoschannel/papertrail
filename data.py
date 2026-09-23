@@ -22,6 +22,7 @@ from models import (
     Sidecar,
     Trim,
     SmartMatchHistoryRow,
+    RotationDecision,
 )
 
 
@@ -287,6 +288,43 @@ def drop_trims(output_path: Path, keys: set[str]) -> int:
 
 def _save_trims(output_path: Path, trims: dict[str, Trim]) -> None:
     atomic_write_text(output_path / TRIMS, json.dumps({k: v.model_dump() for k, v in sorted(trims.items())}, indent=2))
+
+
+#: The rotation decisions on pages still being ingested, by page key, oldest first; Archive folds each page's
+#: into its sidecar and deletes the file. The log keeps every decision ever made, one JSON line each, and is
+#: never deleted: the detectors' training data in one place (the history keeps every version of both).
+ROTATION_DECISIONS = "rotation_decisions.json"
+ROTATION_LOG = "rotation_log.jsonl"
+
+_rotation_lock = threading.Lock()
+
+
+def load_rotation_decisions(output_path: Path) -> dict[str, list[RotationDecision]]:
+    path = output_path / ROTATION_DECISIONS
+    if not path.exists():
+        return {}
+    return {k: [RotationDecision.model_validate(d) for d in v]
+            for k, v in json.loads(path.read_text(encoding="utf-8")).items()}
+
+
+def add_rotation_decision(output_path: Path, decision: RotationDecision) -> None:
+    """Keep one decision: after the page's others, and as a line of the log."""
+    with _rotation_lock:
+        current = load_rotation_decisions(output_path)
+        current.setdefault(decision.key, []).append(decision)
+        atomic_write_text(output_path / ROTATION_DECISIONS, json.dumps(
+            {k: [d.model_dump(mode="json", exclude_none=True) for d in v] for k, v in sorted(current.items())},
+            indent=2, ensure_ascii=False))
+        with open(output_path / ROTATION_LOG, "a", encoding="utf-8", newline="\n") as log:
+            log.write(decision.model_dump_json(exclude_none=True) + "\n")
+
+
+def load_rotation_log(output_path: Path) -> list[RotationDecision]:
+    path = output_path / ROTATION_LOG
+    if not path.exists():
+        return []
+    return [RotationDecision.model_validate_json(line) for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip()]
 
 
 def load_decisions(output_path: Path) -> dict[str, ReviewDecision]:

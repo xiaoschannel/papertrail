@@ -46,7 +46,6 @@
 .page-tile__tools { display: flex; justify-content: space-between; align-items: center; gap: 4px; margin-bottom: 6px; }
 .page-tile__tools button { padding: 2px 8px; font-size: 12px; }
 .page-tile__key { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.page-tile__rotate { display: inline-flex; gap: 3px; }
 /* the scan fills the tile's width and is capped, like every thumbnail (CappedImage) */
 .page-tile__scan { background: var(--panel-2); border-radius: 4px; }
 .page-tile__scan > .ingest-note { display: block; margin: 0; padding: 3rem 8px; text-align: center; }
@@ -77,12 +76,7 @@
 }
 .slice-warnings { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
 
-/* --- turned scans: the notice, the lit arrow on a tile, and turning one in the scan viewer ---------- */
-.suggestion-notice {
-  display: flex; align-items: center; gap: 10px; margin: 4px 0 10px; padding: 8px 12px; font-size: 13px;
-  border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 8px; background: var(--panel-2);
-}
-.page-tile__tools .page-tile__suggested { border-color: var(--accent); color: var(--accent); background: var(--panel-2); font-weight: 700; }
+/* --- Fix Rotation: a scan and the controls that decide on it (components/rotation.tsx) ----------------- */
 .scan-viewer__suggest {
   display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px;
   color: var(--text); background: var(--panel); border: 1px solid var(--border);
@@ -93,8 +87,6 @@
 .scan-viewer__actions { display: inline-flex; gap: 8px; margin-left: auto; }
 .scan-viewer__suggest .error-banner, .scan-viewer__suggest .ingest-note { flex-basis: 100%; max-width: none; margin: 0; }
 
-/* --- tilt: the tile badge, and straightening in the scan viewer ------------------------------------- */
-.page-tile__tools .page-tile__tilt { border-color: var(--accent); color: var(--accent); white-space: nowrap; padding: 2px 6px; }
 .scan-viewer figure:has(.scan-viewer__suggest) { min-width: min(42rem, 92vw); }   /* room for the slider's row */
 .scan-viewer__frame {
   position: relative; display: grid; place-items: center; justify-self: center; overflow: hidden; border-radius: 6px;
@@ -107,6 +99,11 @@
 .scan-viewer__compare > div > span { color: var(--muted); font-size: 12px; }
 .scan-viewer__compare .scan-viewer__frame > img { max-height: 78vh; }
 /* straightened as it would be saved: the turned scan laid across a frame the levelled page's size */
+/* the right half when nothing is to change: the scan's size, kept, and a word in it */
+.scan-viewer__unchanged { background: var(--panel-2); border: 1px dashed var(--border); }
+.scan-viewer__unchanged > span { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted);
+  font-size: 13px; }
+.scan-viewer--guides .scan-viewer__unchanged::after { display: none; }
 .scan-viewer__straightened > img { position: absolute; left: 50%; top: 50%; max-width: none; max-height: none; }
 /* level and plumb lines to judge a tilt by, over the scan (the preview, or the trim rulers' scan): a text
    line should run along the one, a column's edge along the other */
@@ -122,3 +119,25 @@
 .scan-viewer__dial input[type='range'] { flex: 1; min-width: 0; }
 .scan-viewer__turn { width: 24ch; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .scan-viewer__unused { visibility: hidden; }
+
+/* Fix Rotation's queue: the scan (as it is, and fixed) over its controls, which keep one place scan after
+   scan; the controls are the scan viewer's, laid out for every scan (see RotationDecider) */
+.rotation-decider { display: grid; gap: 10px; }
+.rotation-decider__stage { display: grid; place-items: center; min-height: 12rem; overflow: hidden; }
+.rotation-decider .rotation-controls { width: min(46rem, 100%); justify-self: center; }
+.rotation-nav { display: flex; align-items: center; gap: 12px; width: min(46rem, 100%); justify-self: center; }
+.rotation-nav > span:not(.segmented) { margin-inline: auto; }
+.rotation-controls__turn { display: inline-flex; align-items: center; gap: 8px; flex-basis: 100%; }
+.rotation-controls__turn .segmented button { width: 2.75em; padding: 3px 0; text-align: center; }
+/* the detectors' suggestion: coloured when it isn't the one chosen (the chosen one is filled) */
+.rotation-controls__turn .segmented button.is-suggested:not(.on) { color: var(--accent); font-weight: 700;
+  box-shadow: inset 0 -2px 0 var(--accent); }
+.rotation-controls__hold { color: var(--muted); }
+/* the preview takes the width its scans need at the stage's height (a wider document, a wider preview),
+   centred, rather than spreading the two halves across the window */
+.rotation-decider .scan-viewer__compare { justify-self: center; justify-content: center; max-width: min(100%, 90rem); }
+.rotation-decider .scan-viewer__compare > div { flex: 0 1 auto; }
+.rotation-recent { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 13px; }
+.rotation-recent li { display: flex; align-items: center; gap: 8px; }
+.rotation-recent button { padding: 2px 10px; font-size: 12px; margin-left: auto; }
+.rotation-batch + .rotation-batch { margin-top: 18px; }

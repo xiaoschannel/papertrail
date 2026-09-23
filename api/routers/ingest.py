@@ -1,5 +1,5 @@
-"""Ingest step endpoints: File Index (batches, slicing, grouping, rotate, straighten, trim, toss, and the
-scans that look turned or tilted), OCR, Parse and Archive.
+"""Ingest step endpoints: File Index (batches, slicing, grouping, trim, toss), OCR, Parse and Archive, and
+the sidebar's counts. Fix Rotation's queue is api/routers/rotation.py.
 
 Thin wrappers over ingest_pipeline. OCR, Parse and Archive run as background jobs (api.jobs), side by
 side when they don't collide: each holds the batches it works on (and the GPU, if it loads a model), a
@@ -21,6 +21,7 @@ import rate_budget
 import review_logic as rl
 import slicing
 from api import cache, ingest_registry as registry
+from api.routers import rotation
 from api import ingest_store as store
 from api.deps import get_input_path, get_output_path
 from api.guards import no_job_running, planning_a_job
@@ -30,16 +31,13 @@ from api.schemas import (
     ApplySliceIn, ArchiveMoveOut, ArchiveStatus, BatchFile, BatchOut, ConfirmIndexIn, FinalizeIn, FinalizeOut,
     GroupingOut, GroupingPageOut,
     IndexStatus, InkOutlineOut, JobOut, OcrStatus, PageIn, ParseStatus, PipelineCountsOut, ProposedBatch,
-    RotateIn, RotationFlagOut, SaveGroupingIn,
+    SaveGroupingIn,
     SaveGroupingOut, SliceCropOut, SliceMoveOut, SlicePlanIn, SlicePlanOut, SlicingOut, SlicingSheetOut, StartOcrIn,
-    StartParseIn,
-    TurnedPageOut, TurnedPagesOut,
-    StraightenIn, TiltedPageOut, TiltedPagesOut, TrimIn,
+    StartParseIn, TrimIn,
 )
 from data import load_decisions, load_document_groups
 from indexing_schemes import SCHEMES
 from models import ScanBatch, batch_serial_key, parse_batch_serial_key
-from orientation import ModelUnavailable, load_cached_model, load_model
 from settings import get_config, update_config
 
 router = APIRouter(prefix="/api/ingest", tags=["ingest"])
@@ -91,30 +89,14 @@ def pipeline_counts(
         indexed = set(pipeline.filename_to_batch_serial(index)) if index else set()
         unindexed = sum(1 for fn in pipeline.input_images(input_path) if fn not in indexed)   # as File Index counts
     if index is None:
-        return PipelineCountsOut(unindexed=unindexed, rotation=[], rotation_checked=True, ocr=0, parse=0, review=0,
+        return PipelineCountsOut(unindexed=unindexed, rotation=0, rotation_checked=True, ocr=0, parse=0, review=0,
                                  archive=0)
 
-    turned: dict[str, int] = {}
-    tilted: dict[str, int] = {}
-    checked = load_cached_model()
-    for batch in index.batches:
-        if batch.archived:
-            continue
-        if checked:
-            for key, _, version in pipeline.turned_pages(output_path, input_path, batch.batch_id,
-                                                         estimate=store.scan_orientation):
-                turned[key] = version
-        for key, _, version in pipeline.tilted_pages(output_path, input_path, batch.batch_id,
-                                                     estimate=store.scan_skew, share=get_config().tilt_share):
-            tilted[key] = version
-    files = {batch_serial_key(b.batch_id, s): fn for b in index.batches if not b.archived for s, fn in b.files.items()}
-    rotation = [RotationFlagOut(key=k, filename=files[k], image_version=turned.get(k) or tilted[k],
-                                turned=k in turned, tilted=k in tilted) for k in sorted({*turned, *tilted})]
-
+    checked, queued = rotation.queue_items(output_path, input_path, download=False)
     ocr = pipeline.plan_ocr(output_path, input_path, None, reprocess=False, limit=0, held=runner.held_batches())
     parse = pipeline.plan_parse(output_path, reprocess=False, limit=0, held=runner.held_batches())
     review = len(rl.pending_doc_keys(store.extractions(output_path), load_decisions(output_path)))
-    return PipelineCountsOut(unindexed=unindexed, rotation=rotation, rotation_checked=checked,
+    return PipelineCountsOut(unindexed=unindexed, rotation=len(queued), rotation_checked=checked,
                              ocr=len(ocr.items) + ocr.waiting, parse=len(parse.documents) + parse.waiting,
                              review=review, archive=pipeline.archive_ready_documents(output_path))
 
@@ -258,48 +240,6 @@ def recover_page(body: PageIn, output_path: Path = Depends(get_output_path)):
     return _set_tossed(body, output_path, False)
 
 
-@router.post("/pages/rotate", response_model=SaveGroupingOut)
-def rotate_page(
-    body: RotateIn,
-    output_path: Path = Depends(get_output_path),
-    input_path: Path = Depends(get_input_path),
-):
-    """Rotate a page's scan in place so it is upright."""
-    try:
-        with no_job_running("rotate scans", claim=_page_claim(body.key)):
-            pipeline.rotate_page_image(output_path, input_path, body.key, body.top_points)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc.args[0])) from exc
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="the scan is not in the input folder") from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    return SaveGroupingOut(changed=True)
-
-
-@router.get("/turned", response_model=TurnedPagesOut)
-def turned_pages(
-    batch_id: int,
-    output_path: Path = Depends(get_output_path),
-    input_path: Path = Depends(get_input_path),
-):
-    """A batch's pages whose scan looks sideways or upside down, each with where its top points.
-
-    Only a suggestion: nothing changes until a page is rotated. 503 when the orientation model can't be
-    downloaded or loaded.
-    """
-    try:
-        load_model()   # up front: a model that can't be had fails once, not once per page
-        found = pipeline.turned_pages(output_path, input_path, batch_id, estimate=store.scan_orientation)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc.args[0])) from exc
-    except ModelUnavailable as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    return TurnedPagesOut(batch_id=batch_id, pages=[
-        TurnedPageOut(key=key, top_points=e.top_points, confidence=e.confidence, image_version=version)
-        for key, e, version in found])
-
-
 @router.put("/pages/trim", response_model=SaveGroupingOut)
 def trim_page(body: TrimIn, output_path: Path = Depends(get_output_path)):
     """Keep only the band of a page between two cuts (or, with none, the whole page). The scan itself
@@ -312,25 +252,6 @@ def trim_page(body: TrimIn, output_path: Path = Depends(get_output_path)):
     except ValueError as exc:            # a sliced sheet: its crops are what is read
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return SaveGroupingOut(changed=True)
-
-
-@router.get("/tilted", response_model=TiltedPagesOut)
-def tilted_pages(
-    batch_id: int,
-    output_path: Path = Depends(get_output_path),
-    input_path: Path = Depends(get_input_path),
-):
-    """A batch's pages whose scan looks slightly tilted, each with the turn that would level it.
-
-    Only a suggestion: nothing changes until a page is straightened.
-    """
-    try:
-        found = pipeline.tilted_pages(output_path, input_path, batch_id, estimate=store.scan_skew,
-                                      share=get_config().tilt_share)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc.args[0])) from exc
-    return TiltedPagesOut(batch_id=batch_id, pages=[
-        TiltedPageOut(key=key, image_version=version, degrees=e.degrees) for key, e, version in found])
 
 
 @router.get("/pages/ink-outline", response_model=InkOutlineOut)
@@ -347,25 +268,6 @@ def page_ink_outline(
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="the scan is not in the input folder") from exc
     return InkOutlineOut(points=[list(p) for p in store.scan_ink_outline(path)])
-
-
-@router.post("/pages/straighten", response_model=SaveGroupingOut)
-def straighten_page(
-    body: StraightenIn,
-    output_path: Path = Depends(get_output_path),
-    input_path: Path = Depends(get_input_path),
-):
-    """Turn a page's scan in place by a few degrees, to level a tilted scan."""
-    try:
-        with no_job_running("straighten scans", claim=_page_claim(body.key)):
-            pipeline.straighten_page_image(output_path, input_path, body.key, body.degrees)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc.args[0])) from exc
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="the scan is not in the input folder") from exc
-    except ValueError as exc:   # a crop or a sliced sheet, which the Slice page owns (as for rotating)
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    return SaveGroupingOut(changed=body.degrees != 0)
 
 
 # --- Slicing sheets of small receipts ------------------------------------------------------------------

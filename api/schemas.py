@@ -17,7 +17,8 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from deskew import MAX_DEGREES as MAX_TILT_DEGREES
-from models import DocumentExtraction, ModelRun, SheetGrid, TokenUse, Trim
+from models import (DocumentExtraction, ModelRun, RotationDecision, RotationPrediction, SheetGrid, TokenUse, TopPoints,
+                    Trim)
 
 if TYPE_CHECKING:
     from review_logic import FieldBox
@@ -285,6 +286,8 @@ class ReviewPage(_Model):
     trim: Trim | None
     #: trimmed differently since its OCR was read, so the text may still include what was cut off
     retrimmed: bool
+    #: Fix Rotation can take it (Review's send-back): not a crop, which turns with its sheet
+    turnable: bool = False
 
 
 class DecisionOut(_Model):
@@ -525,26 +528,6 @@ class SlicePlanOut(_Model):
     token: str
 
 
-class TurnedPageOut(_Model):
-    key: str
-    #: Where the scan's top points now: the rotate arrow that turns it upright.
-    top_points: Literal["left", "right", "down"]
-    #: How sure the orientation model is, 0-1.
-    confidence: float
-    #: The scan version it was measured on (GroupingPageOut.image_version): a suggestion is for that one.
-    image_version: int
-
-
-class TurnedPagesOut(_Model):
-    batch_id: int
-    pages: list[TurnedPageOut]
-
-
-class RotateIn(_Model):
-    key: str
-    top_points: Literal["left", "right", "down"]
-
-
 class TrimIn(_Model):
     """Trim a page still being ingested; ``trim`` None keeps the whole page."""
 
@@ -552,33 +535,11 @@ class TrimIn(_Model):
     trim: Trim | None
 
 
-class TiltedPageOut(_Model):
-    key: str
-    #: The version of the scan this was measured on (as ``GroupingPageOut.image_version``).
-    image_version: int
-    #: Degrees to turn the scan counter-clockwise to level it (negative: clockwise).
-    degrees: float
-
-
-class TiltedPagesOut(_Model):
-    batch_id: int
-    pages: list[TiltedPageOut]
-
-
-class RotationFlagOut(_Model):
-    """A scan Fix Rotation points out, with what it looks like: the page sets aside some of these."""
-    key: str
-    filename: str
-    image_version: int
-    turned: bool
-    tilted: bool
-
-
 class PipelineCountsOut(_Model):
     """What waits at each ingest step, for the sidebar."""
     unindexed: int                      # scans in the input folder that aren't in a batch
-    rotation: list[RotationFlagOut]     # scans that look turned or tilted (the page counts those not set aside)
-    rotation_checked: bool              # False when the orientation model couldn't be had: tilts only
+    rotation: int                       # scans in Fix Rotation's queue
+    rotation_checked: bool              # False when the orientation model wasn't on hand: tilts only
     ocr: int                            # pages left to read, including those in a batch a job is using
     parse: int                          # documents read and left to parse, likewise
     review: int                         # documents parsed and not decided
@@ -591,10 +552,43 @@ class InkOutlineOut(_Model):
     points: list[list[float]]
 
 
-class StraightenIn(_Model):
+class RotationItemOut(_Model):
+    """A scan in Fix Rotation's queue: what the detectors say of it, or that Review sent it back."""
     key: str
-    #: Degrees to turn the scan counter-clockwise (negative: clockwise); a slight tilt, not a sideways scan.
-    degrees: float = Field(ge=-MAX_TILT_DEGREES, le=MAX_TILT_DEGREES)
+    batch_id: int
+    filename: str
+    image_version: int
+    sent_back: bool
+    prediction: RotationPrediction
+
+
+class RotationDecisionOut(_Model):
+    decision: RotationDecision
+    #: Whether Undo can take it back now: the page's last decision, a fix, its scan unchanged since.
+    undoable: bool
+
+
+class RotationQueueOut(_Model):
+    """Fix Rotation's queue across every unarchived batch, in batch then scan order, and what was decided."""
+    #: False when the orientation model couldn't be had: only tilts are found.
+    checked: bool
+    items: list[RotationItemOut]
+    recent: list[RotationDecisionOut]
+    #: The decisions on pages still being ingested, by what they did.
+    fixed: int
+    left: int
+
+
+class RotationDecideIn(_Model):
+    key: str
+    #: The scan's version the page showed (GroupingPageOut.image_version): a decision is on that version.
+    image_version: int
+    #: Fix it (turn from ``top_points`` then straighten ``degrees``), or leave it as it is.
+    fix: bool
+    top_points: TopPoints | None = None
+    degrees: float = Field(default=0.0, ge=-MAX_TILT_DEGREES, le=MAX_TILT_DEGREES)
+    #: The queue, or its all-scans view.
+    source: Literal["queue", "browse"] = "queue"
 
 
 # --- ingest: OCR / Parse / Archive -----------------------------------------------------
