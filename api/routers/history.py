@@ -31,7 +31,8 @@ def _out(root: Path) -> HistoryOut:
 
 
 def _changes(found: list[archive_history.Change]) -> list[ChangeOut]:
-    return [ChangeOut(path=c.path, kind=c.kind) for c in found]
+    return [ChangeOut(path=c.path, kind=c.kind, lines_added=c.lines[0] if c.lines else None,
+                      lines_removed=c.lines[1] if c.lines else None) for c in found]
 
 
 @router.get("", response_model=HistoryOut)

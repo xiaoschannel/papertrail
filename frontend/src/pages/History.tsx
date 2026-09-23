@@ -38,12 +38,21 @@ function FileRows({ files, action }: { files: HistoryChange[]; action?: (file: H
     <>
       <div className="table-wrap">
         <table className="fixed history-files">
-          <colgroup><col className="history-files__kind" /><col />{action && <col className="history-files__action" />}</colgroup>
+          <colgroup>
+            <col className="history-files__kind" /><col /><col className="history-files__lines" />
+            {action && <col className="history-files__action" />}
+          </colgroup>
           <tbody>
             {files.slice(0, SHOWN).map((f) => (
               <tr key={f.path}>
                 <td><span className={`history-kind history-kind--${f.kind}`}>{f.kind}</span></td>
                 <td title={f.path}>{f.path}</td>
+                <td className="num history-lines">
+                  {f.lines_added === null || f.lines_removed === null ? <span className="history-lines__binary">binary</span> : <>
+                    <span className="history-lines__added">+{f.lines_added}</span>{' '}
+                    <span className="history-lines__removed">−{f.lines_removed}</span>
+                  </>}
+                </td>
                 {action && <td className="num">{action(f)}</td>}
               </tr>
             ))}

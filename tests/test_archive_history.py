@@ -130,12 +130,15 @@ def test_the_log_lists_commits_newest_first_with_what_each_changed(tmp_path):
     page, more = history.log(root, skip=1, limit=2)
     assert [c.subject for c in page] == ["Archive: 2 pages", "File Index: batch 1 (1 scan)"] and more is True
 
+    # lines added and removed in each text file; an image has none
     assert history.commit_files(root, commits[0].sha) == [
-        history.Change("archive/2025/01/page.json", "modified"), history.Change("scans/01102025132642_1.png", "deleted")]
+        history.Change("archive/2025/01/page.json", "modified", (1, 1)),
+        history.Change("scans/01102025132642_1.png", "deleted", None)]
     assert history.commit_files(root, commits[1].sha) == [
-        history.Change("archive/2025/01/page.json", "added"), history.Change("archive/2025/01/page.png", "added")]
-    assert history.commit_files(root, commits[3].sha) == [history.Change(".gitattributes", "added"),
-                                                          history.Change(".gitignore", "added")]
+        history.Change("archive/2025/01/page.json", "added", (1, 0)), history.Change("archive/2025/01/page.png", "added")]
+    assert history.commit_files(root, commits[3].sha) == [
+        history.Change(".gitattributes", "added", (len(history.GITATTRIBUTES.splitlines()), 0)),
+        history.Change(".gitignore", "added", (len(history.GITIGNORE.splitlines()), 0))]
     assert history.commit_files(root, "0000000") is None and history.commit_files(root, "--all") is None
 
 
@@ -146,9 +149,28 @@ def test_uncommitted_changes_say_what_happened_to_each_file(tmp_path):
     (root / "archive" / "2025" / "01" / "page.json").write_bytes(b'{"a": 2}')
     (root / "scans" / "01102025132642_1.png").unlink()
     (root / "scans" / "01102025132642_2.png").write_bytes(b"\x89PNG new scan")
-    assert history.changes(root) == [history.Change("archive/2025/01/page.json", "modified"),
+    (root / "archive" / "notes.json").write_bytes(b'{\r\n  "a": 1\r\n}')          # new: every line is added
+    (root / "archive" / "cache.bin").write_bytes(b"\x00\x01")                      # new, and binary by its bytes
+    assert history.changes(root) == [history.Change("archive/2025/01/page.json", "modified", (1, 1)),
+                                     history.Change("archive/cache.bin", "added", None),
+                                     history.Change("archive/notes.json", "added", (3, 0)),
                                      history.Change("scans/01102025132642_1.png", "deleted"),
                                      history.Change("scans/01102025132642_2.png", "added")]
+
+
+def test_lines_are_counted_for_more_files_than_one_command_line_can_name(tmp_path):
+    root = _folder(tmp_path)
+    history.commit(root, "everything")
+    folder = root / "archive" / "2025" / "01"
+    names = [f"2025年1月{n:03d}日 00：00 A receipt from a shop with a rather long name.json" for n in range(400)]
+    for name in names:
+        (folder / name).write_bytes(b"{\n}\n")
+    sha = history.commit(root, "400 sidecars")
+    for name in names:
+        (folder / name).write_bytes(b"{\n  \"a\": 1\n}\n")
+
+    assert {c.lines for c in history.changes(root)} == {(1, 0)} and len(history.changes(root)) == 400
+    assert {c.lines for c in history.commit_files(root, sha)} == {(2, 0)}
 
 
 def test_uncommitting_the_last_commit_keeps_its_files_as_they_are(tmp_path):
@@ -204,6 +226,6 @@ def test_discarding_changes_puts_back_what_the_last_commit_holds_and_deletes_wha
                                             "scans/01102025132642_2.png", "archive/2025/01/page.png"])
     assert thrown == 3                                              # page.png hadn't changed: skipped
     assert sidecar.read_bytes() == b'{"a": 1}\r\n' and scan.read_bytes() == b"\x89PNG scan" and not new.exists()
-    assert history.changes(root) == [history.Change("archive/decisions.json", "added")]      # not asked: kept
+    assert history.changes(root) == [history.Change("archive/decisions.json", "added", (1, 0))]   # not asked: kept
     with pytest.raises(history.Refused, match="no history yet"):
         history.discard_changes(_folder(tmp_path / "other"), ["archive/decisions.json"])

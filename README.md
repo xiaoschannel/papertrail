@@ -152,8 +152,8 @@ Scan your documents into a folder, and follow this process:
 The Papertrail folder's root is a git repository (made at the first milestone), so every scan as it came in
 and as it was turned or cut, and every page and sidecar as filed and as edited since, is kept in every state
 it was ever in. The **History** page (the pill at the foot of the sidebar opens it) lists what waits
-uncommitted and every commit with the files it changed; to bring an old version back, `git show` and
-`git checkout` in the folder do that. A scan and its archived copy are the same bytes, so git stores each
+uncommitted and every commit with the files it changed, and the lines added and removed in each (an image
+is just binary); to bring an old version back, `git show` and `git checkout` in the folder do that. A scan and its archived copy are the same bytes, so git stores each
 image once.
 
 A commit is made only at a **milestone**, and holds only what that milestone produced:

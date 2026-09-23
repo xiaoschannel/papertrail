@@ -49,7 +49,7 @@ import sys
 import threading
 import time
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal
 
@@ -165,6 +165,8 @@ class Change:
     """A file a commit changed, or that differs from the last commit: relative to the root."""
     path: str
     kind: Kind
+    #: lines added and removed, where they were counted (:func:`_counted`); None for a binary file
+    lines: tuple[int, int] | None = None
 
 
 def _kind(code: str) -> Kind:
@@ -269,12 +271,58 @@ def status(root: Path) -> Status:
 
 
 # --- looking back, and taking back ----------------------------------------------------------------------------
+def _binary_by_name(path: str) -> bool:
+    """An image, which has no lines; told by its name, so counting never reads one (they are large)."""
+    return Path(path).suffix.lower() in IMAGE_EXTENSIONS
+
+
+def _numstat(root: Path, command: tuple[str, ...], paths: list[str]) -> dict[str, tuple[int, int] | None]:
+    """Lines added and removed per path by a ``--numstat`` diff (None: binary), asked of these paths only, a
+    command line's worth at a time (Windows caps one at 32k characters)."""
+    counted: dict[str, tuple[int, int] | None] = {}
+    chunk: list[str] = []
+    for i, path in enumerate(paths):
+        chunk.append(path)
+        if i + 1 < len(paths) and sum(len(p) + 3 for p in chunk) + len(paths[i + 1]) < 20_000:
+            continue
+        for entry in _git(root, *command, "--no-renames", "--numstat", "-z", "--", *chunk).split("\0"):
+            if entry:
+                added, removed, name = entry.split("\t", 2)
+                counted[name] = None if added == "-" else (int(added), int(removed))
+        chunk = []
+    return counted
+
+
+def _new_file_lines(path: Path) -> tuple[int, int] | None:
+    """A file no commit holds: all its lines added, counted as git counts them (None if it looks binary)."""
+    data = path.read_bytes()
+    if b"\0" in data[:8000]:
+        return None
+    return data.count(b"\n") + (1 if data and not data.endswith(b"\n") else 0), 0
+
+
+def _counted(root: Path, found: list[Change], command: tuple[str, ...]) -> list[Change]:
+    """``found`` with each text file's lines added and removed, by ``command`` (a diff of what they changed)."""
+    text = [c.path for c in found if not _binary_by_name(c.path)]
+    counted = _numstat(root, command, text) if text else {}
+    out = []
+    for c in found:
+        if _binary_by_name(c.path):
+            out.append(c)
+        elif c.path in counted:
+            out.append(replace(c, lines=counted[c.path]))
+        else:                               # a file git doesn't know of yet, so no diff counts it
+            out.append(replace(c, lines=_new_file_lines(root / c.path)))
+    return out
+
+
 def changes(root: Path) -> list[Change]:
-    """The files that differ from the last commit, by path; none before the repository is made."""
+    """The files that differ from the last commit, by path, with the lines changed in each; none before the
+    repository is made."""
     if not (root / ".git").exists():
         return []
     with _lock:
-        return sorted(_changes(root), key=lambda c: c.path)
+        return _counted(root, sorted(_changes(root), key=lambda c: c.path), ("diff", "HEAD"))
 
 
 @dataclass(frozen=True)
@@ -305,7 +353,7 @@ def _commit_changes(root: Path, rev: str) -> list[Change]:
 
 
 def commit_files(root: Path, sha: str) -> list[Change] | None:
-    """The files a commit changed, by path; None when there is no such commit."""
+    """The files a commit changed, by path, with the lines changed in each; None when there is no such commit."""
     if not all(c in "0123456789abcdef" for c in sha) or not 4 <= len(sha) <= 40 or not (root / ".git").exists():
         return None
     with _lock:
@@ -313,7 +361,7 @@ def commit_files(root: Path, sha: str) -> list[Change] | None:
             _git(root, "cat-file", "-e", f"{sha}^{{commit}}")
         except HistoryError:
             return None
-        return _commit_changes(root, sha)
+        return _counted(root, _commit_changes(root, sha), ("diff-tree", "--no-commit-id", "--root", "-r", sha))
 
 
 def uncommit(root: Path, sha: str) -> Commit:

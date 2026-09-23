@@ -974,6 +974,9 @@ class ChangeOut(_Model):
 
     path: str
     kind: Literal["added", "modified", "deleted"]
+    #: lines added and removed; both None for a binary file (an image)
+    lines_added: int | None
+    lines_removed: int | None
 
 
 class LoggedCommitOut(CommitOut):
