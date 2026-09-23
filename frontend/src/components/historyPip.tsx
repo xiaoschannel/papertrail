@@ -40,13 +40,15 @@ export function HistoryPip() {
 
   const h = status.data
   if (!h) return null   // no folder set yet (Config says so), or the API is away
-  const label = h.problem ? 'History unavailable' : !h.repository ? 'No history yet'
+  // Before the first commit there is nothing to count against: the button starts the history.
+  const starting = !h.repository && !h.problem
+  const label = h.problem ? 'History unavailable' : starting ? 'No history yet: start it'
     : h.changed === 0 ? 'All committed' : `${h.changed} uncommitted`
   const detail = h.problem ?? (h.last ? `Last commit ${ago(h.last.seconds_ago)}: ${h.last.subject}` : 'No commits yet')
 
   return (
-    <div className={`history${h.changed > 0 ? ' history--waiting' : ''}`} title={detail}>
-      <button type="button" className="history__button" disabled={h.changed === 0 || Boolean(h.problem)}
+    <div className={`history${h.changed > 0 || starting ? ' history--waiting' : ''}`} title={detail}>
+      <button type="button" className="history__button" disabled={(h.changed === 0 && !starting) || Boolean(h.problem)}
         onClick={() => setOpen(true)}>
         <span className="history__dot" />
         {label}
@@ -54,11 +56,14 @@ export function HistoryPip() {
       <small className="history__last">{h.last ? `last commit ${ago(h.last.seconds_ago)}` : detail}</small>
 
       {open && (
-        <ConfirmDialog title="Commit the folder?" confirmLabel="Commit" busy={commit.isPending}
-          onConfirm={() => commit.mutate()} onCancel={() => setOpen(false)}>
+        <ConfirmDialog title={starting ? 'Start the folder’s history?' : 'Commit the folder?'} confirmLabel="Commit"
+          busy={commit.isPending} onConfirm={() => commit.mutate()} onCancel={() => setOpen(false)}>
           <p>
-            {h.changed} changed file{h.changed === 1 ? '' : 's'} (edits, decisions, new scans) go into the
-            folder's history as one commit.
+            {starting
+              ? <>Everything in the folder, the scans and the whole archive, goes into its first commit. On a
+                large archive this takes a minute or two.</>
+              : <>{h.changed} changed file{h.changed === 1 ? '' : 's'} (edits, decisions, new scans) go into the
+                folder's history as one commit.</>}
           </p>
           <input className="history__message" type="text" value={message} placeholder="Message (optional)"
             autoFocus onChange={(e) => setMessage(e.target.value)} />
