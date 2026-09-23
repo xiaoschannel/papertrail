@@ -67,8 +67,18 @@ export const api = {
 
   /** The folder's history: files changed since the last commit, and that commit (the sidebar's count). */
   history: () => unwrap(client.GET('/api/history')),
+  /** The files that differ from the last commit, by path. */
+  historyChanges: () => unwrap(client.GET('/api/history/changes')),
+  /** The newest `limit` commits, and whether older ones follow. */
+  historyCommits: (limit: number) => unwrap(client.GET('/api/history/commits', { params: { query: { limit } } })),
+  /** The files a commit changed. */
+  historyCommitFiles: (sha: string) => unwrap(client.GET('/api/history/commits/{sha}', { params: { path: { sha } } })),
   /** Commit everything uncommitted, under a message (or a plain one when empty). */
   commitHistory: (message: string) => unwrap(client.POST('/api/history/commit', { body: { message } })),
+  /** Undo the last commit (refused unless it is still `sha`), leaving its files as they are, uncommitted again. */
+  uncommit: (sha: string) => unwrap(client.POST('/api/history/uncommit', { body: { sha } })),
+  /** Throw away these files' uncommitted changes: back to the last commit, or deleted if it doesn't hold them. */
+  discardChanges: (paths: string[]) => unwrap(client.POST('/api/history/discard-changes', { body: { paths } })),
 
   config: () => unwrap(client.GET('/api/config')),
   configOptions: () => unwrap(client.GET('/api/config/options')),

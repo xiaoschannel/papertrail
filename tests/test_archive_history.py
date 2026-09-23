@@ -111,3 +111,99 @@ def test_parking_at_shutdown_is_undone_at_the_next_start(tmp_path):
                                             "archive/decisions.json"}
     assert (root / "archive" / "decisions.json").read_bytes() == b"{}"             # the work is still there
     assert history.unpark(root) is False                                           # only a parking commit is undone
+
+
+# --- looking back, and taking back ----------------------------------------------------------------------------
+def test_the_log_lists_commits_newest_first_with_what_each_changed(tmp_path):
+    root = _folder(tmp_path)
+    history.commit(root, "File Index: batch 1 (1 scan)", ["scans"])
+    history.commit(root, "Archive: 2 pages", ["archive"])
+    (root / "scans" / "01102025132642_1.png").unlink()
+    (root / "archive" / "2025" / "01" / "page.json").write_bytes(b'{"a": 2}')
+    history.commit(root, "Archive: 1 scan cleared out of the scan folder")
+
+    commits, more = history.log(root)
+    assert [(c.subject, c.files, c.first) for c in commits] == [
+        ("Archive: 1 scan cleared out of the scan folder", 2, False), ("Archive: 2 pages", 2, False),
+        ("File Index: batch 1 (1 scan)", 1, False), ("History started", 2, True)]
+    assert more is False and commits[0].sha == history.head(root).sha
+    page, more = history.log(root, skip=1, limit=2)
+    assert [c.subject for c in page] == ["Archive: 2 pages", "File Index: batch 1 (1 scan)"] and more is True
+
+    assert history.commit_files(root, commits[0].sha) == [
+        history.Change("archive/2025/01/page.json", "modified"), history.Change("scans/01102025132642_1.png", "deleted")]
+    assert history.commit_files(root, commits[1].sha) == [
+        history.Change("archive/2025/01/page.json", "added"), history.Change("archive/2025/01/page.png", "added")]
+    assert history.commit_files(root, commits[3].sha) == [history.Change(".gitattributes", "added"),
+                                                          history.Change(".gitignore", "added")]
+    assert history.commit_files(root, "0000000") is None and history.commit_files(root, "--all") is None
+
+
+def test_uncommitted_changes_say_what_happened_to_each_file(tmp_path):
+    root = _folder(tmp_path)
+    assert history.changes(root) == []                              # no history yet
+    history.commit(root, "everything")
+    (root / "archive" / "2025" / "01" / "page.json").write_bytes(b'{"a": 2}')
+    (root / "scans" / "01102025132642_1.png").unlink()
+    (root / "scans" / "01102025132642_2.png").write_bytes(b"\x89PNG new scan")
+    assert history.changes(root) == [history.Change("archive/2025/01/page.json", "modified"),
+                                     history.Change("scans/01102025132642_1.png", "deleted"),
+                                     history.Change("scans/01102025132642_2.png", "added")]
+
+
+def test_uncommitting_the_last_commit_keeps_its_files_as_they_are(tmp_path):
+    root = _folder(tmp_path)
+    history.commit(root, "File Index: batch 1 (1 scan)", ["scans"])
+    group = history.commit(root, "Group: batch 1", ["archive"])
+
+    with pytest.raises(history.Refused, match="no longer the last commit"):
+        history.uncommit(root, "0000000")
+    assert history.uncommit(root, group).subject == "Group: batch 1"
+    assert history.head(root).subject == "File Index: batch 1 (1 scan)"
+    assert history.changed_paths(root) == {"archive/2025/01/page.json", "archive/2025/01/page.png"}
+    assert (root / "archive" / "2025" / "01" / "page.json").read_bytes() == b'{"a": 1}\r\n'   # untouched
+
+    history.uncommit(root, history.head(root).sha)
+    with pytest.raises(history.Refused, match="first commit"):
+        history.uncommit(root, history.head(root).sha)
+    assert history.status(root).changed == 3                        # all of it waits again, nothing lost
+
+
+def test_a_commit_holding_the_only_copy_of_a_file_is_not_uncommitted_until_that_copy_is_back(tmp_path):
+    """Archive keeps the scans as scanned, then clears them out of the scan folder. Uncommitting the clearing is
+    safe (the scans are in the commit before); uncommitting the keeping would leave a scan nowhere at all."""
+    root = _folder(tmp_path)
+    scan = root / "scans" / "01102025132642_1.png"
+    kept = history.commit(root, "Archive: 1 scan kept as scanned", ["scans"])
+    scan.unlink()
+    cleared = history.commit(root, "Archive: 1 scan cleared out of the scan folder", ["scans"])
+
+    history.uncommit(root, cleared)
+    assert history.changes(root)[-1] == history.Change("scans/01102025132642_1.png", "deleted")
+    with pytest.raises(history.Refused, match=r"1 file this commit holds changed or went since \(scans/01102025132642_1.png\)"):
+        history.uncommit(root, kept)
+    assert history.head(root).sha == kept
+
+    assert history.discard_changes(root, ["scans/01102025132642_1.png"]) == 1
+    assert scan.read_bytes() == b"\x89PNG scan"                     # brought back from the commit
+    history.uncommit(root, kept)
+    assert history.head(root).subject == "History started" and scan.read_bytes() == b"\x89PNG scan"
+
+
+def test_discarding_changes_puts_back_what_the_last_commit_holds_and_deletes_what_it_does_not(tmp_path):
+    root = _folder(tmp_path)
+    history.commit(root, "everything")
+    sidecar, scan = root / "archive" / "2025" / "01" / "page.json", root / "scans" / "01102025132642_1.png"
+    new, other = root / "scans" / "01102025132642_2.png", root / "archive" / "decisions.json"
+    sidecar.write_bytes(b'{"a": 2}')
+    scan.unlink()
+    new.write_bytes(b"\x89PNG new scan")
+    other.write_bytes(b"{}")
+
+    thrown = history.discard_changes(root, ["archive/2025/01/page.json", "scans/01102025132642_1.png",
+                                            "scans/01102025132642_2.png", "archive/2025/01/page.png"])
+    assert thrown == 3                                              # page.png hadn't changed: skipped
+    assert sidecar.read_bytes() == b'{"a": 1}\r\n' and scan.read_bytes() == b"\x89PNG scan" and not new.exists()
+    assert history.changes(root) == [history.Change("archive/decisions.json", "added")]      # not asked: kept
+    with pytest.raises(history.Refused, match="no history yet"):
+        history.discard_changes(_folder(tmp_path / "other"), ["archive/decisions.json"])

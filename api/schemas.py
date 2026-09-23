@@ -969,6 +969,38 @@ class CommitIn(_Model):
     message: str = ""
 
 
+class ChangeOut(_Model):
+    """A file a commit changed, or that differs from the last commit (relative to the Papertrail folder)."""
+
+    path: str
+    kind: Literal["added", "modified", "deleted"]
+
+
+class LoggedCommitOut(CommitOut):
+    #: files it changed
+    files: int
+    #: the history's first commit, which can't be uncommitted
+    first: bool
+
+
+class CommitsOut(_Model):
+    """A stretch of the history, newest first."""
+
+    commits: list[LoggedCommitOut]
+    #: whether older commits follow
+    more: bool
+
+
+class UncommitIn(_Model):
+    #: the commit the page showed as the last: refused if another has been made since
+    sha: str
+
+
+class DiscardChangesIn(_Model):
+    #: the files whose uncommitted changes to throw away, exactly as the page listed them
+    paths: list[str]
+
+
 # --- Dev: sanity check, index audit ------------------------------------------------------------------
 class BatchSanityOut(_Model):
     batch_id: int

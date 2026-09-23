@@ -9,6 +9,9 @@ export type MerchantTotals = Schemas['BrandTotals'] | Schemas['NameTotals']
 
 export type AppConfig = Schemas['AppConfig']
 export type HistoryStatus = Schemas['HistoryOut']
+/** A file a commit changed, or that differs from the last commit. */
+export type HistoryChange = Schemas['ChangeOut']
+export type HistoryCommit = Schemas['LoggedCommitOut']
 export type FinalizeStatus = Schemas['FinalizeOut']
 export type FinalizeStep = FinalizeStatus['step']
 export type Shortcuts = Schemas['Shortcuts']
