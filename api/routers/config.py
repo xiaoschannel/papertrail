@@ -12,8 +12,7 @@ from api.schemas import ConfigOptions, NormalizeEngineOut, PathCheck
 from indexing_schemes import SCHEMES
 from name_similarity import DEFAULT_THRESHOLD
 from normalize_engines import ENGINES
-from settings import (NAMED_KEYS, TILT_SHARE_RANGE, AppConfig, archive_path, get_config, save_config, scans_path,
-                      update_config)
+from settings import NAMED_KEYS, TILT_SHARE_RANGE, AppConfig, ensure_layout, get_config, save_config, update_config
 
 router = APIRouter(prefix="/api/config", tags=["config"])
 
@@ -33,12 +32,11 @@ AppConfigPatch = _partial(AppConfig, "AppConfigPatch")
 
 
 def _make_layout() -> None:
-    """The Papertrail folder's two subfolders, made when the folder itself is there: a new setup starts
-    with somewhere for the scanner to drop images and somewhere to file them."""
+    """The Papertrail folder's two subfolders, when the folder itself is there: a new setup starts with
+    somewhere for the scanner to drop images and somewhere to file them (settings.ensure_layout)."""
     root = get_config().root_path
-    if root and Path(root).is_dir():
-        for folder in (scans_path(root), archive_path(root)):
-            folder.mkdir(exist_ok=True)
+    if root:
+        ensure_layout(root)
 
 
 @router.get("")

@@ -33,7 +33,7 @@ import archive_history
 from api.routers import brands, config, curate, dev, history, ingest, jobs, media, review, viz, workshop
 from api.schemas import Health
 from document_files import FileInUse
-from settings import get_config
+from settings import ensure_layout, get_config
 
 
 #: The names this machine answers to. The API serves only them: see ``only_this_machine``.
@@ -53,6 +53,7 @@ async def _lifespan(_app: FastAPI):
     milestone (archive_history). A folder that isn't set, or git that isn't there, is left alone."""
     root = get_config().root_path
     if root:
+        ensure_layout(root)       # subfolders named exactly as the history's paths expect
         try:
             if archive_history.unpark(Path(root)):
                 log.info("Unparked the changes committed at the last shutdown.")
