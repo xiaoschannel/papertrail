@@ -38,14 +38,14 @@ from grounding import parse_grounding_output
 from models import TokenUse, iter_indexed_files, load_scan_index
 from scan_enhance import Enhancement, enhance
 from slicing import SLICES_DIR
-from settings import IMAGE_EXTENSIONS, get_config, update_config
+from settings import IMAGE_EXTENSIONS, get_config, scans_path, update_config
 
 router = APIRouter(prefix="/api/dev", tags=["dev"])
 
 
 def _input_folder() -> Path | None:
-    configured = get_config().input_image_path
-    return Path(configured) if configured and Path(configured).is_dir() else None
+    root = get_config().root_path
+    return scans_path(root) if root and scans_path(root).is_dir() else None
 
 
 # --- Sanity Check ---------------------------------------------------------------------------------------

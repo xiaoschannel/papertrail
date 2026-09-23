@@ -12,7 +12,8 @@ from api.schemas import ConfigOptions, NormalizeEngineOut, PathCheck
 from indexing_schemes import SCHEMES
 from name_similarity import DEFAULT_THRESHOLD
 from normalize_engines import ENGINES
-from settings import NAMED_KEYS, TILT_SHARE_RANGE, AppConfig, get_config, save_config, update_config
+from settings import (NAMED_KEYS, TILT_SHARE_RANGE, AppConfig, archive_path, get_config, save_config, scans_path,
+                      update_config)
 
 router = APIRouter(prefix="/api/config", tags=["config"])
 
@@ -31,6 +32,15 @@ def _partial(model: type[BaseModel], name: str) -> type[BaseModel]:
 AppConfigPatch = _partial(AppConfig, "AppConfigPatch")
 
 
+def _make_layout() -> None:
+    """The Papertrail folder's two subfolders, made when the folder itself is there: a new setup starts
+    with somewhere for the scanner to drop images and somewhere to file them."""
+    root = get_config().root_path
+    if root and Path(root).is_dir():
+        for folder in (scans_path(root), archive_path(root)):
+            folder.mkdir(exist_ok=True)
+
+
 @router.get("")
 def read_config() -> AppConfig:
     return get_config()
@@ -39,6 +49,7 @@ def read_config() -> AppConfig:
 @router.put("")
 def write_config(cfg: AppConfig) -> AppConfig:
     save_config(cfg)
+    _make_layout()
     return get_config()
 
 
@@ -49,6 +60,7 @@ def patch_config(patch: AppConfigPatch) -> AppConfig:  # type: ignore[valid-type
         update_config(**patch.model_dump(exclude_unset=True))
     except ValidationError as error:
         raise RequestValidationError(error.errors(include_url=False, include_context=False)) from error
+    _make_layout()
     return get_config()
 
 

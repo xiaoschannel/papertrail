@@ -48,13 +48,16 @@ function ConfigForm({ saved, options }: { saved: AppConfig; options: ConfigOptio
       <h1>Config</h1>
       <p className="page-sub">Stored in <code>config.json</code> next to the app. Saved changes apply immediately.</p>
 
-      <Card title="Paths">
+      <Card title="The Papertrail folder">
         <div className="config-grid">
-          <PathField label="Input image path" hint="where the scanner drops new images"
-            value={draft.input_image_path} onChange={(v) => set('input_image_path', v)} />
-          <PathField label="Batch output path" hint="the archive: batches, mid-ingest files, YYYY/MM folders"
-            value={draft.batch_output_path} onChange={(v) => set('batch_output_path', v)} />
+          <PathField label="Folder" hint="holds scans/ and archive/, and the history of both at its root"
+            value={draft.root_path} onChange={(v) => set('root_path', v)} />
         </div>
+        <p className="config-note">
+          Point the scanner at <code>{draft.root_path ? `${draft.root_path}\\scans` : '…\\scans'}</code>; the archive
+          (batches, mid-ingest files, YYYY/MM folders) is <code>{draft.root_path ? `${draft.root_path}\\archive` : '…\\archive'}</code>.
+          Both are made when the folder is saved. The folder's history is a git repository at its root.
+        </p>
         <label className="config-check">
           <input type="checkbox" checked={draft.extract_structured}
             onChange={(e) => set('extract_structured', e.target.checked)} />

@@ -7,14 +7,14 @@ import pandas as pd
 from pydantic import BaseModel, Field
 
 from data import atomic_write_text
-from settings import get_config
+from settings import archive_path, get_config
 
 
 def brand_directory_path() -> Path | None:
-    batch = (get_config().batch_output_path or "").strip()
-    if not batch:
+    root = (get_config().root_path or "").strip()
+    if not root:
         return None
-    return Path(batch).expanduser().resolve() / "brand_directory.json"
+    return archive_path(Path(root).expanduser().resolve()) / "brand_directory.json"
 
 
 class BrandEntry(BaseModel):

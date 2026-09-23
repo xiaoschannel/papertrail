@@ -6,43 +6,16 @@ import type { Batch, TopPoints } from '../api/types.ts'
 import { keyLabel, useDialogKeys } from './useShortcuts.ts'
 import './scans.css'
 
-/** The batch picker the File Index pages (Slice, Group) share. */
-export function BatchSelect({ id, batches, value, onChange }: {
-  id: string
-  batches: Batch[]
-  value: number
-  onChange: (batchId: number) => void
-}) {
-  return (
-    <div className="field">
-      <label htmlFor={id}>Batch</label>
-      <select id={id} value={value} onChange={(e) => onChange(Number(e.target.value))}>
-        {batches.map((b) => (
-          <option key={b.batch_id} value={b.batch_id}>
-            Batch {b.batch_id} — {b.file_count} files — {b.start_datetime} to {b.end_datetime}
-          </option>
-        ))}
-      </select>
-    </div>
-  )
+/**
+ * A batch's section on the ingest pages (Fix Rotation, Slice, Group), which show every unarchived batch at
+ * once, one after another: scanning several batches before any of them is worked on is the usual case.
+ */
+export function batchTitle(batch: Batch): string {
+  return `Batch ${batch.batch_id}`
 }
 
-/** Prev / page N of M / Next, with a box to jump to a page. Renders nothing for a single page. */
-export function Pager({ page, pageCount, onPage }: { page: number; pageCount: number; onPage: (page: number) => void }) {
-  if (pageCount <= 1) return null
-  return (
-    <div className="pager">
-      <button disabled={page === 0} onClick={() => onPage(page - 1)}>← Prev</button>
-      <span>
-        Page
-        <input className="page-jump" type="number" min={1} max={pageCount} value={page + 1}
-          aria-label="Skip to page"
-          onChange={(e) => onPage(Math.min(pageCount, Math.max(1, Number(e.target.value) || 1)) - 1)} />
-        of {pageCount}
-      </span>
-      <button disabled={page >= pageCount - 1} onClick={() => onPage(page + 1)}>Next →</button>
-    </div>
-  )
+export function batchHint(batch: Batch): string {
+  return `${batch.file_count} file${batch.file_count === 1 ? '' : 's'} · ${batch.start_datetime} to ${batch.end_datetime}`
 }
 
 /** The rotate arrows, named for where the top of the page points now. */

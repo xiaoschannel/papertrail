@@ -1,27 +1,19 @@
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { api, inputThumbUrl } from '../api/client.ts'
-import type { SheetGrid, SlicePlan, Slicing, SlicingSheet } from '../api/types.ts'
+import type { Batch, SheetGrid, SlicePlan, Slicing, SlicingSheet } from '../api/types.ts'
 import { ConfirmDialog } from '../components/ConfirmDialog.tsx'
 import { CappedImage } from '../components/DocumentCard.tsx'
+import { FinalizeBar, useFinalizeStatus } from '../components/finalize.tsx'
 import { GridEditor } from '../components/GridEditor.tsx'
 import { useBatchHolder } from '../components/jobs.tsx'
-import { BatchSelect, Pager, ScanViewer, keyRange } from '../components/scans.tsx'
+import { ScanViewer, batchHint, batchTitle, keyRange } from '../components/scans.tsx'
 import { Card, Empty, ErrorState, Loading } from '../components/ui.tsx'
-import { useGridColumnCount } from '../components/useGridColumnCount.ts'
 import './ingest.css'
 
-/** The grid's rows per page, as on Group. */
-const ROWS_PER_PAGE = 6
-
 export default function Slice() {
-  const [batchId, setBatchId] = useState<number | undefined>(undefined)
-  const slicing = useQuery({
-    queryKey: ['ingest', 'slicing', batchId],
-    queryFn: () => api.ingest.slicing(batchId),
-    placeholderData: (previous) => previous,
-  })
+  const status = useFinalizeStatus('slice')
   return (
     <div className="ingest-page ingest-page--wide">
       <h1>Slice</h1>
@@ -29,15 +21,32 @@ export default function Slice() {
         Receipts too small to scan on their own (食券 and the like) can be taped onto a sheet in a grid and
         scanned together. Cut such a sheet here into one page per receipt; the sheet itself is kept, tossed.
         <Link to="/fix-rotation">Fix a sheet's rotation</Link> first: its crops are cut the way it faces. Then{' '}
-        <Link to="/group">group</Link> the batch's pages.
+        <Link to="/group">group</Link> the pages. Every batch not archived yet is here; each cut is saved as it is
+        made, and Finalize commits them all.
       </p>
-      {slicing.isPending ? <Loading what="sheets" />
-        : slicing.error ? <ErrorState error={slicing.error} />
-          : slicing.data.blocker || slicing.data.batch_id === null
-            ? <Card title="Sheets"><Empty>{slicing.data.blocker ?? 'No batches.'}</Empty></Card>
-            : <Sheets key={slicing.data.batch_id} data={slicing.data} batchId={slicing.data.batch_id} onBatch={setBatchId} />}
+      {status.isPending ? <Loading what="batches" />
+        : status.error ? <ErrorState error={status.error} />
+          : status.data.batches.length === 0
+            ? <Card title="Sheets"><Empty>No unarchived batches. Add batches on File Index first.</Empty></Card>
+            : <>
+              {status.data.batches.map((b) => <BatchSheets key={b.batch_id} batch={b} />)}
+              <FinalizeBar step="slice" status={status.data} what="the slicing" />
+            </>}
     </div>
   )
+}
+
+/** One batch's sheets, in its own section. */
+function BatchSheets({ batch }: { batch: Batch }) {
+  const slicing = useQuery({
+    queryKey: ['ingest', 'slicing', batch.batch_id],
+    queryFn: () => api.ingest.slicing(batch.batch_id),
+    placeholderData: (previous) => previous,
+  })
+  if (slicing.isPending) return <Loading what={`batch ${batch.batch_id}'s sheets`} />
+  if (slicing.error) return <ErrorState error={slicing.error} />
+  if (slicing.data.batch_id !== batch.batch_id) return null     // archived since the page asked
+  return <Sheets data={slicing.data} batch={batch} />
 }
 
 /** What a slice would cost, in words, or null when it costs nothing worth confirming. */
@@ -63,16 +72,14 @@ function warnings(plan: SlicePlan): string[] {
 
 type Pending = { key: string; grid: SheetGrid | null; plan: SlicePlan }
 
-function Sheets({ data, batchId, onBatch }: { data: Slicing; batchId: number; onBatch: (id: number) => void }) {
+function Sheets({ data, batch }: { data: Slicing; batch: Batch }) {
+  const batchId = batch.batch_id
   const queryClient = useQueryClient()
   const holder = useBatchHolder(batchId)
   const [editing, setEditing] = useState<SlicingSheet | null>(null)
   const [viewing, setViewing] = useState<SlicingSheet | null>(null)
   const [confirming, setConfirming] = useState<Pending | null>(null)
   const [done, setDone] = useState('')
-  const [page, setPage] = useState(0)
-  const grid = useRef<HTMLDivElement>(null)
-  const columns = useGridColumnCount(grid, 6)
 
   const refresh = async () => {
     await queryClient.invalidateQueries({ queryKey: ['ingest'] })
@@ -96,30 +103,20 @@ function Sheets({ data, batchId, onBatch }: { data: Slicing; batchId: number; on
       else apply.mutate(pending)
     },
   })
-  const perPage = ROWS_PER_PAGE * Math.max(1, columns)
-  const pageCount = Math.max(1, Math.ceil(data.sheets.length / perPage))
-  const shownPage = Math.min(page, pageCount - 1)
-  const start = shownPage * perPage
-  const pager = <Pager page={shownPage} pageCount={pageCount} onPage={setPage} />
   const busy = plan.isPending || apply.isPending
   const editError = holder ? `Waiting for ${holder.title}: it is using batch ${batchId}.`
     : (plan.error ?? apply.error)?.message ?? null
   const sliced = data.sheets.filter((s) => s.grid)
 
   return (
-    <Card title="Sheets" className="card--full"
-      hint="Fix a sheet's rotation before cutting it: its crops are cut the way it faces.">
-      <div className="controls">
-        <BatchSelect id="slice-batch" batches={data.batches} value={batchId} onChange={onBatch} />
-      </div>
+    <Card title={batchTitle(batch)} className="card--full" hint={batchHint(batch)}>
       {data.problems.length > 0 && (
         <div className="error-banner" role="alert">
           A slice was interrupted: {data.problems.join('; ')}. Open the sheet and save or unslice it to put it right.
         </div>
       )}
-      {pager}
-      <div className="page-grid" ref={grid}>
-        {data.sheets.slice(start, start + perPage).map((sheet) => {
+      <div className="page-grid">
+        {data.sheets.map((sheet) => {
           const cut = sheet.grid !== null
           const refusal = sheet.refusal ?? (!sheet.image_available ? 'The scan is not in the input folder' : null)
           return (
@@ -152,7 +149,6 @@ function Sheets({ data, batchId, onBatch }: { data: Slicing; batchId: number; on
           )
         })}
       </div>
-      {pager}
       <p className={`ingest-note${done ? ' ok' : ''}`}>
         {done || (sliced.length > 0
           ? `${sliced.length} sheet(s) sliced into ${sliced.reduce((n, s) => n + s.crops.length, 0)} page(s).`

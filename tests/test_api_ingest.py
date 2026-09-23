@@ -115,6 +115,11 @@ def test_index_rejects_unknown_scheme_and_reports_missing_input(ingest_client, t
 
 
 # --- Grouping ---------------------------------------------------------------------------------------------
+def _finalize_group(client, *groupings):
+    return client.post("/api/ingest/finalize/group",
+                       json={"groups": [{"batch_id": b, "groups": g} for b, g in groupings]})
+
+
 def test_grouping_state_and_save(ingest_client, configured_ingest):
     body = ingest_client.get("/api/ingest/grouping").json()
     assert body["batch_id"] == 1 and body["saved_groups"] == [["1:4", "1:5"]]
@@ -123,15 +128,49 @@ def test_grouping_state_and_save(ingest_client, configured_ingest):
     assert pages["1:6"]["tossed"]
 
     # 1:6 is tossed (the save below clears that decision, so check first)
-    assert ingest_client.put("/api/ingest/grouping", json={"batch_id": 1, "groups": [["1:6", "1:7"]]}).status_code == 422
+    assert _finalize_group(ingest_client, (1, [["1:6", "1:7"]])).status_code == 422
     unchanged = [["1:1"], ["1:2"], ["1:3"], ["1:4", "1:5"], ["1:7"]]
-    assert ingest_client.put("/api/ingest/grouping", json={"batch_id": 1, "groups": unchanged}).json() == {"changed": False}
-    changed = ingest_client.put("/api/ingest/grouping", json={"batch_id": 1, "groups": [["1:1", "1:2"]]})
-    assert changed.json() == {"changed": True} and load_extractions(configured_ingest) == {}
+    assert _finalize_group(ingest_client, (1, unchanged)).status_code == 200
+    assert "1:1" in load_extractions(configured_ingest)                      # unchanged: nothing cleared
+    assert _finalize_group(ingest_client, (1, [["1:1", "1:2"]])).status_code == 200
+    assert load_extractions(configured_ingest) == {}
 
-    assert ingest_client.put("/api/ingest/grouping", json={"batch_id": 9, "groups": []}).status_code == 404
+    assert _finalize_group(ingest_client, (9, [])).status_code == 404
     # a batch that is gone (e.g. archived while the page was open) falls back to the first unarchived one
     assert ingest_client.get("/api/ingest/grouping", params={"batch_id": 9}).json()["batch_id"] == 1
+
+
+def test_finalize_commits_each_step_s_files_for_every_batch_and_nothing_else(ingest_client, configured_ingest, tmp_path):
+    import archive_history
+
+    root = configured_ingest.parent
+    status = ingest_client.get("/api/ingest/finalize/rotation").json()
+    assert [b["batch_id"] for b in status["batches"]] == [1] and status["changed"] is None     # no history yet
+    _add_batch_2(ingest_client, tmp_path / "scans")                      # File Index's commit starts the history
+    status = ingest_client.get("/api/ingest/finalize/rotation").json()
+    assert [b["batch_id"] for b in status["batches"]] == [1, 2]
+    assert status["changed"] > 0                   # batch 1's scan and working files predate the history
+
+    printed(top_points="left").save(tmp_path / "scans" / PAGE_1)
+    assert ingest_client.post("/api/ingest/pages/rotate", json={"key": "1:1", "top_points": "left"}).status_code == 200
+    (tmp_path / "scans" / "dropped in, not indexed.png").write_bytes(b"")
+    draft = {"document_type": "receipt", "name": "Shop", "date": "2025-01-10", "time": "10:00", "cost": 100,
+             "currency": "JPY"}
+    assert ingest_client.post("/api/review/decisions", json={"key": "1:3", "verdict": "accepted", "draft": draft}).status_code == 200
+
+    done = ingest_client.post("/api/ingest/finalize/rotation", json={}).json()
+    assert done["committed"] and done["changed"] == 0
+    assert archive_history.head(root).subject == "Fix Rotation: batches 1 and 2"
+    assert f"scans/{PAGE_1}" in archive_history.tracked_paths(root)    # the scan as turned
+    left = archive_history.changed_paths(root)
+    assert "scans/dropped in, not indexed.png" in left                  # not indexed: File Index's
+    assert "archive/decisions.json" in left                             # Review's, not a rotation file
+    assert ingest_client.post("/api/ingest/finalize/rotation", json={}).json()["committed"] is None
+
+    group = ingest_client.post("/api/ingest/finalize/group", json={}).json()
+    assert group["committed"] and archive_history.head(root).subject == "Group: batches 1 and 2"
+    assert "archive/decisions.json" not in archive_history.changed_paths(root)   # a whole file: Review's went too
+    assert ingest_client.post("/api/ingest/finalize/nope", json={}).status_code == 422
 
 
 def test_turned_pages_are_suggested_and_rotated_only_on_request(ingest_client, configured_ingest, tmp_path):
@@ -407,14 +446,15 @@ def test_ocr_on_one_batch_while_parse_and_edits_run_on_another(ingest_client, co
 
     # Batch 2's pages can be rotated and regrouped; batch 1's can't, and the refusal says who holds it.
     assert ingest_client.post("/api/ingest/pages/rotate", json={"key": "2:1", "top_points": "left"}).status_code == 200
-    assert ingest_client.put("/api/ingest/grouping", json={"batch_id": 2, "groups": []}).status_code == 200
+    assert _finalize_group(ingest_client, (2, [])).status_code == 200
+    assert _finalize_group(ingest_client, (1, [])).json()["detail"] == \
+        "Can't change document grouping while OCR with Fake OCR is using batch 1."
     refused = ingest_client.post("/api/ingest/pages/rotate", json={"key": "1:1", "top_points": "left"})
     assert refused.status_code == 409 and refused.json()["detail"] == \
         "Can't rotate scans while OCR with Fake OCR is using batch 1."
     refused = ingest_client.post("/api/ingest/pages/straighten", json={"key": "1:1", "degrees": 2})
     assert refused.status_code == 409 and refused.json()["detail"] == \
         "Can't straighten scans while OCR with Fake OCR is using batch 1."
-    assert ingest_client.put("/api/ingest/grouping", json={"batch_id": 1, "groups": []}).status_code == 409
     assert ingest_client.post("/api/ingest/pages/toss", json={"key": "1:3"}).status_code == 200  # only Archive blocks
 
     # One of a kind, and Archive waits for everything - before it even plans.
@@ -483,7 +523,7 @@ def test_cancel_and_event_stream(ingest_client, fake_ocr):
 # --- Archive -------------------------------------------------------------------------------------------------
 def test_archive_status_and_blocker(ingest_client, configured_ingest):
     status = ingest_client.get("/api/ingest/archive").json()
-    assert status["blocker"] is None and (status["files"], status["tossed"]) == (8, 2)
+    assert status["blocker"] is None and (status["files"], status["tossed"], status["scans_to_remove"]) == (8, 2, 0)
     assert {m["key"]: m["destination"] for m in status["moves"]}["1:6"] == "tossed/01102025142000_6.png"
 
     decisions = load_decisions(configured_ingest)
@@ -519,6 +559,73 @@ def test_archive_job_reports_missing_scans_and_blocks_review_edits(ingest_client
     # conftest only provides page 1:1's scan, so the other seven copies fail and nothing is finalized
     assert (done["status"], done["done"], done["failed"]) == ("failed", 8, 7)
     assert ingest_client.delete("/api/review/decisions").status_code == 200
+
+
+# --- the folder's history -----------------------------------------------------------------------------------
+def test_file_index_says_when_its_batches_were_added_but_not_committed(ingest_client, configured_ingest, tmp_path,
+                                                                    monkeypatch):
+    import archive_history
+
+    monkeypatch.setattr(archive_history, "GIT", "git-that-is-not-installed")
+    refused = _add_batch_2(ingest_client, tmp_path / "scans")
+    assert refused.status_code == 500
+    assert refused.json()["detail"].startswith("The batches were added, but not committed to the folder's history: git")
+    assert [b.batch_id for b in load_scan_index(configured_ingest).batches] == [1, 2]
+
+
+def test_a_job_whose_commit_fails_still_succeeds_and_says_so(ingest_client, configured_ingest, fake_ocr, monkeypatch):
+    import archive_history
+
+    monkeypatch.setattr(archive_history, "GIT", "git-that-is-not-installed")
+    job = ingest_client.post("/api/ingest/ocr", json={"provider": "Fake OCR", "reprocess": True}).json()
+    done = _finish(job)
+    assert done["status"] == "succeeded" and "Not committed to the folder's history: git" in done["message"]
+
+
+def test_the_sidebar_s_count_and_a_manual_commit(ingest_client, configured_ingest):
+    import archive_history
+
+    root = configured_ingest.parent
+    before = ingest_client.get("/api/history").json()
+    assert before["repository"] is False and before["changed"] == 0 and before["last"] is None
+
+    draft = {"document_type": "receipt", "name": "Shop", "date": "2025-01-10", "time": "10:00", "cost": 100,
+             "currency": "JPY"}
+    assert ingest_client.post("/api/review/decisions", json={"key": "1:3", "verdict": "accepted", "draft": draft}).status_code == 200
+    assert ingest_client.get("/api/history").json()["repository"] is False           # a decision is no milestone
+
+    done = ingest_client.post("/api/history/commit", json={"message": "  "}).json()
+    assert done["repository"] and done["changed"] == 0
+    assert done["last"]["subject"] == archive_history.MANUAL and done["last"]["seconds_ago"] < 60
+    assert "archive/decisions.json" in archive_history.tracked_paths(root)
+
+    (configured_ingest / "decisions.json").write_bytes(b"{}")
+    assert ingest_client.get("/api/history").json()["changed"] == 1
+    named = ingest_client.post("/api/history/commit", json={"message": "reviewed batch 1"}).json()
+    assert named["last"]["subject"] == "reviewed batch 1" and named["changed"] == 0
+
+
+def test_the_api_parks_what_is_uncommitted_when_it_stops_and_takes_it_back_when_it_starts(configured_ingest):
+    import archive_history
+    from fastapi.testclient import TestClient
+
+    from api.main import create_app
+
+    root = configured_ingest.parent
+    with TestClient(create_app()):
+        (configured_ingest / "decisions.json").write_bytes(b"{}")
+    assert not (root / ".git").exists()             # no history yet: a shutdown doesn't start one
+    archive_history.ensure_repository(root)
+    with TestClient(create_app()):
+        pass
+    parked = archive_history.head(root)
+    assert parked is not None and parked.subject == archive_history.PARKED
+    assert archive_history.status(root).changed == 0
+
+    with TestClient(create_app()):
+        assert archive_history.head(root).subject == "History started"                # the parking commit is undone
+        assert "archive/decisions.json" in archive_history.changed_paths(root)      # and its changes wait again
+    assert archive_history.head(root).subject == archive_history.PARKED             # parked once more on the way out
 
 
 # --- runner and model manager units --------------------------------------------------------------------------

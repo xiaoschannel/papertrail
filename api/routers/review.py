@@ -19,7 +19,7 @@ from models import (
     VERDICT_COLORS, VERDICT_LABELS, DocumentKey, ReviewDecision, batch_serial_key, iter_indexed_files,
 )
 from name_similarity import get_smart_match_candidates, quick_apply_label
-from settings import get_config
+from settings import get_config, scans_path
 
 router = APIRouter(prefix="/api/review", tags=["review"])
 
@@ -111,8 +111,8 @@ def document_endpoint(key: str = Query(...), output_path: Path = Depends(get_out
     ocr_text = index.concat_ocr(doc_key, {k: r.markdown for k, r in ocr.items() if r.succeeded})
 
     field_sources = getattr(extraction, "field_sources", {}) or {}
-    input_image_path = get_config().input_image_path
-    input_dir = Path(input_image_path) if input_image_path else None
+    root = get_config().root_path
+    input_dir = scans_path(root) if root else None
     trims = load_trims(output_path)
     pages = []
     for page_num, file_key in enumerate(page_keys, start=1):

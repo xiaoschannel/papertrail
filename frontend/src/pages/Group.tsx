@@ -1,28 +1,57 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, inputThumbUrl, inputUrl } from '../api/client.ts'
-import type { Grouping, GroupingPage, Trim } from '../api/types.ts'
-import { ConfirmDialog } from '../components/ConfirmDialog.tsx'
+import type { Batch, Grouping, GroupingPage, Trim } from '../api/types.ts'
 import { CappedImage } from '../components/DocumentCard.tsx'
+import { FinalizeBar, useFinalizeStatus } from '../components/finalize.tsx'
 import { useBatchHolder, useEverythingHolder } from '../components/jobs.tsx'
-import { BatchSelect, Pager, ScanViewer } from '../components/scans.tsx'
+import { ScanViewer, batchHint, batchTitle } from '../components/scans.tsx'
 import { TrimEditor } from '../components/TrimEditor.tsx'
 import { Card, Empty, ErrorState, Loading } from '../components/ui.tsx'
-import { useGridColumnCount } from '../components/useGridColumnCount.ts'
 import './ingest.css'
 
+/**
+ * Group: every unarchived batch at once, one section each. Tosses and trims are saved as they are made;
+ * links are drafted on the page and saved with Finalize, which then commits the step for every batch.
+ */
 export default function Group() {
+  const status = useFinalizeStatus('group')
+  // Each batch whose links differ from its saved grouping, with the groups it would save.
+  const [changed, setChanged] = useState<Map<number, string[][]>>(new Map())
+  const report = useCallback((batchId: number, groups: string[][] | null) => {
+    setChanged((current) => {
+      if (JSON.stringify(current.get(batchId) ?? null) === JSON.stringify(groups)) return current
+      const next = new Map(current)
+      if (groups) next.set(batchId, groups)
+      else next.delete(batchId)
+      return next
+    })
+  }, [])
+  const regrouped = [...changed.keys()].sort((a, b) => a - b)
+  const which = regrouped.length === 1 ? `batch ${regrouped[0]}’s` : `batches ${regrouped.join(', ')}’`
   return (
     <div className="ingest-page ingest-page--wide">
       <h1>Group</h1>
-      <p className="page-sub">Link pages that belong to one document, and toss the ones that don’t belong in the archive.</p>
-      <DocumentGrouping />
+      <p className="page-sub">
+        Link pages that belong to one document, and toss the ones that don’t belong in the archive. Every batch
+        not archived yet is here; Finalize saves the links and commits the step.
+      </p>
+      {status.isPending ? <Loading what="batches" />
+        : status.error ? <ErrorState error={status.error} />
+          : status.data.batches.length === 0
+            ? <Card title="Document grouping"><Empty>No unarchived batches. Add batches on File Index first.</Empty></Card>
+            : <>
+              {status.data.batches.map((b) => <BatchGrouping key={b.batch_id} batch={b} onChange={report} />)}
+              <FinalizeBar step="group" status={status.data} what="the grouping"
+                groups={regrouped.map((id) => ({ batch_id: id, groups: changed.get(id) ?? [] }))}
+                confirm={regrouped.length === 0 ? null : <>
+                  Changing how {which} pages are grouped clears {regrouped.length === 1 ? 'its' : 'their'} parse
+                  results and review decisions, so those documents need Parse and Review again.
+                </>} />
+            </>}
     </div>
   )
 }
-
-/** The grid's rows per page; a page is whole rows at whatever column count fits. */
-const ROWS_PER_PAGE = 6
 
 type Draft = {
   /** Pages in display order (tossed pages keep their slot). */
@@ -65,7 +94,7 @@ function rebase(draft: Draft, g: Grouping): Draft {
   }
 }
 
-/** Unsaved edits per batch, kept while the app is open (switching batches or pages doesn't lose them). */
+/** Unsaved edits per batch, kept while the app is open (leaving the page doesn't lose them). */
 const unsavedDrafts = new Map<number, Draft>()
 
 /** Consecutive runs of linked keys (mirror of document_grouping.compute_groups). */
@@ -87,24 +116,23 @@ const documentKey = (group: string[]): string => {
   return lo === hi ? `${batch}:${lo}` : `${batch}:${lo}-${hi}`
 }
 
-function DocumentGrouping() {
-  const [batchId, setBatchId] = useState<number | undefined>(undefined)
+type Report = (batchId: number, groups: string[][] | null) => void
+
+/** One batch's pages, in its own section. */
+function BatchGrouping({ batch, onChange }: { batch: Batch; onChange: Report }) {
   const grouping = useQuery({
-    queryKey: ['ingest', 'grouping', batchId],
-    queryFn: () => api.ingest.grouping(batchId),
+    queryKey: ['ingest', 'grouping', batch.batch_id],
+    queryFn: () => api.ingest.grouping(batch.batch_id),
     placeholderData: (previous) => previous,
   })
-  if (grouping.isPending) return <Loading what="document grouping" />
+  if (grouping.isPending) return <Loading what={`batch ${batch.batch_id}'s pages`} />
   if (grouping.error) return <ErrorState error={grouping.error} />
-  const data = grouping.data
-  if (data.blocker || data.batch_id === null) {
-    return <Card title="Document grouping"><Empty>{data.blocker ?? 'No batches.'}</Empty></Card>
-  }
-  // Keyed by batch: switching batches starts from that batch's saved grouping on its first page.
-  return <GroupingEditor key={data.batch_id} data={data} batchId={data.batch_id} onBatch={setBatchId} />
+  if (grouping.data.batch_id !== batch.batch_id) return null     // archived since the page asked
+  return <GroupingEditor data={grouping.data} batch={batch} onChange={onChange} />
 }
 
-function GroupingEditor({ data, batchId, onBatch }: { data: Grouping; batchId: number; onBatch: (id: number) => void }) {
+function GroupingEditor({ data, batch, onChange }: { data: Grouping; batch: Batch; onChange: Report }) {
+  const batchId = batch.batch_id
   const queryClient = useQueryClient()
   // Only a job working on this batch (OCR reading it, Parse extracting it, or Archive) locks its pages.
   const holder = useBatchHolder(batchId)
@@ -114,12 +142,7 @@ function GroupingEditor({ data, batchId, onBatch }: { data: Grouping; batchId: n
     unsavedDrafts.set(batchId, next)
     setDraftState(next)
   }
-  const [page, setPage] = useState(0)
-  const [confirmingSave, setConfirmingSave] = useState(false)
-  const [saved, setSaved] = useState('')
   const [viewing, setViewing] = useState<string | null>(null)   // the key of the page open full size
-  const grid = useRef<HTMLDivElement>(null)
-  const columns = useGridColumnCount(grid, 6)
 
   useEffect(() => {
     setDraftState((current) => {
@@ -144,17 +167,6 @@ function GroupingEditor({ data, batchId, onBatch }: { data: Grouping; batchId: n
       void queryClient.invalidateQueries({ queryKey: ['review-doc'] })
     },
   })
-  const save = useMutation({
-    mutationFn: (groups: string[][]) => api.ingest.saveGrouping(batchId, groups),
-    onSuccess: async (result) => {
-      setConfirmingSave(false)
-      setSaved(result.changed ? 'Saved. Re-run Parse for this batch.' : 'Nothing to save — the grouping is unchanged.')
-      await queryClient.invalidateQueries({ queryKey: ['ingest'] })
-      await queryClient.invalidateQueries({ queryKey: ['review-queue'] })
-    },
-    onError: () => setConfirmingSave(false),
-  })
-
   const pagesByKey = useMemo(() => new Map(data.pages.map((p) => [p.key, p])), [data])
   const tossed = useMemo(() => new Set(data.pages.filter((p) => p.tossed).map((p) => p.key)), [data])
 
@@ -167,13 +179,12 @@ function GroupingEditor({ data, batchId, onBatch }: { data: Grouping; batchId: n
   const groupOf = new Map<string, number>()
   multi.forEach((g, i) => g.forEach((k) => groupOf.set(k, i)))
 
-  const perPage = ROWS_PER_PAGE * Math.max(1, columns)
-  const pageCount = Math.max(1, Math.ceil(current.keys.length / perPage))
-  const shownPage = Math.min(page, pageCount - 1)
-  const start = shownPage * perPage
+  // the page's Finalize saves what differs from the saved grouping
+  const pending = changed ? JSON.stringify(groups) : ''
+  useEffect(() => { onChange(batchId, pending ? JSON.parse(pending) as string[][] : null) }, [onChange, batchId, pending])
+  useEffect(() => () => onChange(batchId, null), [onChange, batchId])   // archived meanwhile: nothing to save
 
   const toggleLink = (activeIndex: number) => {
-    setSaved('')
     setDraft({ ...current, links: current.links.map((v, i) => (i === activeIndex ? !v : v)) })
   }
   const swap = (displayIndex: number) => {
@@ -186,19 +197,12 @@ function GroupingEditor({ data, batchId, onBatch }: { data: Grouping; batchId: n
     setDraft({ ...current, keys })
   }
 
-  const pager = <Pager page={shownPage} pageCount={pageCount} onPage={setPage} />
-
   return (
-    <Card title="Document grouping" className="card--full"
-      hint="Link adjacent pages into one document; ⇄ swaps the order of linked pages.">
-      <div className="controls">
-        <BatchSelect id="grouping-batch" batches={data.batches} value={batchId} onChange={onBatch} />
-      </div>
+    <Card title={batchTitle(batch)} className="card--full"
+      hint={`${batchHint(batch)} · link adjacent pages into one document; ⇄ swaps the order of linked pages`}>
       {pageAction.error && <div className="error-banner" role="alert">{pageAction.error.message}</div>}
-      {pager}
-      <div className="page-grid" ref={grid}>
-        {current.keys.slice(start, start + perPage).map((key, offset) => {
-          const index = start + offset
+      <div className="page-grid">
+        {current.keys.map((key, index) => {
           const pageInfo = pagesByKey.get(key)
           if (!pageInfo) return null
           const next = current.keys[index + 1]
@@ -228,21 +232,18 @@ function GroupingEditor({ data, batchId, onBatch }: { data: Grouping; batchId: n
           )
         })}
       </div>
-      {pager}
 
       <p className="ingest-note">
         {groups.length} document(s): {groups.length - multi.length} single-page
         {multi.length > 0 && `; multi-page: ${multi.map(documentKey).join(', ')}`}
       </p>
-      {save.error && <div className="error-banner" role="alert">{save.error.message}</div>}
-      <div className="start-bar">
-        <button className="primary" disabled={!changed || holder !== null || save.isPending} onClick={() => setConfirmingSave(true)}>
-          Save document groups
-        </button>
-        {changed && <button disabled={save.isPending} onClick={() => setDraft(draftFrom(data))}>Discard changes</button>}
-        {changed && holder && <span className="ingest-note">Waiting for {holder.title}: it is using batch {batchId}.</span>}
-        {!changed && <span className={`ingest-note${saved ? ' ok' : ''}`}>{saved || 'No unsaved changes.'}</span>}
-      </div>
+      {changed && (
+        <div className="start-bar">
+          <span className="ingest-note">Links changed: saved with Finalize.</span>
+          <button onClick={() => setDraft(draftFrom(data))}>Discard changes</button>
+          {holder && <span className="ingest-note">Waiting for {holder.title}: it is using batch {batchId}.</span>}
+        </div>
+      )}
 
       {viewing && (() => {
         // The page full size, with the rulers that trim it; a sliced sheet is never read, so it is just shown.
@@ -266,13 +267,6 @@ function GroupingEditor({ data, batchId, onBatch }: { data: Grouping; batchId: n
         )
       })()}
 
-      {confirmingSave && (
-        <ConfirmDialog title="Save document groups?" confirmLabel="Save" danger busy={save.isPending}
-          onConfirm={() => save.mutate(groups)} onCancel={() => setConfirmingSave(false)}>
-          Changing how batch {batchId}’s pages are grouped clears the batch’s parse results and review
-          decisions, so its documents need Parse and Review again.
-        </ConfirmDialog>
-      )}
     </Card>
   )
 }

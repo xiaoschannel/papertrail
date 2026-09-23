@@ -433,7 +433,6 @@ class GroupingPageOut(_Model):
 
 class GroupingOut(_Model):
     blocker: str | None
-    batches: list[BatchOut]
     batch_id: int | None
     pages: list[GroupingPageOut]
     display_keys: list[str]
@@ -444,6 +443,21 @@ class GroupingOut(_Model):
 class SaveGroupingIn(_Model):
     batch_id: int
     groups: list[list[str]]
+
+
+class FinalizeOut(_Model):
+    """Where a step's Finalize stands: the batches it covers, how many of its files wait to be committed
+    (None before the folder has a history), and the commit it just made, if it was asked to."""
+
+    step: Literal["rotation", "slice", "group"]
+    batches: list[BatchOut]
+    changed: int | None
+    committed: str | None = None
+
+
+class FinalizeIn(_Model):
+    #: Group: the batches whose grouping changed on the page, saved before the commit
+    groups: list[SaveGroupingIn] = []
 
 
 class SaveGroupingOut(_Model):
@@ -479,7 +493,6 @@ class SlicingSheetOut(_Model):
 
 class SlicingOut(_Model):
     blocker: str | None
-    batches: list[BatchOut]
     batch_id: int | None
     sheets: list[SlicingSheetOut]
     problems: list[str]          # sheets an interrupted slice left inconsistent; saving or unslicing repairs
@@ -648,6 +661,8 @@ class ArchiveStatus(_Model):
     accepted: int
     marked: int
     tossed: int
+    #: scans the archive already holds that are still in the scan folder: removed once the archive is committed
+    scans_to_remove: int
     moves: list[ArchiveMoveOut]
 
 
@@ -932,6 +947,29 @@ class PathCheck(_Model):
     path: str
     exists: bool
     is_dir: bool
+
+
+# --- the folder's history (archive_history) ----------------------------------------------------------
+class CommitOut(_Model):
+    sha: str
+    subject: str
+    seconds_ago: int
+
+
+class HistoryOut(_Model):
+    """How the Papertrail folder stands against its history, for the sidebar."""
+
+    #: whether the folder has a repository yet (made by the first milestone)
+    repository: bool
+    #: files changed since the last commit (new, edited or deleted)
+    changed: int
+    last: CommitOut | None
+    #: why the history can't be read, when it can't (git missing, say)
+    problem: str | None = None
+
+
+class CommitIn(_Model):
+    message: str = ""
 
 
 # --- Dev: sanity check, index audit ------------------------------------------------------------------

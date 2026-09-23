@@ -4,7 +4,8 @@ The committed fixtures under ``tests/fixtures/`` are copied into a per-test
 ``tmp_path`` so write/move tests never mutate the committed data. Tests that go
 through the global config (brand registry, viz aggregation) use
 ``configured_archive``, which points ``settings.CONFIG_PATH`` at a temp config
-whose ``batch_output_path`` is the copied archive.
+whose ``root_path`` is the ``tmp_path`` holding the copied archive (``archive/``) and the scan folder
+(``scans/``); the folder's history (archive_history) is made there by the first milestone a test hits.
 """
 
 from __future__ import annotations
@@ -76,7 +77,7 @@ def archive_dir(tmp_path: Path) -> Path:
 @pytest.fixture
 def ingest_dir(tmp_path: Path) -> Path:
     """A fresh, writable copy of the mid-ingest fixture."""
-    dst = tmp_path / "ingest"
+    dst = tmp_path / "archive"
     shutil.copytree(FIXTURES / "ingest", dst)
     return dst
 
@@ -90,8 +91,7 @@ def configured_archive(archive_dir: Path, tmp_path: Path, monkeypatch: pytest.Mo
     at the archive copy regardless of how they imported ``get_config``.
     """
     cfg = AppConfig(
-        batch_output_path=str(archive_dir),
-        input_image_path=str(tmp_path / "scans"),
+        root_path=str(tmp_path),            # the archive is tmp_path/archive; the scan folder tmp_path/scans
         normalize_engine="string",
         indexing_scheme="Canon ImageFormula",
     )
@@ -108,8 +108,7 @@ def configured_ingest(ingest_dir: Path, tmp_path: Path, monkeypatch: pytest.Monk
     scans.mkdir()
     shutil.copy(FIXTURES / "archive" / "tossed" / "08102025143000_201.png", scans / "01102025132642_1.png")
     cfg = AppConfig(
-        batch_output_path=str(ingest_dir),
-        input_image_path=str(scans),
+        root_path=str(tmp_path),
         normalize_engine="string",
         indexing_scheme="Canon ImageFormula",
     )

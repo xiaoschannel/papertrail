@@ -1,0 +1,12 @@
+/* The folder's history at the foot of the sidebar (historyPip.tsx): a pill like the job indicator's. */
+.history { margin: 18px 4px 0; display: flex; flex-direction: column; gap: 4px; }
+.history__button {
+  padding: 8px 10px; border-radius: 8px; border: 0; background: var(--panel-2); color: var(--muted);
+  font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 8px; text-align: left;
+  font-variant-numeric: tabular-nums; cursor: default;
+}
+.history--waiting .history__button { background: var(--accent-soft); color: var(--accent); cursor: pointer; }
+.history--waiting .history__button:hover { filter: brightness(1.08); }
+.history__dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: none; opacity: .6; }
+.history__last { padding: 0 10px; color: var(--muted); font-size: 11px; }
+.history__message { width: 100%; margin-top: 10px; }

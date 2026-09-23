@@ -126,7 +126,7 @@ def test_crops_and_sliced_sheets_cant_be_rotated_and_crops_cant_be_linked(ingest
     for key in ("1:2", "1:10"):
         refused = ingest_client.post("/api/ingest/pages/rotate", json={"key": key, "top_points": "left"})
         assert refused.status_code == 409
-    linked = ingest_client.put("/api/ingest/grouping", json={"batch_id": 1, "groups": [["1:9", "1:10"]]})
+    linked = ingest_client.post("/api/ingest/finalize/group", json={"groups": [{"batch_id": 1, "groups": [["1:9", "1:10"]]}]})
     assert linked.status_code == 422 and "crop" in linked.json()["detail"]
     assert ingest_client.post("/api/ingest/pages/toss", json={"key": "1:10"}).status_code == 200   # a crop can go
 

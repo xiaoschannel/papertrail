@@ -8,8 +8,8 @@ the app really produces:
   Calendar and the other Visualize pages.
 * **Batch 2, parsed** — OCR'd and extracted, nothing decided yet: Review.
 * **Batch 3, indexed** — a batch not yet read: Fix Rotation, Slice and Group, then OCR, Parse, Review and
-  Archive from the start. Pick it in the batch picker: the ingest pages open on the oldest unarchived
-  batch, which is batch 2.
+  Archive from the start. Fix Rotation, Slice and Group show every unarchived batch at once, batch 2's
+  pages above batch 3's.
 
 No scans are left unindexed: nothing needs them yet (File Index's scheme check would). A feature that does
 adds a stage of them, drawn after the last ``index()`` in ``build``.
@@ -92,15 +92,22 @@ class Sandbox(BaseModel):
     def archive(self) -> Path:
         return self.root / "archive"
 
+    def filed(self) -> set[str]:
+        """The scans the archive holds: Archive took them out of ``scans/``, so they aren't drawn again."""
+        from data import filed_scan_pages
+
+        return set(filed_scan_pages(self.archive)) if self.archive.is_dir() else set()
+
     # --- drawing --------------------------------------------------------------------------------------
     def scan(self, name: str, lines: Lines, rotate=None, tilt: float = 0.0) -> None:
         """A 600 x 1000 page with these lines on it (boxes on OCR's 0-1000 scale), written if not there yet.
 
-        An existing scan is left alone: it may have been rotated since. ``tilt`` feeds it in crooked: turned
-        that many degrees counter-clockwise on the white scanner bed, each line then boxed where it lies.
+        An existing scan is left alone: it may have been rotated since; so is one the archive holds. ``tilt``
+        feeds it in crooked: turned that many degrees counter-clockwise on the white scanner bed, each line
+        then boxed where it lies.
         """
         self.text[name] = _boxed_on_tilted(lines, tilt) if tilt else lines
-        if (self.scans / name).exists():
+        if (self.scans / name).exists() or name in self.filed():
             return
         w, h = 600, 1000
         img = Image.new("RGB", (w, h), "white")
@@ -136,7 +143,7 @@ class Sandbox(BaseModel):
             self.text[f"{Path(name).stem}.r{r + 1}c{c + 1}{Path(name).suffix}"] = [
                 ((80, 40, 900, 140), shop), ((80, 400, 900, 500), when), ((80, 650, 900, 750), f"合計 ¥{total}")]
         self.text[name] = [((40, 20, 900, 60), "(a sheet of meal tickets)")]
-        if (self.scans / name).exists():
+        if (self.scans / name).exists() or name in self.filed():
             return
         cell_w, cell_h = 300, 380
         img = Image.new("RGB", (cols * cell_w + 60, rows * cell_h + 60), "#f4f1ea")
@@ -304,6 +311,19 @@ def fake_extractor(sb: Sandbox):
 
 
 # --- building the state -----------------------------------------------------------------------------------
+def remove_tree(path: Path) -> None:
+    """Delete a folder, read-only files and all: the folder's history (``.git``) is kept in those."""
+    import os
+    import shutil
+    import stat
+
+    def writable_then_again(func, target, _exc):
+        os.chmod(target, stat.S_IWRITE)
+        func(target)
+
+    shutil.rmtree(path, onexc=writable_then_again)
+
+
 class _Quiet:
     """What the pipeline's steps report to, when nobody is watching."""
 
@@ -330,20 +350,23 @@ def prepare(root: Path, fresh: bool = False) -> Sandbox:
     Points the app's config at it, as the server does, so the pipeline and the API use the sandbox.
     """
     import json
-    import shutil
 
     import settings
 
     if fresh and root.exists():
-        shutil.rmtree(root)
+        remove_tree(root)
     sb = Sandbox(root=root)
     sb.archive.mkdir(parents=True, exist_ok=True)
     sb.scans.mkdir(exist_ok=True)
     config = root / "config.json"
-    if not config.exists():
-        config.write_text(json.dumps({
-            "batch_output_path": str(sb.archive), "input_image_path": str(sb.scans), "normalize_engine": "string",
-            "indexing_scheme": SCHEME}, indent=2), encoding="utf-8")
+    saved = (json.loads(config.read_text(encoding="utf-8")) if config.exists()
+             else {"normalize_engine": "string", "indexing_scheme": SCHEME})
+    # The sandbox is always one Papertrail folder, here. A sandbox made before there was one names its scan
+    # folder and archive instead: those settings are gone, so its config is moved onto the folder.
+    wanted = {**{k: v for k, v in saved.items() if k not in ("input_image_path", "batch_output_path")},
+              "root_path": str(root)}
+    if wanted != saved:
+        config.write_text(json.dumps(wanted, indent=2), encoding="utf-8")
     settings.CONFIG_PATH = config
     # A new sandbox is built into the shared state; one in use keeps what was done in it.
     if not (sb.archive / "batches.json").exists() and not any(sb.scans.iterdir()):
