@@ -8,18 +8,23 @@ would file it alone and strand the other (issue #14).
 
 from __future__ import annotations
 
+
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote
 
+import rotation_review
 from data import load_smart_match_cache, read_sidecar, save_smart_match_cache
 from dedupe_candidates import WEEK_WINDOW, parse_verdict_datetime
+from deskew import straighten_file, straightened_trim
 from document_files import MARKED, ensure_movable, load_pages, place_document, toss_document
 from document_grouping import rotate_file_upright
 from models import (
-    DocumentExtraction, DocumentKey, OcrResult, ReceiptResult, ReviewDecision, ScanIndex, Sidecar, Trim,
+    DocumentExtraction, DocumentKey, OcrResult, ReceiptResult, ReviewDecision, RotationPrediction, ScanIndex,
+    Sidecar, Trim,
     batch_serial_key, ocr_page_section, turned_trim,
 )
 from viz_records import page_order
@@ -105,6 +110,8 @@ class Reread:
     top_points: str
     ocr_model: str
     extractor: str
+    #: How far it straightened the pages after turning them (degrees counter-clockwise).
+    degrees: float = 0.0
 
 
 class Rereads:
@@ -134,30 +141,48 @@ class Rereads:
 rereads = Rereads()
 
 
-def store_reprocessed(document: MarkedDocument, reread: Reread) -> None:
+def store_reprocessed(document: MarkedDocument, reread: Reread, output_path: Path | None = None,
+                      judge: Callable[[Path], RotationPrediction] | None = None) -> None:
     """Write a reread into the document's own sidecars: each page's OCR, and the extraction on the first.
 
-    OCR read the pages turned by ``top_points``, so its boxes are measured on the turned image: the files
-    are turned too, or the boxes would sit in the wrong places wherever the scan is shown later. Only the
-    turn is kept; the treatments were only there to help OCR read, and change no geometry. A trim is
-    measured on the file, so the page's, and the one the read was made from, turn with it.
+    OCR read the pages turned by ``top_points`` and straightened by ``degrees``, so its boxes are measured on
+    that image: the files are turned and straightened too, or the boxes would sit in the wrong places
+    wherever the scan is shown later. Only the geometry is kept; the treatments were only there to help OCR
+    read. A trim is measured on the file, so it turns and straightens with it (a straightened reread read
+    the whole page, ``reading_trim``).
+
+    With ``judge`` (what the rotation detectors say of a page), each page's rotation decision is kept, as
+    Fix Rotation keeps its own: in the page's sidecar and the archive's log (``output_path``,
+    rotation_review.workshop_decision).
     """
     from data import write_sidecar
 
     for index, (path, sidecar) in enumerate(zip(document.pages, document.sidecars)):
         if index >= len(reread.results):
             break
+        predicted = judge(path) if judge is not None else None
+        before, version = rotation_review.kept(path), path.stat().st_mtime_ns
         rotate_file_upright(path, reread.top_points)
+        trim = turned_trim(sidecar.trim, reread.top_points)
+        if reread.degrees:
+            sizes = straighten_file(path, reread.degrees)
+            if sizes is not None:
+                trim = straightened_trim(trim, reread.degrees, *sizes)
         result = reread.results[index]
-        update = {"ocr": result.model_copy(update={"trim": turned_trim(result.trim, reread.top_points)}),
-                  "trim": turned_trim(sidecar.trim, reread.top_points)}
+        update: dict = {"ocr": result.model_copy(update={"trim": turned_trim(result.trim, reread.top_points)}),
+                        "trim": trim}
         if index == 0:
             update["extraction"] = reread.extraction
+        if predicted is not None and output_path is not None:
+            decision = rotation_review.workshop_decision(
+                output_path, path, sidecar, predicted, reread.top_points or None, reread.degrees, before, version, sidecar.trim)
+            if decision is not None:
+                update["rotation"] = [*(sidecar.rotation or []), decision]
         write_sidecar(path, sidecar.model_copy(update=update))
 
 
 def accept(output_path: Path, document: MarkedDocument, decision: ReviewDecision,
-           reread: Reread | None = None) -> list[str]:
+           reread: Reread | None = None, judge: Callable[[Path], RotationPrediction] | None = None) -> list[str]:
     """File the document into the archive under ``decision``, keeping what the model read.
 
     The sidecars keep the model's extraction untouched (with the boxes each field came from), as review
@@ -166,7 +191,7 @@ def accept(output_path: Path, document: MarkedDocument, decision: ReviewDecision
     ensure_movable(document.pages)
     _write_missing_sidecars(document)
     if reread is not None:
-        store_reprocessed(document, reread)
+        store_reprocessed(document, reread, output_path, judge)
     pages = load_pages(document.pages)
     placed = place_document(output_path, pages, decision,
                             sidecar_for=lambda sidecar: sidecar.model_copy(update={"review": decision}))
@@ -184,11 +209,12 @@ def toss(output_path: Path, document: MarkedDocument) -> list[str]:
     return tossed
 
 
-def reading_trim(band: Trim | None, top_points: str) -> Trim | None:
-    """The part of a page a reread reads when it is turned from ``top_points``: its trim, or all of it
-    under a quarter turn. A trim runs along the page as stored, and Accept, which turns the file, can't
-    keep one across a quarter turn (``turned_trim``); reading the whole page keeps the boxes true to it."""
-    return None if top_points in ("left", "right") else band
+def reading_trim(band: Trim | None, top_points: str, degrees: float = 0.0) -> Trim | None:
+    """The part of a page a reread reads when it is turned from ``top_points`` and straightened ``degrees``:
+    its trim, or all of it under a quarter turn or a straightening. A trim runs along the page as stored,
+    and Accept, which turns and straightens the file, can't keep it exactly across either; reading the whole
+    page keeps the boxes true to it."""
+    return None if top_points in ("left", "right") or degrees else band
 
 
 def marked_page(output_path: Path, filename: str) -> tuple[Path, Sidecar] | None:

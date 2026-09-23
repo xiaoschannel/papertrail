@@ -315,8 +315,18 @@ def add_rotation_decision(output_path: Path, decision: RotationDecision) -> None
         atomic_write_text(output_path / ROTATION_DECISIONS, json.dumps(
             {k: [d.model_dump(mode="json", exclude_none=True) for d in v] for k, v in sorted(current.items())},
             indent=2, ensure_ascii=False))
-        with open(output_path / ROTATION_LOG, "a", encoding="utf-8", newline="\n") as log:
-            log.write(decision.model_dump_json(exclude_none=True) + "\n")
+        _log(output_path, decision)
+
+
+def log_rotation_decision(output_path: Path, decision: RotationDecision) -> None:
+    """Keep a decision on a page already filed (the Workshop's) in the log; its sidecar holds it too."""
+    with _rotation_lock:
+        _log(output_path, decision)
+
+
+def _log(output_path: Path, decision: RotationDecision) -> None:
+    with open(output_path / ROTATION_LOG, "a", encoding="utf-8", newline="\n") as log:
+        log.write(decision.model_dump_json(exclude_none=True) + "\n")
 
 
 def load_rotation_log(output_path: Path) -> list[RotationDecision]:

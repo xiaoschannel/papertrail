@@ -13,6 +13,7 @@ import {
   INPUT_SOURCES, ReviewForm, initialForm, parseCost, type FormState,
 } from '../components/review/ReviewForm.tsx'
 import { ScanOverlay, useBoxesHidden, type Turn } from '../components/review/ScanOverlay.tsx'
+import { describePrediction } from '../components/rotation.tsx'
 import { CompareKeys, DEFAULT_ENHANCEMENT, TreatmentControls, isTreated, useHoldOriginal } from '../components/ScanTreatment.tsx'
 import { ScanViewer } from '../components/scans.tsx'
 import { TrimEditor } from '../components/TrimEditor.tsx'
@@ -29,9 +30,11 @@ import './curate.css'
 /** Colors per verdict, as review_logic's VERDICT_COLORS. */
 const VERDICT_COLORS: Record<string, string> = { accepted: '#28a745', marked: '#ffc107', tossed: '#6c757d' }
 
-/** The part of a page a reread reads when it is turned from `top` (mirror of workshop.reading_trim): its
- *  trim, or all of it under a quarter turn, where the trim would lie across the page. */
-const readingTrim = (trim: Trim | null, top: TopPoints | '') => (top === 'left' || top === 'right' ? null : trim)
+/** The part of a page a reread reads when it is turned from `top` and straightened `degrees` (mirror of
+ *  workshop.reading_trim): its trim, or all of it under a quarter turn or a straightening, where the trim
+ *  would lie across the page. */
+const readingTrim = (trim: Trim | null, top: TopPoints | '', degrees = 0) =>
+  (top === 'left' || top === 'right' || degrees ? null : trim)
 
 /** The comment review left ("why is this marked?") is part of the document, not a blank field. */
 const startForm = (doc: ReviewDocument): FormState => ({ ...initialForm(doc), comment: doc.decision?.comment ?? '' })
@@ -59,10 +62,39 @@ export default function Workshop() {
   const reread = workshop.data?.reread ?? null
 
   // Each document starts from its own stored values and an untreated scan, never the last one's edits;
-  // one with a reread waiting shows its pages turned the way that reread read them.
+  // one with a reread waiting shows its pages turned (and straightened) the way that reread read them, and
+  // one without starts from what the rotation detectors say of its first page.
   const documentKey = document?.key
   const rereadTurn = reread?.top_points
-  useEffect(() => setEnhancement({ ...DEFAULT_ENHANCEMENT, top_points: rereadTurn ?? '' }), [documentKey, rereadTurn])
+  const rereadDegrees = reread?.degrees ?? 0
+  const firstPage = document?.pages.find((page) => page.image_available && page.filename)?.filename ?? null
+  const rotation = useQuery({
+    queryKey: ['curate', 'workshop', 'rotation', firstPage],
+    queryFn: () => api.workshop.rotation(firstPage ?? ''),
+    enabled: firstPage !== null,
+    staleTime: Infinity,
+  })
+  const said = rotation.data
+  // The suggestion can come late (the model downloads on first use): it moves the turn and tilt only while
+  // nobody has set them, and leaves anything already chosen alone.
+  const geometrySet = useRef(false)
+  const pickEnhancement = (next: Enhancement) => {
+    if (next.top_points !== enhancement.top_points || next.degrees !== enhancement.degrees) geometrySet.current = true
+    setEnhancement(next)
+  }
+  useEffect(() => {
+    geometrySet.current = Boolean(reread)
+    setEnhancement({
+      ...DEFAULT_ENHANCEMENT,
+      top_points: reread ? rereadTurn ?? '' : said?.turn ?? '',
+      degrees: reread ? rereadDegrees : said?.tilt ?? 0,
+    })
+  }, [documentKey, rereadTurn, rereadDegrees])      // a new document or reread starts over; not a suggestion
+  useEffect(() => {
+    if (said && !geometrySet.current) {
+      setEnhancement((current) => ({ ...current, top_points: said.turn ?? '', degrees: said.tilt ?? 0 }))
+    }
+  }, [said])
   useEffect(() => setForm(document ? startForm(document) : null), [document])
   const discard = useMutation({
     mutationFn: (documentKey: string) => api.workshop.discardReread(documentKey),
@@ -111,7 +143,8 @@ export default function Workshop() {
             <div className="reread-note" role="status">
               <span>
                 Showing a reread with <strong>{reread.ocr_model}</strong> and <strong>{reread.extractor}</strong>.
-                Nothing is saved yet: Accept keeps it{reread.top_points ? ' and turns the pages as it read them' : ''};
+                Nothing is saved yet: Accept keeps it
+                {reread.top_points || reread.degrees ? ' and turns and straightens the pages as it read them' : ''};
                 Toss or Discard drops it.
               </span>
               <button disabled={discard.isPending} onClick={() => discard.mutate(document.key)}>Discard the reread</button>
@@ -126,10 +159,11 @@ export default function Workshop() {
                 : <p className="ingest-note">No OCR text yet. Read it again to get some.</p>}
             </Card>
 
-            <Scan document={document} enhancement={enhancement} onChange={setEnhancement}
+            <Scan document={document} enhancement={enhancement} onChange={pickEnhancement}
               ocrModels={ocrModels} extractors={extractors}
               ocrModel={workshop.data.ocr_model} extractor={workshop.data.extractor}
               blockedBy={gate.blockedBy} job={gate.job} rereadTurn={rereadTurn ?? null}
+              rereadDegrees={rereadDegrees} suggestion={said ? describePrediction(said, false) : null}
               activeFields={activeFields} onHoverField={(field) => setActiveFields(field ? [field] : [])}
               onTrimmed={(body) => {
                 queryClient.setQueryData(['curate', 'workshop', key], body)
@@ -161,6 +195,7 @@ export default function Workshop() {
 
 function Scan({
   document, enhancement, onChange, ocrModels, extractors, ocrModel, extractor, blockedBy, job, rereadTurn,
+  rereadDegrees, suggestion,
   activeFields, onHoverField, onStarted, onTrimmed,
 }: {
   document: ReviewDocument
@@ -176,6 +211,10 @@ function Scan({
   job: Job | null
   /** How a pending reread turned the pages (its boxes are measured on them turned that way), or null. */
   rereadTurn: Turn | null
+  /** How far the waiting reread straightened the pages. */
+  rereadDegrees: number
+  /** What the rotation detectors said of the first page. */
+  suggestion: string | null
   activeFields: readonly string[]
   onHoverField: (field: string | null) => void
   onStarted: (job: Parameters<ReturnType<typeof useTrackJob>>[0]) => void
@@ -198,7 +237,12 @@ function Scan({
   // fit that one. A reread's were measured on the pages turned as it read them: they line up only while
   // the preview is turned the same way.
   const quarterTurn = settled.top_points === 'left' || settled.top_points === 'right'
-  const boxesFit = rereadTurn === null || (settled.top_points === rereadTurn && !(comparing && treated))
+  const straightened = Boolean(settled.degrees)
+  // A straightened preview moves every word off where stored boxes put it; a reread's boxes fit only the
+  // preview turned and straightened as it read.
+  const boxesFit = rereadTurn === null
+    ? !(straightened && !(comparing && treated))
+    : settled.top_points === rereadTurn && (settled.degrees ?? 0) === rereadDegrees && !(comparing && treated)
   const pages = document.pages.map((page) =>
     boxesFit && !(rereadTurn === null && quarterTurn && !(comparing && treated) && page.trim)
       ? page : { ...page, boxes: [] })
@@ -212,7 +256,8 @@ function Scan({
   // a quarter turn reads (and so shows) the whole page.
   const bandOf = (page: ReviewPage, untreated: boolean) => {
     const top = untreated ? '' : settled.top_points
-    return turnedTrim(readingTrim(page.trim, top), top)
+    const degrees = untreated ? 0 : settled.degrees ?? 0
+    return degrees ? null : turnedTrim(readingTrim(page.trim, top), top)
   }
   const trimOf = (filename: string) => document.pages.find((page) => page.filename === filename)?.trim ?? null
 
@@ -272,7 +317,8 @@ function Scan({
           ))}
         </div>
       </div>
-      <TreatmentControls value={enhancement} onChange={(patch) => onChange({ ...enhancement, ...patch })} />
+      <TreatmentControls value={enhancement} onChange={(patch) => onChange({ ...enhancement, ...patch })}
+        straighten suggestion={suggestion && `The rotation detectors say: ${suggestion.charAt(0).toLowerCase()}${suggestion.slice(1)}`} />
 
       <div className="curate-grid">
         <div className="field">

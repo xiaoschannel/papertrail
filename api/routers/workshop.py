@@ -19,10 +19,12 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 import review_logic as rl
+import rotation_review
 import workshop
 from api import cache, ingest_registry as registry
 from api import ingest_store as store
 from api.deps import get_output_path
+from api.routers.rotation import orienter
 from api.guards import no_job_running, planning_a_job
 from api.jobs import Claim, runner
 from api.model_manager import models
@@ -34,7 +36,7 @@ from api.schemas import (
 from data import build_smart_match_history, load_decisions, load_trims, read_sidecar
 from document_files import MARKED
 from grounding import parse_grounding_output
-from models import OcrResult, ReviewDecision, load_scan_index, turned_trim
+from models import OcrResult, ReviewDecision, RotationPrediction, load_scan_index, turned_trim
 from name_similarity import get_smart_match_candidates, quick_apply_label
 from scan_enhance import Enhancement, enhance
 from settings import get_config, scans_path, update_config
@@ -117,8 +119,8 @@ def workshop_queue(key: str | None = None, output_path: Path = Depends(get_outpu
     return WorkshopOut(
         documents=listed,
         document=_review_document(output_path, chosen, reread) if chosen else None,
-        reread=RereadOut(top_points=reread.top_points, ocr_model=reread.ocr_model,  # type: ignore[arg-type]
-                         extractor=reread.extractor) if reread else None,
+        reread=RereadOut(top_points=reread.top_points, degrees=reread.degrees,  # type: ignore[arg-type]
+                         ocr_model=reread.ocr_model, extractor=reread.extractor) if reread else None,
         ocr_models=list(providers), extractors=list(extractors),
         ocr_model=cfg.workshop_ocr_model if cfg.workshop_ocr_model in providers else next(iter(providers), ""),
         extractor=cfg.workshop_extractor_model if cfg.workshop_extractor_model in extractors
@@ -131,6 +133,7 @@ def workshop_queue(key: str | None = None, output_path: Path = Depends(get_outpu
 def enhanced_scan(
     filename: str = Query(...),
     top_points: str = "",
+    degrees: float = Query(0.0, ge=-15.0, le=15.0),
     treatment: str = "none",
     clip: float = Query(3.0, ge=1.0, le=10.0),
     grid: int = Query(8, ge=2, le=16),
@@ -149,9 +152,9 @@ def enhanced_scan(
     if folder not in path.parents or not path.is_file():
         raise HTTPException(status_code=404, detail="no such marked scan")
     sidecar = read_sidecar(path) if path.suffix.lower() != ".json" else None
-    settings = Enhancement(top_points=top_points, treatment=treatment, clip=clip, grid=grid,  # type: ignore[arg-type]
-                           contrast=contrast, gamma=gamma, lightness=lightness, chroma=chroma,
-                           trim=workshop.reading_trim(sidecar.trim if sidecar else None, top_points))
+    settings = Enhancement(top_points=top_points, degrees=degrees, treatment=treatment,  # type: ignore[arg-type]
+                           clip=clip, grid=grid, contrast=contrast, gamma=gamma, lightness=lightness, chroma=chroma,
+                           trim=workshop.reading_trim(sidecar.trim if sidecar else None, top_points, degrees))
     try:
         with Image.open(path) as image:
             treated = enhance(image, settings)
@@ -223,8 +226,9 @@ def reprocess(body: WorkshopReprocessIn, output_path: Path = Depends(get_output_
         raise HTTPException(status_code=422, detail="unknown OCR model or extractor")
     update_config(workshop_ocr_model=body.ocr_model, workshop_extractor_model=body.extractor)
     structured = bool(getattr(provider, "grounding", False)) and get_config().extract_structured
-    settings = Enhancement(top_points=body.top_points, treatment=body.treatment, clip=body.clip, grid=body.grid,
-                           contrast=body.contrast, gamma=body.gamma, lightness=body.lightness, chroma=body.chroma)
+    settings = Enhancement(top_points=body.top_points, degrees=body.degrees, treatment=body.treatment,
+                           clip=body.clip, grid=body.grid, contrast=body.contrast, gamma=body.gamma,
+                           lightness=body.lightness, chroma=body.chroma)
 
     def job(progress) -> str:
         from PIL import Image
@@ -233,7 +237,7 @@ def reprocess(body: WorkshopReprocessIn, output_path: Path = Depends(get_output_
         results: list[OcrResult] = []
         for page, sidecar in zip(document.pages, document.sidecars):
             treated_path = page.with_name(f"{page.stem}.enhanced.png")
-            band = workshop.reading_trim(sidecar.trim, body.top_points)
+            band = workshop.reading_trim(sidecar.trim, body.top_points, body.degrees)
             try:
                 with Image.open(page) as image:
                     enhance(image, replace(settings, trim=band)).save(treated_path)
@@ -252,13 +256,30 @@ def reprocess(body: WorkshopReprocessIn, output_path: Path = Depends(get_output_
 
         workshop.rereads.put(document.key, workshop.Reread(
             pages=tuple(document.filenames), results=results, extraction=extraction, top_points=body.top_points,
-            ocr_model=body.ocr_model, extractor=body.extractor))
+            ocr_model=body.ocr_model, extractor=body.extractor, degrees=body.degrees))
         return f"Re-read {len(results)} page(s) of {document.key}. Accept keeps it; nothing is saved until then."
 
     # Marked documents are already archived, so no batch is involved: the run holds only the GPU. It is a
     # couple of model calls, with nothing to stop between, so it can't be cancelled.
     with planning_a_job():
         return runner.start("workshop", f"Reprocess {document.key}", job, Claim(gpu=True), cancellable=False)
+
+
+def _judge():
+    """What the rotation detectors say of a marked page, for the decision an accepted reread keeps; the
+    model is used only once it is on disk (Fix Rotation downloads it), else tilts alone are judged."""
+    orient = orienter(download=False)
+    share = get_config().tilt_share
+    return lambda path: rotation_review.predict(path, orient, store.scan_skew, share)
+
+
+@router.get("/rotation", response_model=RotationPrediction)
+def rotation(filename: str = Query(...), output_path: Path = Depends(get_output_path)):
+    """What the rotation detectors say of a marked page, so the reread starts from their suggestion."""
+    page = workshop.marked_page(output_path, filename)
+    if page is None:
+        raise HTTPException(status_code=404, detail=f"no marked scan {filename}")
+    return rotation_review.predict(page[0], orienter(download=True), store.scan_skew, get_config().tilt_share)
 
 
 @router.put("/trim", response_model=WorkshopOut)
@@ -303,7 +324,7 @@ def decide(body: WorkshopDecisionIn, output_path: Path = Depends(get_output_path
             time=draft.time, cost=(draft.cost or 0.0) if receipt else 0.0,
             currency=draft.currency if receipt else "", comment=body.comment)
         with no_job_running("file a marked document", kind=("archive", "workshop")):
-            workshop.accept(output_path, document, decision, workshop.rereads.get(document))
+            workshop.accept(output_path, document, decision, workshop.rereads.get(document), judge=_judge())
 
     cache.clear()   # the archive gained (or tossed) a document
     store.clear()

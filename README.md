@@ -183,6 +183,8 @@ the disk.
 
 ## Curate
 1. **Marked Workshop** — Reprocess marked files with image enhancement, and contextual aids.
+   A reread can turn and straighten the pages, starting from what the rotation detectors say; Accept keeps
+   that decision as Fix Rotation keeps its own, in the page's sidecar and the rotation log.
 2. **Dedupe** — Time-based duplicate detection for documents with matching timestamps and costs.
 3. **Normalize** — Unify similar merchant/document names.
 

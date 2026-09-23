@@ -32,6 +32,7 @@ What each stage holds for a feature today:
   real one would. Turning or straightening a page after OCR sends it back to OCR and Parse.
 * Sent back: 2:3, in Review, was fed in a little crooked, too little to be flagged: send it back to Fix
   Rotation from its scan in Review.
+* Workshop straighten: the marked 1:5 was fed in crooked; the Workshop starts its reread from the tilt.
 """
 
 from __future__ import annotations
@@ -173,7 +174,9 @@ def archived_batch(sb: Sandbox) -> None:
     sb.coupon_receipt("02152026090020_3.png", "Sandbox Supermarket", "2026/02/11 17:40", 2150)
     # Trim: marked untrimmed, read with its coupon (so its cost is the coupon's): try the Workshop's Trim row.
     sb.coupon_receipt("02152026090030_4.png", "Sandbox Drugstore", "2026/02/12 19:15", 1680)
-    sb.receipt("02152026090040_5.png", "Ramen Testya", "2026/02/13 12:45", 1100)
+    # Workshop straighten: marked, and fed in crooked; the Workshop starts the reread from the detectors' tilt,
+    # and Accept keeps the decision in the page's sidecar and the rotation log.
+    sb.receipt("02152026090040_5.png", "Ramen Testya", "2026/02/13 12:45", 1100, tilt=-3.0)
     sb.receipt("02152026090050_6.png", "Coffee Stand Foo", "2026/02/14 09:05", 420)
 
 

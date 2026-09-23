@@ -1,4 +1,4 @@
-import { useId } from 'react'
+import { useId, type ReactNode } from 'react'
 import { useShortcutKeys } from '../api/config.ts'
 import type { Enhancement } from '../api/types.ts'
 import { keyLabel, useHeldKey } from './useShortcuts.ts'
@@ -17,18 +17,31 @@ export const ORIENTATIONS = [
 ] as const
 
 export const DEFAULT_ENHANCEMENT: Enhancement = {
-  top_points: '', treatment: 'none', clip: 3, grid: 8, contrast: 2.5, gamma: 0.5, lightness: 200, chroma: 10,
+  top_points: '', degrees: 0, treatment: 'none', clip: 3, grid: 8, contrast: 2.5, gamma: 0.5, lightness: 200, chroma: 10,
 }
 
-/** Whether `value` changes the scan at all (a turn or a treatment). */
-export const isTreated = (value: Enhancement) => value.top_points !== '' || value.treatment !== 'none'
+/** Whether `value` changes the scan at all (a turn, a straightening or a treatment). */
+export const isTreated = (value: Enhancement) =>
+  value.top_points !== '' || Boolean(value.degrees) || value.treatment !== 'none'
 
-export function TreatmentControls({ value, onChange }: {
+/** How a straightening reads to a person: which way, and how far (as Fix Rotation says it). */
+const describeTilt = (degrees: number) =>
+  degrees === 0 ? 'no turn' : `${Math.abs(degrees).toFixed(1)}° ${degrees > 0 ? 'counter-clockwise' : 'clockwise'}`
+
+/**
+ * The turn and the treatment; with ``straighten`` (the Workshop), a straightening slider after the turn, and
+ * ``suggestion``, what the rotation detectors said of the page.
+ */
+export function TreatmentControls({ value, onChange, straighten = false, suggestion = null }: {
   value: Enhancement
   onChange: (patch: Partial<Enhancement>) => void
+  straighten?: boolean
+  suggestion?: ReactNode
 }) {
+  const degrees = value.degrees ?? 0
   return (
     <>
+      {suggestion && <p className="ingest-note">{suggestion}</p>}
       <div className="field">
         <label>The top of the page points</label>
         <div className="segmented">
@@ -38,6 +51,13 @@ export function TreatmentControls({ value, onChange }: {
           ))}
         </div>
       </div>
+      {straighten && (
+        <div className="field">
+          <label htmlFor="treatment-straighten">Then straighten it <strong>{describeTilt(degrees)}</strong></label>
+          <input id="treatment-straighten" type="range" min={-15} max={15} step={0.1} value={-degrees}
+            onChange={(e) => onChange({ degrees: Math.round(-Number(e.target.value) * 10) / 10 || 0 })} />
+        </div>
+      )}
 
       <div className="field">
         <label>Treatment</label>

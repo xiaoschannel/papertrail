@@ -5,6 +5,8 @@ import json
 import shutil
 
 import pytest
+
+import deskew
 from PIL import Image
 
 from api import ingest_registry
@@ -79,10 +81,10 @@ def test_the_scan_preview_is_the_treated_image(api_client, configured_archive):
                           params={"filename": "../brand_directory.json"}).status_code == 404
 
 
-def _reread(api_client, top_points="right"):
+def _reread(api_client, top_points="right", degrees=0.0):
     job = api_client.post("/api/curate/workshop/reprocess", json={
         "key": "9:202", "ocr_model": "Fake OCR", "extractor": "Fake LLM",
-        "top_points": top_points, "treatment": "clahe"}).json()
+        "top_points": top_points, "degrees": degrees, "treatment": "clahe"}).json()
     assert job["cancellable"] is False                  # two model calls: nothing to stop between
     return runner.wait_until_finished(job["id"], timeout=20)
 
@@ -99,7 +101,7 @@ def test_a_reread_waits_for_the_decision_and_changes_nothing_on_disk(api_client,
     assert models.loaded is None                                              # the model is unloaded after
     # the page now shows what the reread found
     body = api_client.get("/api/curate/workshop").json()
-    assert body["reread"] == {"top_points": "right", "ocr_model": "Fake OCR", "extractor": "Fake LLM"}
+    assert body["reread"] == {"top_points": "right", "degrees": 0.0, "ocr_model": "Fake OCR", "extractor": "Fake LLM"}
     assert body["document"]["defaults"]["name"] == "ローソン 池袋店 (rescued)"
     assert body["document"]["ocr_text"].startswith("--- Page 1 ---\nre-read")
     assert body["document"]["pages"][0]["boxes"][0]["text"] == "合計"       # every box, since nothing cites one
@@ -109,6 +111,59 @@ def test_discarding_a_reread_goes_back_to_the_stored_reading(api_client, configu
     _reread(api_client)
     body = api_client.delete("/api/curate/workshop/reread", params={"key": "9:202"}).json()
     assert body["reread"] is None and body["document"]["defaults"]["name"] == "ローソン 池袋店"
+
+
+def test_a_straightened_reread_is_straightened_on_accept_and_kept_as_training_data(api_client, configured_archive,
+                                                                                  fake_models):
+    """The Workshop's rotation decisions are Fix Rotation's: the page's sidecar and the archive's log keep
+    what the detectors said and what was done, and a straightened reread reads (and files) the whole page."""
+    from data import load_rotation_log
+    from tilt_scans import scan as tilt_fixture
+
+    page = configured_archive / "marked" / "08102025142000_202.png"
+    tilt_fixture("receipt_crooked.png").convert("RGB").save(page)
+    said = api_client.get("/api/curate/workshop/rotation", params={"filename": page.name}).json()
+    assert said["method"] == "v1" and said["tilt"] == pytest.approx(3.7, abs=0.2)
+    assert api_client.get("/api/curate/workshop/rotation", params={"filename": "nope.png"}).status_code == 404
+    preview = api_client.get("/api/curate/workshop/scan", params={"filename": page.name, "degrees": said["tilt"]})
+    assert preview.status_code == 200
+
+    _reread(api_client, top_points="", degrees=said["tilt"])
+    assert api_client.get("/api/curate/workshop").json()["reread"]["degrees"] == said["tilt"]
+    draft = {"document_type": "receipt", "name": "Levelled Shop", "date": "2025-08-10", "time": "14:20",
+             "cost": 300.0, "currency": "JPY"}
+    api_client.post("/api/curate/workshop/decide", json={"key": "9:202", "verdict": "accepted", "draft": draft})
+
+    [record] = [r for r in api_client.get("/api/viz/records").json() if r["name"] == "Levelled Shop"]
+    filed = configured_archive / record["path"]
+    with Image.open(filed) as after:
+        assert abs(deskew.estimate_skew(after).degrees) < 0.5                     # level
+    [decision] = read_sidecar(filed).rotation
+    assert (decision.source, decision.action, decision.agrees) == ("workshop", "fixed", True)
+    assert decision.predicted.tilt == said["tilt"] and decision.degrees == said["tilt"]
+    assert [d.source for d in load_rotation_log(configured_archive)] == ["workshop"]
+
+
+def test_accepting_a_flagged_page_as_it_is_is_kept_as_left_as_is(api_client, configured_archive, fake_models):
+    """A page the detectors flag but the reread neither turns nor straightens is their false positive."""
+    from data import load_rotation_log
+    from tilt_scans import scan as tilt_fixture
+
+    page = configured_archive / "marked" / "08102025142000_202.png"
+    tilt_fixture("receipt_crooked.png").convert("RGB").save(page)
+    untouched = page.read_bytes()
+    _reread(api_client, top_points="", degrees=0.0)
+    draft = {"document_type": "receipt", "name": "Crooked Shop", "date": "2025-08-10", "time": "14:20",
+             "cost": 300.0, "currency": "JPY"}
+    api_client.post("/api/curate/workshop/decide", json={"key": "9:202", "verdict": "accepted", "draft": draft})
+
+    [record] = [r for r in api_client.get("/api/viz/records").json() if r["name"] == "Crooked Shop"]
+    filed = configured_archive / record["path"]
+    assert filed.read_bytes() == untouched
+    [decision] = read_sidecar(filed).rotation
+    assert (decision.action, decision.agrees, decision.before) == ("left", False, None)
+    assert decision.predicted.tilt is not None
+    assert [d.action for d in load_rotation_log(configured_archive)] == ["left"]
 
 
 def test_accepting_keeps_the_reread_and_turns_the_page_it_read(api_client, configured_archive, fake_models):

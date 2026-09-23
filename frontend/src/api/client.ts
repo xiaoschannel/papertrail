@@ -186,6 +186,9 @@ export const api = {
     discardReread: (key: string) =>
       unwrap(client.DELETE('/api/curate/workshop/reread', { params: { query: { key } } })),
     decide: (body: WorkshopDecisionIn) => unwrap(client.POST('/api/curate/workshop/decide', { body })),
+    /** What the rotation detectors say of a marked page: where the reread's turn and tilt start. */
+    rotation: (filename: string) =>
+      unwrap(client.GET('/api/curate/workshop/rotation', { params: { query: { filename } } })),
     hints: (key: string, draft: Draft) => unwrap(client.POST('/api/curate/workshop/hints', { body: { key, draft } })),
     /** The week around the form's date and time, and the document's batch. */
     context: (key: string, when: { date: string; time: string; document_type: string }) =>

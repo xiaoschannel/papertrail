@@ -25,9 +25,9 @@ from pydantic import BaseModel
 
 import archive_history
 import ingest_pipeline as pipeline
-from data import add_rotation_decision, load_rotation_decisions, load_trims, set_trim
+from data import add_rotation_decision, load_rotation_decisions, load_trims, log_rotation_decision, set_trim
 from deskew import SkewEstimate
-from models import RotationDecision, RotationPrediction, TopPoints
+from models import RotationDecision, RotationPrediction, Sidecar, TopPoints, Trim
 from orientation import MIN_CONFIDENCE, UNREADABLE, OrientationEstimate
 from settings import root_of
 
@@ -160,6 +160,17 @@ def turnable(output_path: Path, key: str) -> bool:
     return True
 
 
+def kept(path: Path) -> str | None:
+    """The scan's bytes kept in the history of the folder it is in, or None when it has none (or no git)."""
+    root = next((folder for folder in path.resolve().parents if (folder / ".git").exists()), None)
+    if root is None:
+        return None
+    try:
+        return archive_history.keep_blob(root, path)
+    except archive_history.HistoryError:
+        return None
+
+
 def _kept(output_path: Path, path: Path) -> str | None:
     """The scan's bytes kept in the folder's history, or None when the folder has none (or no git)."""
     root = root_of(output_path)
@@ -169,6 +180,27 @@ def _kept(output_path: Path, path: Path) -> str | None:
         return archive_history.keep_blob(root, path)
     except archive_history.HistoryError:
         return None
+
+
+def workshop_decision(output_path: Path, path: Path, sidecar: Sidecar, predicted: RotationPrediction, top_points: TopPoints | None,
+                      degrees: float, before: str | None, version: int, trim_before: Trim | None,
+                      ) -> RotationDecision | None:
+    """The rotation decision an accepted Workshop reread makes on one page, logged: a fix when it turned or
+    straightened the page, left as is when the detectors flagged a page it didn't; None when neither (there
+    is nothing to learn from). The caller keeps it in the page's sidecar: the page is filed already."""
+    fix = top_points is not None or bool(degrees)
+    if not fix and not predicted.flagged:
+        return None
+    key = f"{sidecar.batch_id}:{sidecar.serial}" if sidecar.batch_id is not None else path.name
+    agrees = (top_points == predicted.turn and abs(degrees - (predicted.tilt or 0.0)) <= AGREE_DEGREES) if fix \
+        else not predicted.flagged
+    decision = RotationDecision(
+        at=time.time(), key=key, filename=path.name, source="workshop", action="fixed" if fix else "left",
+        top_points=top_points, degrees=degrees if fix else 0.0, predicted=predicted, agrees=agrees,
+        image_version=version, version_after=path.stat().st_mtime_ns, before=before if fix else None,
+        trim_before=trim_before if fix else None)
+    log_rotation_decision(output_path, decision)
+    return decision
 
 
 def decide(output_path: Path, input_path: Path, key: str, image_version: int, fix: bool,

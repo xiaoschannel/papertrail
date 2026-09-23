@@ -675,6 +675,7 @@ class RereadOut(_Model):
     """A reread of the open document waiting for the decision; the document shows what it read."""
 
     top_points: Literal["", "left", "right", "down"]   # how the pages were turned for it
+    degrees: float = 0.0                               # ... and then straightened
     ocr_model: str
     extractor: str
 
@@ -717,6 +718,8 @@ class EnhancementIn(_Model):
     """How to prepare the scan before OCR reads it (the same values the preview endpoint takes)."""
 
     top_points: Literal["", "left", "right", "down"] = ""
+    #: Then straightened this far, counter-clockwise (the Workshop's tilt; a few degrees).
+    degrees: float = Field(0.0, ge=-MAX_TILT_DEGREES, le=MAX_TILT_DEGREES)
     treatment: Literal["none", "clahe", "contrast", "whiten"] = "none"
     clip: float = Field(3.0, ge=1.0, le=10.0)
     grid: int = Field(8, ge=2, le=16)
