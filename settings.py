@@ -29,6 +29,27 @@ def archive_path(root: str | Path) -> Path:
 def root_of(archive: Path) -> Path:
     """The Papertrail folder an archive belongs to: the archive is ``<root>/archive``."""
     return archive.parent
+
+
+def ensure_layout(root: str | Path) -> None:
+    """Give an existing Papertrail folder its two subfolders, named exactly ``scans`` and ``archive``.
+
+    A subfolder named the same but for case (``Archive``) is renamed: Windows finds it either way, but the
+    folder's history compares paths as git reports them, as they are on disk, so a milestone would match
+    none of its files. A missing one is made. A folder that isn't there yet is left alone.
+    """
+    root = Path(root)
+    if not root.is_dir():
+        return
+    for name in (SCANS_DIR, ARCHIVE_DIR):
+        children = {p.name: p for p in root.iterdir() if p.is_dir()}
+        if name not in children:
+            other = [p for n, p in children.items() if n.lower() == name]
+            if len(other) == 1:
+                other[0].rename(root / name)          # a case-only rename: the same folder, renamed
+        (root / name).mkdir(exist_ok=True)
+
+
 #: The tilt share the Config page offers (``AppConfig.tilt_share``).
 TILT_SHARE_RANGE = (0.005, 0.1)
 

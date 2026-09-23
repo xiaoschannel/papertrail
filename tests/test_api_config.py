@@ -7,6 +7,33 @@ def test_get_config_reflects_fixture(api_client, configured_archive):
     assert resp.json()["root_path"] == str(configured_archive.parent)
 
 
+def test_the_folder_s_subfolders_are_named_as_the_history_expects(tmp_path):
+    """Named the obvious way by hand (Archive, Scans), they would match none of a milestone's paths, as git
+    reports them as they are on disk; they are renamed, keeping what is in them, and a missing one made."""
+    from settings import ensure_layout
+
+    root = tmp_path / "My Receipts"
+    (root / "Archive" / "2025").mkdir(parents=True)
+    (root / "Archive" / "batches.json").write_text("{}", encoding="utf-8")
+    (root / "Scans").mkdir()
+    (root / "Scans" / "scan.png").write_bytes(b"x")
+
+    ensure_layout(root)
+
+    assert sorted(p.name for p in root.iterdir()) == ["archive", "scans"]
+    assert (root / "archive" / "batches.json").read_text(encoding="utf-8") == "{}"
+    assert (root / "archive" / "2025").is_dir() and (root / "scans" / "scan.png").read_bytes() == b"x"
+    ensure_layout(root)                                          # named right already: left as it is
+    assert sorted(p.name for p in root.iterdir()) == ["archive", "scans"]
+    ensure_layout(tmp_path / "not made yet")                     # nothing there: nothing made
+    assert not (tmp_path / "not made yet").exists()
+
+    fresh = tmp_path / "fresh"
+    fresh.mkdir()
+    ensure_layout(fresh)
+    assert sorted(p.name for p in fresh.iterdir()) == ["archive", "scans"]
+
+
 def test_put_config_persists(api_client):
     cfg = api_client.get("/api/config").json()
     cfg["dashboard_rank_by"] = "Visit Count"
