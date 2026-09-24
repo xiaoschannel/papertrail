@@ -33,6 +33,8 @@ What each stage holds for a feature today:
 * Sent back: 2:3, in Review, was fed in a little crooked, too little to be flagged: send it back to Fix
   Rotation from its scan in Review.
 * Workshop straighten: the marked 1:5 was fed in crooked; the Workshop starts its reread from the tilt.
+* Mend white lines: the marked 1:7 was printed by a thermal head with dead dots, so white lines run down it
+  and cut its print; the Workshop's Mend white lines treatment joins it back up.
 """
 
 from __future__ import annotations
@@ -102,12 +104,13 @@ class Sandbox(BaseModel):
         return set(filed_scan_pages(self.archive)) if self.archive.is_dir() else set()
 
     # --- drawing --------------------------------------------------------------------------------------
-    def scan(self, name: str, lines: Lines, rotate=None, tilt: float = 0.0) -> None:
+    def scan(self, name: str, lines: Lines, rotate=None, tilt: float = 0.0, dead_dots: bool = False) -> None:
         """A 600 x 1000 page with these lines on it (boxes on OCR's 0-1000 scale), written if not there yet.
 
         An existing scan is left alone: it may have been rotated since; so is one the archive holds. ``tilt``
         feeds it in crooked: turned that many degrees counter-clockwise on the white scanner bed, each line
-        then boxed where it lies.
+        then boxed where it lies. ``dead_dots`` prints it by a worn thermal head: white columns a pixel or two
+        wide down the page, breaking every stroke across them.
         """
         self.text[name] = _boxed_on_tilted(lines, tilt) if tilt else lines
         if (self.scans / name).exists() or name in self.filed():
@@ -118,6 +121,9 @@ class Sandbox(BaseModel):
         d.rectangle([4, 4, w - 5, h - 5], outline="#bbb", width=3)
         for (x1, y1, x2, y2), text in lines:
             d.text((x1 / 1000 * w + 4, y1 / 1000 * h + 2), text, fill="black", font=font(30))
+        if dead_dots:
+            for x in range(40, w - 40, 7):
+                d.rectangle([x, 8, x + (x // 7) % 2, h - 9], fill="white")
         self.scans.mkdir(parents=True, exist_ok=True)
         img = img.transpose(rotate) if rotate else img
         if tilt:
@@ -125,9 +131,9 @@ class Sandbox(BaseModel):
         img.save(self.scans / name)
 
     def receipt(self, name: str, shop: str, when: str, total: int, rotate=None, extra: Lines = (),
-                tilt: float = 0.0) -> None:
+                tilt: float = 0.0, dead_dots: bool = False) -> None:
         self.scan(name, [((80, 40, 880, 104), shop), ((80, 140, 470, 176), when), *extra,
-                         ((80, 300, 520, 338), f"合計 ¥{total}")], rotate, tilt)
+                         ((80, 300, 520, 338), f"合計 ¥{total}")], rotate, tilt, dead_dots)
 
     def coupon_receipt(self, name: str, shop: str, when: str, total: int) -> None:
         """A receipt with a coupon printed under it, whose own total extraction takes for the receipt's
@@ -178,10 +184,14 @@ def archived_batch(sb: Sandbox) -> None:
     # and Accept keeps the decision in the page's sidecar and the rotation log.
     sb.receipt("02152026090040_5.png", "Ramen Testya", "2026/02/13 12:45", 1100, tilt=-3.0)
     sb.receipt("02152026090050_6.png", "Coffee Stand Foo", "2026/02/14 09:05", 420)
+    # Mend white lines: marked, printed by a head with dead dots; pick Mend white lines in the Workshop and
+    # hold the compare key to see the strokes join (the fake OCR reads it the same either way).
+    sb.receipt("02152026090100_7.png", "Sandbox Pharmacy", "2026/02/14 18:20", 760, dead_dots=True,
+               extra=[((80, 200 + 36 * n, 700, 232 + 36 * n), f"品目 {n + 1}    ¥{120 * (n + 1)}") for n in range(2)])
 
 
 ARCHIVED_TRIMMED_BEFORE_OCR = {3: COUPON_TRIM}
-MARKED = {4: "the total looks like the coupon's", 5: "faded print"}
+MARKED = {4: "the total looks like the coupon's", 5: "faded print", 7: "white lines through the print"}
 
 
 def review_batch(sb: Sandbox) -> None:

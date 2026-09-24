@@ -337,6 +337,55 @@ class RotationDecision(BaseModel):
     trim_before: "Trim | None" = None
 
 
+class DocumentFields(BaseModel):
+    """The fields a document is filed under, as a record keeps them: every one, whatever it was."""
+
+    document_type: str
+    name: str
+    date: str
+    time: str
+    cost: float
+    currency: str
+
+
+class WorkshopReread(BaseModel):
+    """How the Workshop read a document again: the models, and everything done to the pages first.
+
+    Every setting is written out, defaults too, so a record means the same after the defaults change."""
+
+    #: The version of the treatments' code (scan_enhance.TREATMENTS_VERSION): the same settings may give
+    #: other pixels in another.
+    method: str
+    ocr_model: str
+    extractor: str
+    #: The turn upright from where the top pointed, then the straightening (degrees counter-clockwise).
+    top_points: TopPoints | None = None
+    degrees: float = 0.0
+    #: The treatment ("none" for none) and every one of its settings.
+    treatment: str
+    settings: dict[str, float] = {}
+    #: Each page's trim when it was read (None: all of it).
+    trims: list["Trim | None"] = []
+
+
+class WorkshopRecord(BaseModel):
+    """What the Workshop did to a marked document it accepted, and how that read went: data for tuning the
+    treatments, their defaults and whatever else wants to know what rescued a document.
+
+    ``read`` is what the models read, raw, and ``accepted`` what was filed, both in full; ``corrected``
+    names the fields that differ, and can always be worked out again from the two. Without a reread,
+    ``read`` is what the document was read as before it was marked: accepting it so doesn't mean it needed
+    no treatment, as its fields may have been typed in by hand after the scan was given up on."""
+
+    at: float
+    key: str
+    filenames: list[str]
+    reread: WorkshopReread | None = None
+    read: DocumentFields
+    accepted: DocumentFields
+    corrected: list[str]
+
+
 class Sidecar(BaseModel):
     original_filename: str
     batch_id: int | None = None
@@ -358,6 +407,8 @@ class Sidecar(BaseModel):
     trim: Trim | None = None
     #: every decision made on the scan's rotation while it was ingested (training data for the detectors)
     rotation: list[RotationDecision] | None = None
+    #: on a document's first page, what the Workshop did to it when it accepted it (see WorkshopRecord)
+    workshop: WorkshopRecord | None = None
 
 
 #: Grid coordinates are on a 0-1000 scale of the sheet image, like OCR boxes, so they never need its size.

@@ -38,7 +38,7 @@ from document_files import MARKED
 from grounding import parse_grounding_output
 from models import OcrResult, ReviewDecision, RotationPrediction, load_scan_index, turned_trim
 from name_similarity import get_smart_match_candidates, quick_apply_label
-from scan_enhance import Enhancement, enhance
+from scan_enhance import Enhancement, enhance, treatment_settings
 from settings import get_config, scans_path, update_config
 
 router = APIRouter(prefix="/api/curate/workshop", tags=["workshop"])
@@ -141,6 +141,8 @@ def enhanced_scan(
     gamma: float = Query(0.5, ge=0.2, le=3.0),
     lightness: int = Query(200, ge=128, le=255),
     chroma: int = Query(10, ge=1, le=80),
+    reach: float = Query(1.5, ge=0.5, le=3.0),
+    darkness: float = Query(2.0, ge=1.0, le=3.0),
     output_path: Path = Depends(get_output_path),
 ):
     """The treated scan — the same pixels a reprocess would hand to OCR, so the preview can't lie: only the
@@ -154,6 +156,7 @@ def enhanced_scan(
     sidecar = read_sidecar(path) if path.suffix.lower() != ".json" else None
     settings = Enhancement(top_points=top_points, degrees=degrees, treatment=treatment,  # type: ignore[arg-type]
                            clip=clip, grid=grid, contrast=contrast, gamma=gamma, lightness=lightness, chroma=chroma,
+                           reach=reach, darkness=darkness,
                            trim=workshop.reading_trim(sidecar.trim if sidecar else None, top_points, degrees))
     try:
         with Image.open(path) as image:
@@ -228,7 +231,7 @@ def reprocess(body: WorkshopReprocessIn, output_path: Path = Depends(get_output_
     structured = bool(getattr(provider, "grounding", False)) and get_config().extract_structured
     settings = Enhancement(top_points=body.top_points, degrees=body.degrees, treatment=body.treatment,
                            clip=body.clip, grid=body.grid, contrast=body.contrast, gamma=body.gamma,
-                           lightness=body.lightness, chroma=body.chroma)
+                           lightness=body.lightness, chroma=body.chroma, reach=body.reach, darkness=body.darkness)
 
     def job(progress) -> str:
         from PIL import Image
@@ -256,7 +259,8 @@ def reprocess(body: WorkshopReprocessIn, output_path: Path = Depends(get_output_
 
         workshop.rereads.put(document.key, workshop.Reread(
             pages=tuple(document.filenames), results=results, extraction=extraction, top_points=body.top_points,
-            ocr_model=body.ocr_model, extractor=body.extractor, degrees=body.degrees))
+            ocr_model=body.ocr_model, extractor=body.extractor, degrees=body.degrees,
+            treatment=body.treatment, settings=treatment_settings(settings)))
         return f"Re-read {len(results)} page(s) of {document.key}. Accept keeps it; nothing is saved until then."
 
     # Marked documents are already archived, so no batch is involved: the run holds only the GPU. It is a

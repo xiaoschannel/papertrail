@@ -720,13 +720,16 @@ class EnhancementIn(_Model):
     top_points: Literal["", "left", "right", "down"] = ""
     #: Then straightened this far, counter-clockwise (the Workshop's tilt; a few degrees).
     degrees: float = Field(0.0, ge=-MAX_TILT_DEGREES, le=MAX_TILT_DEGREES)
-    treatment: Literal["none", "clahe", "contrast", "whiten"] = "none"
+    treatment: Literal["none", "clahe", "contrast", "whiten", "mend"] = "none"
     clip: float = Field(3.0, ge=1.0, le=10.0)
     grid: int = Field(8, ge=2, le=16)
     contrast: float = Field(2.5, ge=0.5, le=3.0)
     gamma: float = Field(0.5, ge=0.2, le=3.0)
     lightness: int = Field(200, ge=128, le=255)
     chroma: int = Field(10, ge=1, le=80)
+    #: Mend white lines: how far ink is smeared sideways (pixels), and how much darker the smear is made.
+    reach: float = Field(1.5, ge=0.5, le=3.0)
+    darkness: float = Field(2.0, ge=1.0, le=3.0)
 
 
 class WorkshopReprocessIn(EnhancementIn):
