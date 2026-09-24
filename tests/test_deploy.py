@@ -228,7 +228,18 @@ def test_one_server_stopping_stops_the_other(tmp_path):
     marker = (tmp_path / "still-alive.txt").as_posix()
     # If it outlives run(), it says so in a file a second later; being killed is the only way it stays quiet.
     stays = f"setTimeout(() => require('fs').writeFileSync('{marker}', 'alive'), 1000); setTimeout(() => {{}}, 600000)"
-    live_server.run({"quits": [node, "-e", "process.exit(1)"], "stays": [node, "-e", stays]}, tmp_path, logs)
+    live_server.run({"quits": [node, "-e", "process.exit(3)"], "stays": [node, "-e", stays]}, tmp_path, logs)
     assert "started" in (logs / "stays.log").read_text(encoding="utf-8")    # it really ran
+    # The logs say which one went first, so a server that dies without a word can still be told apart.
+    assert "--- exited with code 3 at" in (logs / "quits.log").read_text(encoding="utf-8")
+    assert "--- stopped because quits exited with code 3 at" in (logs / "stays.log").read_text(encoding="utf-8")
     time.sleep(2.5)
     assert not pathlib.Path(marker).exists(), "the surviving server was left running"
+
+
+def test_a_crash_code_is_logged_as_the_status_windows_names_it(tmp_path):
+    """A native crash exits with an NTSTATUS; 0xC0000005 is searchable, 3221225477 is not."""
+    live_server._log_ending(["api", "web"], tmp_path, "api", 0xC0000005, "2026-01-01 00:00:00")
+    api_log = (tmp_path / "api.log").read_text(encoding="utf-8")
+    assert "exited with code 3221225477 (0xC0000005) at 2026-01-01 00:00:00" in api_log
+    assert "because api exited with code 3221225477 (0xC0000005)" in (tmp_path / "web.log").read_text(encoding="utf-8")

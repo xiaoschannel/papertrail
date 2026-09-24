@@ -9,7 +9,8 @@ the task doesn't depend on this file having reached main yet; don't run it by ha
 self-contained for the same reason: no imports from the repo.
 
 Each server's output goes to <checkout>/.live/<name>.log. If either server exits, the other is stopped
-and so is this script, so the task never shows as running while half the app is down.
+and so is this script, so the task never shows as running while half the app is down. Both logs
+then say which one exited first and with what code.
 """
 import argparse
 import ctypes
@@ -112,23 +113,44 @@ def run(servers: dict[str, list[str]], root: Path, logs: Path) -> None:
     The commands are an argument so a test can hand it two harmless ones and check the survivor really is
     stopped — what keeps the task from looking healthy while half the app is down.
     """
-    running: list[tuple[subprocess.Popen, _Job]] = []
+    running: list[tuple[str, subprocess.Popen, _Job]] = []
+    exited = None
     try:
         for name, command in servers.items():
             log = open(logs / f"{name}.log", "ab")
             log.write(f"\n--- started {time.strftime('%Y-%m-%d %H:%M:%S')} ---\n".encode())
             log.flush()
             job = _Job()
-            running.append((job.start(command, cwd=root, stdin=subprocess.DEVNULL, stdout=log,
-                                      stderr=subprocess.STDOUT, creationflags=NO_WINDOW), job))
-        while all(process.poll() is None for process, _ in running):
+            running.append((name, job.start(command, cwd=root, stdin=subprocess.DEVNULL, stdout=log,
+                                            stderr=subprocess.STDOUT, creationflags=NO_WINDOW), job))
+        # Noted in the poll that sees it, before stopping the rest takes seconds and the others exit too.
+        while exited is None:
             time.sleep(0.05)
+            exited = next(((name, process.returncode, time.strftime('%Y-%m-%d %H:%M:%S'))
+                           for name, process, _ in running if process.poll() is not None), None)
     finally:
         # Every job, the stopped server's too: npm exiting can leave the Vite it started still serving.
-        for process, job in running:
+        for _, process, job in running:
             job.stop()
             job.close()
             process.wait()
+        if exited:
+            _log_ending([name for name, _, _ in running], logs, *exited)
+
+
+def _log_ending(names: list[str], logs: Path, exited: str, code: int, stamp: str) -> None:
+    """Say in every log which server stopped first and how, since that one takes the rest down with it.
+
+    A server can die without a word — a native crash, or killed from outside — and its log then just ends.
+    A log that ends with no such line means this script itself was stopped: a deploy, or the task ended.
+    """
+    # Windows reports a crash as an NTSTATUS such as 0xC0000005, which reads as noise in decimal.
+    shown = f"{code} (0x{code & 0xFFFFFFFF:08X})" if not 0 <= code <= 0xFFFF else str(code)
+    for name in names:
+        line = (f"exited with code {shown}" if name == exited
+                else f"stopped because {exited} exited with code {shown}")
+        with open(logs / f"{name}.log", "ab") as log:
+            log.write(f"--- {line} at {stamp} ---\n".encode())
 
 
 def main() -> int:
