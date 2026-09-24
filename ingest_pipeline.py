@@ -72,6 +72,7 @@ from data import (
     write_sidecar,
     ROTATION_DECISIONS,
     ROTATION_LOG,
+    WORKSHOP_LOG,
     load_rotation_decisions,
 )
 from deskew import straighten_file, straightened_trim
@@ -1146,6 +1147,7 @@ def run_archive(output_path: Path, input_path: Path, progress: Progress) -> str:
         sha = archive_history.commit(root, _archive_commit_message(plan.complete_batch_ids, copied), [
             *_page_paths(root, (output_path / m.destination for m in plan.moves)),
             f"{ARCHIVE_DIR}/batches.json", f"{ARCHIVE_DIR}/smart_match_cache.json", f"{ARCHIVE_DIR}/{ROTATION_LOG}",
+            f"{ARCHIVE_DIR}/{WORKSHOP_LOG}",
             *(f"{ARCHIVE_DIR}/{name}" for name in CLEANUP_ARTIFACTS)])
 
     # A filed page the history doesn't have yet is Archive's too: filed before the history began, or by a

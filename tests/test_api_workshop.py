@@ -188,6 +188,57 @@ def test_accepting_keeps_the_reread_and_turns_the_page_it_read(api_client, confi
         assert after.size == (height, width)
 
 
+def test_accepting_a_reread_records_every_setting_and_what_was_corrected(api_client, configured_archive,
+                                                                        fake_models):
+    """The record writes out every setting, defaults too, and both what was read and what was accepted in
+    full: it means the same after the defaults change."""
+    from data import load_workshop_log
+
+    job = api_client.post("/api/curate/workshop/reprocess", json={
+        "key": "9:202", "ocr_model": "Fake OCR", "extractor": "Fake LLM", "treatment": "mend", "reach": 2.2}).json()
+    runner.wait_until_finished(job["id"], timeout=20)
+    draft = {"document_type": "receipt", "name": "ローソン　池袋店 (RESCUED)", "date": "2025-08-10", "time": "14:25",
+             "cost": 300.0, "currency": "JPY"}
+    api_client.post("/api/curate/workshop/decide", json={"key": "9:202", "verdict": "accepted", "draft": draft})
+
+    [record] = load_workshop_log(configured_archive)
+    assert record.key == "9:202" and record.filenames == ["08102025142000_202.png"]
+    reread = record.reread
+    assert (reread.ocr_model, reread.extractor, reread.treatment) == ("Fake OCR", "Fake LLM", "mend")
+    assert reread.settings == {"reach": 2.2, "darkness": 2.0}                   # the default written out too
+    assert reread.method == "v1" and reread.top_points is None and reread.trims == [None]
+    assert record.read.name == "ローソン 池袋店 (rescued)" and record.read.time == "14:20"
+    assert record.accepted.name == draft["name"] and record.accepted.time == "14:25"
+    assert record.corrected == ["time"]                   # the name differs only in case and spacing
+    [filed] = [r for r in api_client.get("/api/viz/records").json() if r["time"].startswith("14:25")]
+    assert read_sidecar(configured_archive / filed["path"]).workshop == record
+
+
+def test_accepting_without_a_reread_records_it_as_read(api_client, configured_archive, fake_models):
+    """Only the first page carries the record; the log has it once."""
+    from data import load_workshop_log
+
+    _two_page_marked(configured_archive)
+    draft = {"document_type": "receipt", "name": "Typed By Hand", "date": "2025-08-10", "time": "14:20",
+             "cost": 480.0, "currency": "JPY"}
+    api_client.post("/api/curate/workshop/decide", json={"key": "9:202-203", "verdict": "accepted", "draft": draft})
+
+    [record] = load_workshop_log(configured_archive)
+    assert record.reread is None and record.read.name == "ローソン 池袋店"
+    assert "name" in record.corrected and "cost" in record.corrected
+    [filed] = [r for r in api_client.get("/api/viz/records").json() if r["name"] == "Typed By Hand"]
+    first, second = (read_sidecar(configured_archive / path) for path in filed["paths"])
+    assert first.workshop == record and second.workshop is None
+
+
+def test_tossing_records_nothing(api_client, configured_archive, fake_models):
+    from data import load_workshop_log
+
+    api_client.post("/api/curate/workshop/decide", json={"key": "9:202", "verdict": "tossed", "draft": {
+        "document_type": "receipt", "name": "", "date": "", "time": "", "cost": 0.0, "currency": ""}})
+    assert load_workshop_log(configured_archive) == []
+
+
 def test_a_reread_cannot_be_cancelled(api_client, fake_models):
     job = runner.start("workshop", "Reprocess", lambda progress: None, cancellable=False)
     assert api_client.post(f"/api/jobs/{job['id']}/cancel").status_code == 409

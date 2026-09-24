@@ -10,23 +10,26 @@ from __future__ import annotations
 
 
 import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote
 
+import review_logic as rl
 import rotation_review
-from data import load_smart_match_cache, read_sidecar, save_smart_match_cache
+from data import load_smart_match_cache, log_workshop_record, read_sidecar, save_smart_match_cache
 from dedupe_candidates import WEEK_WINDOW, parse_verdict_datetime
 from deskew import straighten_file, straightened_trim
 from document_files import MARKED, ensure_movable, load_pages, place_document, toss_document
 from document_grouping import rotate_file_upright
 from models import (
-    DocumentExtraction, DocumentKey, OcrResult, ReceiptResult, ReviewDecision, RotationPrediction, ScanIndex,
-    Sidecar, Trim,
+    DocumentExtraction, DocumentFields, DocumentKey, OcrResult, ReceiptResult, ReviewDecision, RotationPrediction,
+    ScanIndex, Sidecar, Trim, WorkshopRecord, WorkshopReread,
     batch_serial_key, ocr_page_section, turned_trim,
 )
+from scan_enhance import TREATMENTS_VERSION
 from viz_records import page_order
 
 
@@ -112,6 +115,9 @@ class Reread:
     extractor: str
     #: How far it straightened the pages after turning them (degrees counter-clockwise).
     degrees: float = 0.0
+    #: The treatment it read the pages with, and every one of its settings (scan_enhance.treatment_settings).
+    treatment: str = "none"
+    settings: dict[str, float] = field(default_factory=dict)
 
 
 class Rereads:
@@ -186,18 +192,57 @@ def accept(output_path: Path, document: MarkedDocument, decision: ReviewDecision
     """File the document into the archive under ``decision``, keeping what the model read.
 
     The sidecars keep the model's extraction untouched (with the boxes each field came from), as review
-    does: the decision is what was confirmed, the extraction what was read. A pending reread is kept.
+    does: the decision is what was confirmed, the extraction what was read. A pending reread is kept. What
+    the Workshop did and how the read went (``workshop_record``) goes on the first page and in the log.
     """
     ensure_movable(document.pages)
     _write_missing_sidecars(document)
+    record = workshop_record(document, decision, reread)
     if reread is not None:
         store_reprocessed(document, reread, output_path, judge)
     pages = load_pages(document.pages)
-    placed = place_document(output_path, pages, decision,
-                            sidecar_for=lambda sidecar: sidecar.model_copy(update={"review": decision}))
+    first = pages[0][1].original_filename
+    placed = place_document(output_path, pages, decision, sidecar_for=lambda sidecar: sidecar.model_copy(
+        update={"review": decision, **({"workshop": record} if sidecar.original_filename == first else {})}))
+    log_workshop_record(output_path, record)
     _remember_name(output_path, pages[0][1], decision)
     rereads.drop(document.key)
     return placed
+
+
+#: The fields a record compares, and how: a name the same but for case or spacing is the same name (the form
+#: offers a known name's usual spelling in place of the one read), a cost the same to the sen.
+_SAME = {
+    "document_type": lambda a, b: a == b,
+    "name": lambda a, b: " ".join(a.split()).casefold() == " ".join(b.split()).casefold(),
+    "date": lambda a, b: a == b,
+    "time": lambda a, b: a == b,
+    "cost": lambda a, b: abs(a - b) < 0.005,
+    "currency": lambda a, b: a == b,
+}
+
+
+def workshop_record(document: MarkedDocument, decision: ReviewDecision, reread: Reread | None) -> WorkshopRecord:
+    """What the Workshop did to ``document`` and how that read went, for accepting it under ``decision``.
+
+    What was read is the reread's extraction, else the one the document was marked with, else what review
+    recorded (a document marked before anything was extracted)."""
+    extraction = reread.extraction if reread else document.first.extraction
+    read = rl.form_defaults(extraction) if extraction else rl.defaults_from_decision(document.first.review)
+    read_fields = DocumentFields(document_type=read.document_type, name=read.name, date=read.date,
+                                 time=read.time, cost=read.cost, currency=read.currency)
+    accepted = DocumentFields(document_type=decision.document_type, name=decision.name, date=decision.date,
+                              time=decision.time, cost=decision.cost, currency=decision.currency)
+    return WorkshopRecord(
+        at=time.time(), key=document.key, filenames=document.filenames,
+        reread=WorkshopReread(
+            method=TREATMENTS_VERSION, ocr_model=reread.ocr_model, extractor=reread.extractor,
+            top_points=reread.top_points or None, degrees=reread.degrees, treatment=reread.treatment,
+            settings=reread.settings, trims=[result.trim for result in reread.results],
+        ) if reread else None,
+        read=read_fields, accepted=accepted,
+        corrected=[name for name, same in _SAME.items()
+                   if not same(getattr(read_fields, name), getattr(accepted, name))])
 
 
 def toss(output_path: Path, document: MarkedDocument) -> list[str]:

@@ -23,6 +23,7 @@ from models import (
     Trim,
     SmartMatchHistoryRow,
     RotationDecision,
+    WorkshopRecord,
 )
 
 
@@ -334,6 +335,26 @@ def load_rotation_log(output_path: Path) -> list[RotationDecision]:
     if not path.exists():
         return []
     return [RotationDecision.model_validate_json(line) for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip()]
+
+
+#: What the Marked Workshop did to each document it accepted, one JSON line each (models.WorkshopRecord),
+#: never deleted: each record is on its document's first page too, and this keeps them all in one place.
+WORKSHOP_LOG = "workshop_log.jsonl"
+
+_workshop_lock = threading.Lock()
+
+
+def log_workshop_record(output_path: Path, record: WorkshopRecord) -> None:
+    with _workshop_lock, open(output_path / WORKSHOP_LOG, "a", encoding="utf-8", newline="\n") as log:
+        log.write(record.model_dump_json(exclude_none=True) + "\n")
+
+
+def load_workshop_log(output_path: Path) -> list[WorkshopRecord]:
+    path = output_path / WORKSHOP_LOG
+    if not path.exists():
+        return []
+    return [WorkshopRecord.model_validate_json(line) for line in path.read_text(encoding="utf-8").splitlines()
             if line.strip()]
 
 

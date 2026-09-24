@@ -38,7 +38,7 @@ from document_files import MARKED
 from grounding import parse_grounding_output
 from models import OcrResult, ReviewDecision, RotationPrediction, load_scan_index, turned_trim
 from name_similarity import get_smart_match_candidates, quick_apply_label
-from scan_enhance import Enhancement, enhance
+from scan_enhance import Enhancement, enhance, treatment_settings
 from settings import get_config, scans_path, update_config
 
 router = APIRouter(prefix="/api/curate/workshop", tags=["workshop"])
@@ -259,7 +259,8 @@ def reprocess(body: WorkshopReprocessIn, output_path: Path = Depends(get_output_
 
         workshop.rereads.put(document.key, workshop.Reread(
             pages=tuple(document.filenames), results=results, extraction=extraction, top_points=body.top_points,
-            ocr_model=body.ocr_model, extractor=body.extractor, degrees=body.degrees))
+            ocr_model=body.ocr_model, extractor=body.extractor, degrees=body.degrees,
+            treatment=body.treatment, settings=treatment_settings(settings)))
         return f"Re-read {len(results)} page(s) of {document.key}. Accept keeps it; nothing is saved until then."
 
     # Marked documents are already archived, so no batch is involved: the run holds only the GPU. It is a

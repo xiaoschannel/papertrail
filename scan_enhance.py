@@ -28,6 +28,16 @@ from models import Trim
 
 Treatment = Literal["none", "clahe", "contrast", "whiten", "mend"]
 
+#: The version of the treatments' code, kept with what the Workshop records (models.WorkshopReread). Bump it
+#: when a treatment gives other pixels for the same settings, so records say which one they tested.
+TREATMENTS_VERSION = "v1"
+
+#: Each treatment's own settings, the fields of ``Enhancement`` its sliders set.
+TREATMENT_SETTINGS: dict[str, tuple[str, ...]] = {
+    "none": (), "clahe": ("clip", "grid"), "contrast": ("contrast", "gamma"), "whiten": ("lightness", "chroma"),
+    "mend": ("reach", "darkness"),
+}
+
 
 @dataclass
 class Enhancement:
@@ -48,6 +58,11 @@ class Enhancement:
     denoise_after: bool = False          # (Experiment only; the Workshop doesn't offer it)
     denoise_strength: int = 6
     trim: Trim | None = None           # the page's own trim (not a control: it is kept with the page)
+
+
+def treatment_settings(settings: Enhancement) -> dict[str, float]:
+    """The chosen treatment's settings, every one written out, as a record keeps them."""
+    return {name: getattr(settings, name) for name in TREATMENT_SETTINGS[settings.treatment]}
 
 
 def crop_to_trim(image: Image.Image, band: Trim | None) -> Image.Image:
