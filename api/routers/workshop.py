@@ -141,8 +141,8 @@ def enhanced_scan(
     gamma: float = Query(0.5, ge=0.2, le=3.0),
     lightness: int = Query(200, ge=128, le=255),
     chroma: int = Query(10, ge=1, le=80),
-    reach: float = Query(1.0, ge=0.5, le=3.0),
-    darkness: float = Query(1.8, ge=1.0, le=3.0),
+    reach: float = Query(1.5, ge=0.5, le=3.0),
+    darkness: float = Query(2.0, ge=1.0, le=3.0),
     output_path: Path = Depends(get_output_path),
 ):
     """The treated scan — the same pixels a reprocess would hand to OCR, so the preview can't lie: only the

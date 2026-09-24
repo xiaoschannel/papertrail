@@ -728,8 +728,8 @@ class EnhancementIn(_Model):
     lightness: int = Field(200, ge=128, le=255)
     chroma: int = Field(10, ge=1, le=80)
     #: Mend white lines: how far ink is smeared sideways (pixels), and how much darker the smear is made.
-    reach: float = Field(1.0, ge=0.5, le=3.0)
-    darkness: float = Field(1.8, ge=1.0, le=3.0)
+    reach: float = Field(1.5, ge=0.5, le=3.0)
+    darkness: float = Field(2.0, ge=1.0, le=3.0)
 
 
 class WorkshopReprocessIn(EnhancementIn):

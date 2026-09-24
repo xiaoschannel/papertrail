@@ -19,7 +19,7 @@ export const ORIENTATIONS = [
 
 export const DEFAULT_ENHANCEMENT: Enhancement = {
   top_points: '', degrees: 0, treatment: 'none', clip: 3, grid: 8, contrast: 2.5, gamma: 0.5, lightness: 200, chroma: 10,
-  reach: 1, darkness: 1.8,
+  reach: 1.5, darkness: 2,
 }
 
 /** Whether `value` changes the scan at all (a turn, a straightening or a treatment). */

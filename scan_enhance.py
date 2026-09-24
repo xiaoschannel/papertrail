@@ -1,8 +1,9 @@
 """Making a stubborn scan readable before OCR runs on it again (the Marked Workshop's controls).
 
 A marked document is usually one the model misread: too dark, washed out, upside down, printed on
-coloured paper, or printed by a thermal head with dead dots, which leave white lines down the receipt. The treatments are applied server-side — the browser asks for a treatment, the server
-produces the pixels that OCR actually sees, and the same function draws the preview.
+coloured paper, or printed by a thermal head with dead dots, which leave white lines down the receipt. The
+treatments are applied server-side — the browser asks for a treatment, the server produces the pixels that
+OCR actually sees, and the same function draws the preview.
 
 A page's trim (``models.Trim``) is applied here too, and first: it is measured on the file as stored,
 so it cuts before the page is turned, and the treatment then works only on what OCR will read.
@@ -41,8 +42,8 @@ class Enhancement:
     gamma: float = 0.5
     lightness: int = 200                 # whiten background
     chroma: int = 10
-    reach: float = 1.0                   # mend white lines
-    darkness: float = 1.8
+    reach: float = 1.5                   # mend white lines
+    darkness: float = 2.0
     denoise_before: bool = False         # smooth grain before the treatment, after it, or both
     denoise_after: bool = False          # (Experiment only; the Workshop doesn't offer it)
     denoise_strength: int = 6
