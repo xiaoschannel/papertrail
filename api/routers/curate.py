@@ -19,7 +19,7 @@ from api.schemas import (
     MoveOut, NameCount, NameGroupOut, NormalizeEngineOut, NormalizeOut, RestoreIn, TossIn, TossOut,
 )
 from data import (
-    load_distinct_pairs, load_kept_duplicates, load_reorganized_state, read_sidecar, save_kept_duplicates,
+    load_distinct_pairs, load_kept_duplicates, read_sidecar, save_kept_duplicates,
 )
 from dedupe_candidates import drop_confirmed_different, find_dedupe_clusters
 from models import ReviewDecision
@@ -38,14 +38,15 @@ def dedupe_clusters(output_path: Path = Depends(get_output_path)):
     Clustered per DOCUMENT, not per file: the pages of one multi-page receipt share a date, time and
     cost, so clustering files would report every multi-page document as its own duplicate.
     """
-    tossed, _accepted = load_reorganized_state(output_path)
+    # Both from the cache: reading the archive again here would re-parse every sidecar on each request.
+    tossed, _accepted = cache.archive_state(output_path)
     records = cache.viz_records(output_path)
     if records.empty:
         return DedupeOut(archived=0, tossed=len(tossed), clusters=[])
 
     reviews: dict[str, ReviewDecision] = {}
     rows: dict[str, dict] = {}
-    for _, row in records.iterrows():
+    for row in records.to_dict("records"):
         reviews[row["filename"]] = ReviewDecision(
             verdict="accepted", document_type=row["document_type"], name=row["name"], date=row["date"],
             time=row["time"], cost=float(row["cost"]), currency=row["currency"], comment="")
