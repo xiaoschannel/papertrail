@@ -1,10 +1,12 @@
 from pathlib import Path
 
 import numpy as np
+from rapidfuzz.distance import Levenshtein
+from rapidfuzz.process import cdist
 from sklearn.cluster import DBSCAN
 from sklearn.metrics.pairwise import cosine_distances
 
-from name_similarity import DEFAULT_THRESHOLD, ensure_embeddings, levenshtein_similarity
+from name_similarity import DEFAULT_THRESHOLD, ensure_embeddings
 
 
 class NormalizeEngine:
@@ -60,14 +62,9 @@ class StringEngine(NormalizeEngine):
     label = "String similarity (Levenshtein)"
 
     def _dist_matrix(self, output_path: Path, all_names: list[str]) -> np.ndarray:
-        n = len(all_names)
-        dist_matrix = np.zeros((n, n), dtype=np.float64)
-        for i in range(n):
-            for j in range(i + 1, n):
-                d = 1.0 - levenshtein_similarity(all_names[i], all_names[j])
-                dist_matrix[i, j] = d
-                dist_matrix[j, i] = d
-        return dist_matrix
+        # Every pair at once in rapidfuzz: a Python loop over every pair of names grows with the square of them.
+        similarity = cdist(all_names, all_names, scorer=Levenshtein.normalized_similarity, dtype=np.float64)
+        return 1.0 - similarity
 
     def render_slider(self, st, key: str, default: int = 80, on_change=None) -> float:
         pct = st.slider(

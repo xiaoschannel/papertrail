@@ -155,7 +155,7 @@ def normalize_clusters(
     # both engines cluster on distance, so percent similarity is converted here.
     eps_value = float(eps) if engine_id == "embedding" else 1.0 - float(eps) / 100.0
 
-    by_name, canonical = name_merge.names_in_use(output_path)
+    by_name, canonical = name_merge.names_in_use(output_path, cache.archive_state(output_path))
     names = sorted(set(by_name) | canonical)
     pairs = load_distinct_pairs(output_path)
     groups: list[NameGroup] = []
@@ -187,7 +187,7 @@ def _merge_out(plan: name_merge.MergePlan) -> MergeOut:
 @router.post("/normalize/preview", response_model=MergeOut)
 def preview_merge(body: MergeIn, output_path: Path = Depends(get_output_path)):
     """Exactly what the merge would rewrite and re-file, before anything is written."""
-    return _merge_out(name_merge.plan_merge(output_path, body.target, body.variants))
+    return _merge_out(name_merge.plan_merge(output_path, body.target, body.variants, cache.archive_state(output_path)))
 
 
 @router.post("/normalize/merge", response_model=MergeOut)
