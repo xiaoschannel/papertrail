@@ -19,7 +19,7 @@ from api.schemas import (
     MoveOut, NameCount, NameGroupOut, NormalizeEngineOut, NormalizeOut, RestoreIn, TossIn, TossOut,
 )
 from data import (
-    load_distinct_pairs, load_kept_duplicates, load_reorganized_state, read_sidecar, save_kept_duplicates,
+    load_distinct_pairs, load_kept_duplicates, read_sidecar, save_kept_duplicates,
 )
 from dedupe_candidates import drop_confirmed_different, find_dedupe_clusters
 from models import ReviewDecision
@@ -38,14 +38,15 @@ def dedupe_clusters(output_path: Path = Depends(get_output_path)):
     Clustered per DOCUMENT, not per file: the pages of one multi-page receipt share a date, time and
     cost, so clustering files would report every multi-page document as its own duplicate.
     """
-    tossed, _accepted = load_reorganized_state(output_path)
+    # Both from the cache: reading the archive again here would re-parse every sidecar on each request.
+    tossed, _accepted = cache.archive_state(output_path)
     records = cache.viz_records(output_path)
     if records.empty:
         return DedupeOut(archived=0, tossed=len(tossed), clusters=[])
 
     reviews: dict[str, ReviewDecision] = {}
     rows: dict[str, dict] = {}
-    for _, row in records.iterrows():
+    for row in records.to_dict("records"):
         reviews[row["filename"]] = ReviewDecision(
             verdict="accepted", document_type=row["document_type"], name=row["name"], date=row["date"],
             time=row["time"], cost=float(row["cost"]), currency=row["currency"], comment="")
@@ -154,7 +155,7 @@ def normalize_clusters(
     # both engines cluster on distance, so percent similarity is converted here.
     eps_value = float(eps) if engine_id == "embedding" else 1.0 - float(eps) / 100.0
 
-    by_name, canonical = name_merge.names_in_use(output_path)
+    by_name, canonical = name_merge.names_in_use(output_path, cache.archive_state(output_path))
     names = sorted(set(by_name) | canonical)
     pairs = load_distinct_pairs(output_path)
     groups: list[NameGroup] = []
@@ -186,7 +187,7 @@ def _merge_out(plan: name_merge.MergePlan) -> MergeOut:
 @router.post("/normalize/preview", response_model=MergeOut)
 def preview_merge(body: MergeIn, output_path: Path = Depends(get_output_path)):
     """Exactly what the merge would rewrite and re-file, before anything is written."""
-    return _merge_out(name_merge.plan_merge(output_path, body.target, body.variants))
+    return _merge_out(name_merge.plan_merge(output_path, body.target, body.variants, cache.archive_state(output_path)))
 
 
 @router.post("/normalize/merge", response_model=MergeOut)

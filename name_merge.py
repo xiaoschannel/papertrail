@@ -21,7 +21,12 @@ from data import (
 )
 from dedupe_candidates import drop_confirmed_different as filter_by_distinct_pairs
 from document_files import ensure_movable
+from models import Sidecar
 from organize_utils import apply_reorganize, resolve_single_accepted_destination
+
+# ``load_reorganized_state``'s result: the functions below take it from a caller that has already read the
+# archive (the API's cache), and read it themselves otherwise.
+ArchiveState = tuple[set[str], dict[str, tuple[Sidecar, str]]]
 
 
 @dataclass
@@ -47,9 +52,9 @@ class MergePlan:
     error: str | None = None
 
 
-def names_in_use(output_path: Path) -> tuple[dict[str, list[str]], set[str]]:
+def names_in_use(output_path: Path, state: ArchiveState | None = None) -> tuple[dict[str, list[str]], set[str]]:
     """(name -> archived filenames, names that are already a normalization target)."""
-    _tossed, accepted = load_reorganized_state(output_path)
+    _tossed, accepted = state if state is not None else load_reorganized_state(output_path)
     by_name: dict[str, list[str]] = {}
     for filename, (sidecar, _rel) in accepted.items():
         if sidecar.review.name:
@@ -75,10 +80,11 @@ def visible_groups(clusters: dict[int, list[str]], by_name: dict[str, list[str]]
     return groups
 
 
-def plan_merge(output_path: Path, target: str, variants: list[str]) -> MergePlan:
+def plan_merge(output_path: Path, target: str, variants: list[str], state: ArchiveState | None = None) -> MergePlan:
     """What merging ``variants`` into ``target`` would do — without doing any of it."""
     variants = [name for name in dict.fromkeys(variants) if name != target]
-    by_name, _canonical = names_in_use(output_path)
+    state = state if state is not None else load_reorganized_state(output_path)
+    by_name, _canonical = names_in_use(output_path, state)
     if not target.strip():
         return MergePlan(target=target, variants=variants, documents=0, error="Pick a name to merge into.")
     if not variants:
@@ -92,18 +98,20 @@ def plan_merge(output_path: Path, target: str, variants: list[str]) -> MergePlan
                 if normalizations.get(entry.get("confirmed", ""), entry.get("confirmed", "")) != entry.get("confirmed", ""))
     documents = sum(len(by_name.get(variant, [])) for variant in variants)
     return MergePlan(target=target, variants=variants, documents=documents,
-                     moves=_planned_moves(output_path, target, variants, by_name),
+                     moves=_planned_moves(output_path, target, variants, by_name, state[1]),
                      decisions=decisions, smart_matches=smart)
 
 
 def apply_merge(output_path: Path, target: str, variants: list[str]) -> MergePlan:
     """Do the merge: rewrite the sidecars and registries, then re-file what the new name changed."""
-    plan = plan_merge(output_path, target, variants)
+    # Read fresh, never from a cache: this moves files, so it must see where they are now.
+    state = load_reorganized_state(output_path)
+    plan = plan_merge(output_path, target, variants, state)
     if plan.error:
         raise ValueError(plan.error)
 
-    by_name, _canonical = names_in_use(output_path)
-    _tossed, accepted = load_reorganized_state(output_path)
+    by_name, _canonical = names_in_use(output_path, state)
+    _tossed, accepted = state
     normalizations = _merged_normalizations(load_name_normalizations(output_path), target, plan.variants)
     # Every file the merge will re-file must be free to move, or nothing is written at all.
     ensure_movable([output_path / accepted[filename][1] for variant in plan.variants
@@ -178,14 +186,13 @@ def _merged_normalizations(normalizations: dict[str, str], target: str, variants
     return merged
 
 
-def _planned_moves(output_path: Path, target: str, variants: list[str],
-                   by_name: dict[str, list[str]]) -> list[tuple[str, str]]:
+def _planned_moves(output_path: Path, target: str, variants: list[str], by_name: dict[str, list[str]],
+                   accepted: dict[str, tuple[Sidecar, str]]) -> list[tuple[str, str]]:
     """Where the affected documents would end up once they carry ``target``.
 
     A preview, so it resolves each document on its own: if several of them land in the same folder on
     the same day, the real merge may add a " (2)" this doesn't show.
     """
-    _tossed, accepted = load_reorganized_state(output_path)
     moves: list[tuple[str, str]] = []
     for variant in variants:
         for filename in by_name.get(variant, []):

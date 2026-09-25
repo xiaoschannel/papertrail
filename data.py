@@ -582,21 +582,27 @@ def load_reorganized_state(
     if tossed_dir.exists():
         tossed = {p.name for p in tossed_dir.iterdir() if p.is_file() and p.suffix.lower() != ".json"}
 
+    # Every cold archive read pays this loop once per page, so it sticks to os.scandir (whose entries know
+    # whether they are files without another stat on Windows) and builds relative paths as strings.
     accepted_metadata: dict[str, tuple[Sidecar, str]] = {}
     for month_dir in _iter_year_month_dirs(output_path):
-        sidecar_paths: list[Path] = []
-        stem_to_datafile: dict[str, Path] = {}
-        for p in month_dir.iterdir():
-            if not p.is_file():
-                continue
-            if p.suffix == ".json":
-                sidecar_paths.append(p)
-            else:
-                stem_to_datafile[p.stem] = p
-        for sidecar_path in sidecar_paths:
-            sidecar = Sidecar.model_validate_json(sidecar_path.read_text(encoding="utf-8"))
-            data_file = stem_to_datafile.get(sidecar_path.stem)
-            rel_path = data_file.relative_to(output_path).as_posix() if data_file else ""
+        month_rel = month_dir.relative_to(output_path).as_posix()
+        sidecar_paths: list[tuple[str, str]] = []        # (stem, path)
+        stem_to_datafile: dict[str, str] = {}
+        with os.scandir(month_dir) as entries:
+            for entry in entries:
+                if not entry.is_file():
+                    continue
+                stem, suffix = os.path.splitext(entry.name)
+                if suffix == ".json":
+                    sidecar_paths.append((stem, entry.path))
+                else:
+                    stem_to_datafile[stem] = entry.name
+        for stem, sidecar_path in sidecar_paths:
+            with open(sidecar_path, "rb") as f:
+                sidecar = Sidecar.model_validate_json(f.read())
+            data_name = stem_to_datafile.get(stem)
+            rel_path = f"{month_rel}/{data_name}" if data_name else ""
             accepted_metadata[sidecar.original_filename] = (sidecar, rel_path)
 
     return tossed, accepted_metadata

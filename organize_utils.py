@@ -1,7 +1,8 @@
 from collections import defaultdict
 from pathlib import Path
 
-from models import ReviewDecision, Sidecar
+from data import load_reorganized_state
+from models import ReviewDecision
 from viz_records import page_order
 
 FULLWIDTH_COLON = "\uff1a"
@@ -101,27 +102,7 @@ def plan_accepted_destinations(
 
 
 def apply_reorganize(output_path: Path) -> list[tuple[str, str, str]]:
-    accepted: dict[str, tuple[Sidecar, str]] = {}
-    for year_dir in output_path.iterdir():
-        if not year_dir.is_dir() or not year_dir.name.isdigit():
-            continue
-        for month_dir in year_dir.iterdir():
-            if not month_dir.is_dir() or not (month_dir.name.isdigit() or month_dir.name == "undated"):
-                continue
-            sidecar_paths: list[Path] = []
-            stem_to_datafile: dict[str, Path] = {}
-            for p in month_dir.iterdir():
-                if not p.is_file():
-                    continue
-                if p.suffix == ".json":
-                    sidecar_paths.append(p)
-                else:
-                    stem_to_datafile[p.stem] = p
-            for sidecar_path in sidecar_paths:
-                sidecar = Sidecar.model_validate_json(sidecar_path.read_text(encoding="utf-8"))
-                data_file = stem_to_datafile.get(sidecar_path.stem)
-                rel_path = data_file.relative_to(output_path).as_posix() if data_file else ""
-                accepted[sidecar.original_filename] = (sidecar, rel_path)
+    _tossed, accepted = load_reorganized_state(output_path)
 
     stale: dict[str, ReviewDecision] = {}
     stable_stems: dict[str, set[str]] = defaultdict(set)
