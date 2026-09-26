@@ -1,6 +1,7 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useShortcutKeys } from '../../api/config.ts'
 import type { BoxRect, FieldBox, ReviewPage, TopPoints, Trim } from '../../api/types.ts'
+import { ScanViewer } from '../scans.tsx'
 import { TrimmedImage } from '../TrimmedImage.tsx'
 import { Empty } from '../ui.tsx'
 import { useHeldKey } from '../useShortcuts.ts'
@@ -58,6 +59,8 @@ function turned(r: BoxRect, turn: Turn): BoxRect {
  *
  * `hideBoxes` lifts the boxes off the scan for a moment — a box drawn over the text it cites is in the
  * way of reading it. They are hidden in CSS, so nothing is torn down and put back on the way through.
+ *
+ * Clicking a scan opens it full size in the scan viewer, boxes and all: to read it, not to trim it.
  */
 export function ScanOverlay({
   pages, imageUrl, activeFields, onHoverField, turn = '', originalUrl, showOriginal = false,
@@ -80,6 +83,7 @@ export function ScanOverlay({
   /** Something to do with one page, beside its caption (Review: send it back to Fix Rotation). */
   pageAction?: ((page: ReviewPage) => ReactNode) | undefined
 }) {
+  const [zoomed, setZoomed] = useState<number | null>(null)
   const isActive = (box: FieldBox) => box.fields.some((f) => activeFields.includes(f))
   const original = showOriginal && originalUrl !== undefined
   const boxTurn: Turn = original ? '' : turn
@@ -101,22 +105,28 @@ export function ScanOverlay({
       </div>
     )
   }))
-  const scan = (page: ReviewPage, src: string, alt: string, untreated: boolean, shown: boolean) => (
-    <TrimmedImage src={src} alt={alt} hidden={!shown} lazy={false}
+  const scan = (page: ReviewPage, src: string, alt: string, untreated: boolean, shown: boolean, fit: 'width' | 'contain' = 'width') => (
+    <TrimmedImage src={src} alt={alt} hidden={!shown} lazy={false} fit={fit}
       trim={bandOf ? bandOf(page, untreated) : page.trim} pretrimmed={bandOf !== undefined}>
       {shown && boxes(page)}
     </TrimmedImage>
   )
+  const shownUrl = (filename: string) => (original ? originalUrl!(filename) : imageUrl(filename))
+  const zoomedPage = zoomed === null ? undefined : pages[zoomed]
+  const close = () => {
+    setZoomed(null)
+    onHoverField(null)    // a box under the pointer as the viewer went never hears it leave
+  }
   return (
     <div className={`scan-pages${hideBoxes ? ' boxes-hidden' : ''}`}>
       {pages.map((page, i) => (
         <figure key={page.file_key} className="scan-page">
           {page.image_available && page.filename ? (
-            <div className="scan-frame">
+            <button type="button" className="scan-frame" onClick={() => setZoomed(i)} title="Show this scan full size">
               {/* Both stay loaded, so the swap is instant; the boxes go on whichever is showing. */}
               {originalUrl && scan(page, originalUrl(page.filename), `Page ${i + 1}, as scanned`, true, original)}
               {scan(page, imageUrl(page.filename), `Page ${i + 1}`, false, !original)}
-            </div>
+            </button>
           ) : (
             <Empty>{page.filename ? `${page.filename} ${missing}.` : 'No image for this page.'}</Empty>
           )}
@@ -133,12 +143,23 @@ export function ScanOverlay({
           </figcaption>
         </figure>
       ))}
+      {zoomedPage?.filename && (
+        <ScanViewer label={`Page ${zoomed! + 1}`} src={shownUrl(zoomedPage.filename)} onClose={close}
+          scan={(
+            <div className={`scan-viewer__frame scan-viewer__frame--band${hideBoxes ? ' boxes-hidden' : ''}`}>
+              {scan(zoomedPage, shownUrl(zoomedPage.filename), `Page ${zoomed! + 1}`, original, true, 'contain')}
+            </div>
+          )}>
+          {' '}{zoomedPage.filename}
+        </ScanViewer>
+      )}
     </div>
   )
 }
 
-/** Whether the Hide boxes shortcut (B unless changed in Config) is held: pass it as `hideBoxes`. */
+/** Whether the Hide boxes shortcut (B unless changed in Config) is held: pass it as `hideBoxes`. It works
+ *  with a dialog open too, so it reaches the boxes on a scan opened full size. */
 export function useBoxesHidden(): boolean {
   const key = useShortcutKeys()?.hide_boxes
-  return useHeldKey(key ?? '', key !== undefined)
+  return useHeldKey(key ?? '', key !== undefined, true)
 }
