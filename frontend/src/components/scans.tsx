@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { inputUrl } from '../api/client.ts'
 import { useShortcutKeys } from '../api/config.ts'
@@ -143,8 +143,16 @@ export function StraightenedScan({ src, alt, tilt, outline, across = 1, maxHeigh
   )
   const crop = natural && outline && straightenedCrop(natural, tilt, outline)
   if (natural === null || !crop) {
-    // CSS turns clockwise for positive angles; a tilt is counter-clockwise
-    return <div className="scan-viewer__frame">{img({ transform: `rotate(${-tilt}deg) scale(${tiltFit(natural, tilt)})` })}</div>
+    // Kept to the room it has, and not drawn until the scan's size and its ink are known: drawn before, it
+    // would show for a moment at a size about to change.
+    const limit = { ...(maxHeight === undefined ? {} : { maxHeight }), ...(width === undefined ? {} : { maxWidth: width }) }
+    const ready = natural !== null && outline !== undefined
+    return (
+      <div className="scan-viewer__frame" style={ready ? undefined : { visibility: 'hidden' }}>
+        {/* CSS turns clockwise for positive angles; a tilt is counter-clockwise */}
+        {img({ ...limit, transform: `rotate(${-tilt}deg) scale(${tiltFit(natural, tilt)})` })}
+      </div>
+    )
   }
   const [left, top, right, bottom] = crop.box
   const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16
@@ -224,7 +232,7 @@ export function ScanViewer({ label, filename, version = 0, src, onClose, childre
 }
 
 /** Re-render when the window changes size. */
-function useWindowSize() {
+export function useWindowSize() {
   const [, setSize] = useState(0)
   useEffect(() => {
     const onResize = () => setSize(window.innerWidth * 10000 + window.innerHeight)
@@ -255,9 +263,11 @@ export function ScanCompare({ src, alt, turn = 0, tilt = 0, outline, maxHeight, 
   const box = useRef<HTMLDivElement>(null)
   const comparing = pair || Boolean(turn || tilt)     // the side-by-side, while a fix is previewed or always
   const [room, setRoom] = useState<number | undefined>(undefined)
-  useEffect(() => {
+  // measured before the first paint, so the halves are never drawn at a guessed size
+  useLayoutEffect(() => {
     const parent = box.current?.parentElement
     if (!parent) return undefined
+    setRoom(parent.clientWidth)
     const observer = new ResizeObserver(() => setRoom(parent.clientWidth))
     observer.observe(parent)
     return () => observer.disconnect()

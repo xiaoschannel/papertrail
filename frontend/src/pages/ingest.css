@@ -123,7 +123,9 @@
 /* Fix Rotation's queue: the scan (as it is, and fixed) over its controls, which keep one place scan after
    scan; the controls are the scan viewer's, laid out for every scan (see RotationDecider) */
 .rotation-decider { display: grid; gap: 10px; }
-.rotation-decider__stage { display: grid; place-items: center; min-height: 12rem; overflow: hidden; }
+/* at most 90rem wide: the preview sizes its halves to the room its parent (this) has, so the cap is here */
+.rotation-decider__stage { display: grid; place-items: center; min-height: 12rem; overflow: hidden;
+  width: min(100%, 90rem); justify-self: center; }
 .rotation-decider .rotation-controls { width: min(46rem, 100%); justify-self: center; }
 .rotation-nav { display: flex; align-items: center; gap: 12px; width: min(46rem, 100%); justify-self: center; }
 .rotation-nav > span:not(.segmented) { margin-inline: auto; }
@@ -135,7 +137,7 @@
 .rotation-controls__hold { color: var(--muted); }
 /* the preview takes the width its scans need at the stage's height (a wider document, a wider preview),
    centred, rather than spreading the two halves across the window */
-.rotation-decider .scan-viewer__compare { justify-self: center; justify-content: center; max-width: min(100%, 90rem); }
+.rotation-decider .scan-viewer__compare { justify-self: center; justify-content: center; }
 .rotation-decider .scan-viewer__compare > div { flex: 0 1 auto; }
 .rotation-recent { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 13px; }
 .rotation-recent li { display: flex; align-items: center; gap: 8px; }

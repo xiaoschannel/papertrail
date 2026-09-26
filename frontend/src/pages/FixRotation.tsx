@@ -8,7 +8,7 @@ import { CappedImage } from '../components/DocumentCard.tsx'
 import { FinalizeBar, useFinalizeStatus } from '../components/finalize.tsx'
 import { useHolderOf } from '../components/jobs.tsx'
 import { RecentRotations, RotationDecider } from '../components/rotation.tsx'
-import { batchHint, batchTitle, scanHeightLeaving } from '../components/scans.tsx'
+import { batchHint, batchTitle, scanHeightLeaving, useWindowSize } from '../components/scans.tsx'
 import { Card, Empty, ErrorState, Loading } from '../components/ui.tsx'
 import { keyLabel, useShortcuts } from '../components/useShortcuts.ts'
 import './ingest.css'
@@ -88,6 +88,7 @@ const batchOf = (key: string) => Number(key.split(':')[0])
 
 /** One scan at a time, in batch then scan order; the next one comes up as each is decided. */
 function Queue({ items, toggle }: { items: RotationItem[]; toggle: ReactNode }) {
+  useWindowSize()   // the scan's height is the window's: a resize sizes it again
   const keys = useShortcutKeys()
   const holderOf = useHolderOf()
   // Kept on the scan's key, so a queue that changes under it (a decision, a refetch) keeps it in view; the
