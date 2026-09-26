@@ -37,6 +37,8 @@ const sizer = (width: number, height: number) =>
  * `fit="contain"` fits the scan inside its container's width and `--scan-max-h`, like an image with
  * max-width and max-height (the File Index tiles); the default fills the container's width.
  *
+ * Once loaded, a band wider than it is tall is marked `is-landscape`, so a container can size it differently.
+ *
  * `children` are drawn over the band, positioned in percentages of it (the OCR boxes).
  */
 export function TrimmedImage({
@@ -70,7 +72,8 @@ export function TrimmedImage({
   const bandHeight = size ? size.height * (band.bottom - band.top) : 0
   const capped = size !== null && capRatio !== undefined && bandHeight / size.width > capRatio + 0.01
   const classes = ['trimmed-scan', `trimmed-scan--${fit}`, className,
-    shown.top > 0 && 'is-cut-top', shown.bottom < 1 && !capped && 'is-cut-bottom', capped && 'is-capped']
+    shown.top > 0 && 'is-cut-top', shown.bottom < 1 && !capped && 'is-cut-bottom', capped && 'is-capped',
+    size && size.width > bandHeight && 'is-landscape']
     .filter(Boolean).join(' ')
   const img = { src, alt, loading: lazy ? 'lazy' as const : undefined, draggable: false, onLoad: (e: { currentTarget: HTMLImageElement }) => measure(e.currentTarget) }
 

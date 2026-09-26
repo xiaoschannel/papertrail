@@ -13,6 +13,10 @@
 /* The cap is on the FRAME, not the scan, so the field boxes (absolutely positioned over the scan's
    band, see TrimmedImage) keep lining up with it. */
 .scan-frame { position: relative; line-height: 0; max-width: var(--scan-width, 76%); margin: 0 auto; }
+/* The default cap keeps a tall receipt from running on down the page; a landscape page can't, so it
+   fills the column (a page that sets --scan-width keeps its own). Only the scan showing counts: the
+   Workshop keeps the untreated one loaded, hidden, and a turn can change which way it lies. */
+.scan-frame:has(> .trimmed-scan.is-landscape:not([hidden])) { max-width: var(--scan-width, 100%); }
 
 .field-box {
   position: absolute; box-sizing: border-box; z-index: 2;   /* over the shadow of a cut */
