@@ -224,7 +224,7 @@ export function ScanViewer({ label, filename, version = 0, src, onClose, childre
 }
 
 /** Re-render when the window changes size. */
-function useWindowSize() {
+export function useWindowSize() {
   const [, setSize] = useState(0)
   useEffect(() => {
     const onResize = () => setSize(window.innerWidth * 10000 + window.innerHeight)
