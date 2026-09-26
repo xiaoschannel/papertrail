@@ -86,6 +86,8 @@ export function RotationDecider({ scan, source, locked, layout, maxHeight, heade
     enabled: degrees !== 0 && top === null,
     staleTime: Infinity,
   })
+  // the preview waits for the outline; should it fail, it crops to the levelled page alone rather than wait on
+  const outlinePoints = outline.isError ? [] : outline.data?.points
   const decide = useMutation({
     mutationFn: (fix: boolean) => api.ingest.decideRotation({
       key: scan.key, image_version: scan.image_version, fix, top_points: fix ? top : null, degrees: fix ? degrees : 0, source,
@@ -161,7 +163,7 @@ export function RotationDecider({ scan, source, locked, layout, maxHeight, heade
   if (layout === 'dialog') {
     return (
       <ScanViewer label={scan.key} filename={scan.filename} version={scan.image_version} onClose={onClose ?? (() => {})}
-        turn={turn} tilt={degrees} outline={outline.data?.points} guides={shown} footer={controls} pair />
+        turn={turn} tilt={degrees} outline={outlinePoints} guides={shown} footer={controls} pair />
     )
   }
   return (
@@ -170,7 +172,7 @@ export function RotationDecider({ scan, source, locked, layout, maxHeight, heade
       {/* a fixed height, whatever the scan's shape, so the controls under it keep their place */}
       <div className="rotation-decider__stage" style={maxHeight === undefined ? undefined : { height: maxHeight + 24 }}>
         <ScanCompare src={inputUrl(scan.filename, scan.image_version)} alt={`Scan ${scan.key}`} turn={turn} tilt={degrees}
-          outline={outline.data?.points} maxHeight={maxHeight} pair />
+          outline={outlinePoints} maxHeight={maxHeight} pair />
       </div>
       {controls}
     </div>
