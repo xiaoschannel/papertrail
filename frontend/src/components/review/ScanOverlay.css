@@ -11,8 +11,16 @@
 .scan-page figcaption button { padding: 2px 8px; font-size: 11.5px; }
 .scan-page__retrimmed { color: #b8860b; }
 /* The cap is on the FRAME, not the scan, so the field boxes (absolutely positioned over the scan's
-   band, see TrimmedImage) keep lining up with it. */
-.scan-frame { position: relative; line-height: 0; max-width: var(--scan-width, 76%); margin: 0 auto; }
+   band, see TrimmedImage) keep lining up with it. It is the button that opens the scan full size. */
+.scan-frame {
+  all: unset; display: block; box-sizing: border-box; width: 100%; cursor: zoom-in;
+  position: relative; line-height: 0; max-width: var(--scan-width, 76%); margin: 0 auto;
+}
+.scan-frame:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* The default cap keeps a tall receipt from running on down the page; a landscape page can't, so it
+   fills the column (a page that sets --scan-width keeps its own). Only the scan showing counts: the
+   Workshop keeps the untreated one loaded, hidden, and a turn can change which way it lies. */
+.scan-frame:has(> .trimmed-scan.is-landscape:not([hidden])) { max-width: var(--scan-width, 100%); }
 
 .field-box {
   position: absolute; box-sizing: border-box; z-index: 2;   /* over the shadow of a cut */
@@ -33,5 +41,5 @@
 /* boxes at the very top of the page put their label underneath instead of off the image */
 .field-box.label-below .field-box__label { bottom: auto; top: 100%; border-radius: 0 0 3px 3px; }
 
-/* Held key: the boxes step aside so the text underneath can be read. */
-.scan-pages.boxes-hidden .field-box { display: none; }
+/* Held key: the boxes step aside so the text underneath can be read (in the full-size viewer too). */
+.boxes-hidden .field-box { display: none; }
