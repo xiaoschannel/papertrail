@@ -165,6 +165,12 @@ export const api = {
   },
 
   curate: {
+    /** What waits on each curate page, for the sidebar; `preview` counts at settings not saved yet (Config). */
+    counts: (preview?: CountsPreview) => unwrap(client.GET('/api/curate/counts', { params: { query: {
+      brands_min_names: preview?.brandsMinNames ?? null, prefix_boundary_only: preview?.prefixBoundaryOnly ?? null,
+      prefix_max_length: preview?.prefixMaxLength ?? null, prefix_min_length: preview?.prefixMinLength ?? null,
+      normalize_engine: preview?.normalizeEngine ?? null, normalize_threshold: preview?.normalizeThreshold ?? null,
+    } } })),
     dedupe: () => unwrap(client.GET('/api/curate/dedupe')),
     tossDuplicate: (path: string) => unwrap(client.POST('/api/curate/dedupe/toss', { body: { path } })),
     keepBoth: (documents: string[]) => unwrap(client.POST('/api/curate/dedupe/keep', { body: { documents } })),
@@ -232,6 +238,12 @@ export const api = {
     list: () => unwrap(client.GET('/api/jobs')),
     cancel: (jobId: string) => unwrap(client.POST('/api/jobs/{job_id}/cancel', { params: { path: { job_id: jobId } } })),
   },
+}
+
+/** The settings the sidebar's curate counts are taken at, unsaved: what Config previews. */
+export type CountsPreview = {
+  brandsMinNames: number; prefixBoundaryOnly: boolean; prefixMaxLength: number; prefixMinLength: number
+  normalizeEngine: string; normalizeThreshold: number
 }
 
 export type SuggestionSettings = {

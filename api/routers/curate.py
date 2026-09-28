@@ -5,18 +5,20 @@ from __future__ import annotations
 from itertools import combinations
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 import document_files
 import name_merge
+import workshop
 from api import cache
 from api.deps import get_output_path
 from api.jobs import Claim
 from api.guards import no_job_running, one_edit_at_a_time
 from api.model_manager import models
+from api.routers.brands import prefix_suggestions
 from api.schemas import (
-    DedupeCluster, DedupeMember, DedupeOut, DistinctIn, DistinctOut, KeepIn, KeptPair, MergeIn, MergeOut,
-    MoveOut, NameCount, NameGroupOut, NormalizeEngineOut, NormalizeOut, RestoreIn, TossIn, TossOut,
+    CurateCountsOut, DedupeCluster, DedupeMember, DedupeOut, DistinctIn, DistinctOut, KeepIn, KeptPair, MergeIn,
+    MergeOut, MoveOut, NameCount, NameGroupOut, NormalizeEngineOut, NormalizeOut, RestoreIn, TossIn, TossOut,
 )
 from data import (
     load_distinct_pairs, load_kept_duplicates, read_sidecar, save_kept_duplicates,
@@ -29,6 +31,70 @@ from normalize_engines import ENGINES
 from settings import NORMALIZE_THRESHOLDS, check_normalize_threshold, get_config
 
 router = APIRouter(prefix="/api/curate", tags=["curate"])
+
+
+# --- The sidebar's counts ----------------------------------------------------------------------
+def _mtime(path: Path) -> int:
+    return path.stat().st_mtime_ns if path.exists() else 0
+
+
+@router.get("/counts", response_model=CurateCountsOut)
+def curate_counts(
+    brands_min_names: int | None = Query(None, ge=1, le=50),
+    prefix_boundary_only: bool | None = None,
+    prefix_max_length: int | None = Query(None, ge=4, le=80),
+    prefix_min_length: int | None = Query(None, ge=1, le=24),
+    normalize_engine: str | None = None,
+    normalize_threshold: float | None = Query(None, gt=0),
+    output_path: Path = Depends(get_output_path),
+):
+    """What waits on each curate page. Each count is what its page would list, taken from the same
+    cached archive frames and kept until what it depends on changes (``cache.sidebar_count``), so asking
+    on every page change costs a few directory stats. Brand registry and Normalize count at their own
+    sidebar settings; the parameters stand in for them unsaved, so Config can show what a setting would
+    count before it is saved. Nothing here waits on a job or asks a model: an embedding count leaves out
+    the names not embedded yet."""
+    cfg = get_config()
+    if normalize_engine is not None and normalize_engine not in ENGINES:
+        raise HTTPException(status_code=422, detail=f"unknown engine: {normalize_engine}")
+    min_names = brands_min_names or cfg.sidebar_brands_min_names
+    marked = cache.sidebar_count(output_path, "workshop", (),
+                                 lambda: len(workshop.marked_documents(output_path)))
+    dedupe = cache.sidebar_count(output_path, "dedupe", (_mtime(output_path / "not_duplicates.json"),),
+                                 lambda: len(dedupe_clusters(output_path=output_path).clusters))
+    suggestion_settings = dict(
+        boundary_only=cfg.prefix_suggestion_boundary_only if prefix_boundary_only is None else prefix_boundary_only,
+        max_length=prefix_max_length or cfg.prefix_suggestion_max_length,
+        min_length=prefix_min_length or cfg.prefix_suggestion_min_length,
+        min_count=min_names)
+    brands = cache.sidebar_count(output_path, "brands", tuple(suggestion_settings.values()),
+                                 lambda: len(prefix_suggestions(output_path, **suggestion_settings)))
+
+    engine_id = normalize_engine or (cfg.sidebar_normalize_engine if cfg.sidebar_normalize_engine in ENGINES
+                                     else "string")
+    embedding = engine_id == "embedding"
+    threshold = float(normalize_threshold or (cfg.sidebar_normalize_embedding_threshold if embedding
+                                              else cfg.sidebar_normalize_string_similarity))
+
+    def name_groups() -> tuple[int, int]:
+        by_name, canonical = name_merge.names_in_use(output_path, cache.archive_state(output_path))
+        names = sorted(set(by_name) | canonical)
+        if len(names) < 2:
+            return 0, 0
+        clusters, missing = ENGINES[engine_id].run_offline(
+            output_path, names, threshold if embedding else 1.0 - threshold / 100.0)
+        groups = name_merge.visible_groups(clusters, by_name, canonical, load_distinct_pairs(output_path))
+        return len(groups), len(missing)
+
+    normalize, unembedded = cache.sidebar_count(
+        output_path, "normalize",
+        (engine_id, threshold, *(_mtime(output_path / f) for f in
+                                 ("distinct_pairs.json", "name_normalizations.json", "name_embeddings.npz"))),
+        name_groups)
+    return CurateCountsOut(workshop=marked, dedupe=dedupe, brands=brands,
+                           brands_min_names=min_names, normalize=normalize,
+                           normalize_engine=engine_id, normalize_threshold=threshold,
+                           normalize_unembedded=unembedded)
 
 
 @router.get("/dedupe", response_model=DedupeOut)

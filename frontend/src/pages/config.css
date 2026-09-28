@@ -24,7 +24,11 @@
 
 /* Shortcuts, a heading per place they work in. A key is a keycap-sized box, red when it clashes. */
 .config-keys + .config-keys { margin-top: 16px; }
-.config-keys h3 { margin: 0 0 8px; font-size: 12.5px; color: var(--muted); font-weight: 600; }
+/* The sidebar's counts: one part per page, under its own heading */
+.config-sub + .config-sub { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); }
+.config-preview strong { color: var(--text); font-variant-numeric: tabular-nums; }
+.config-preview.is-settling { opacity: .55; }
+.config-keys h3, .config-sub h3 { margin: 0 0 8px; font-size: 12.5px; color: var(--muted); font-weight: 600; }
 .config-page .field input.config-key {
   width: 4.5rem; text-align: center; cursor: pointer; caret-color: transparent;
   font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
