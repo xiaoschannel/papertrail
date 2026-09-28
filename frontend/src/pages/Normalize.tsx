@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api/client.ts'
 import { useConfig } from '../api/config.ts'
@@ -33,6 +33,12 @@ export default function Normalize() {
     enabled: config.isSuccess,
     placeholderData: (previous) => previous,
   })
+  // Clustering on Embedding embeds the names that had no vector yet, which the sidebar's count now takes in
+  const queryClient = useQueryClient()
+  const embedded = chosenEngine === 'embedding' && clusters.isSuccess ? clusters.dataUpdatedAt : 0
+  useEffect(() => {
+    if (embedded) void queryClient.invalidateQueries({ queryKey: ['curate', 'counts'] })
+  }, [embedded, queryClient])
 
   if (config.isPending || clusters.isPending) return <Loading what="name clusters" />
   if (clusters.error) return <ErrorState error={clusters.error} />
@@ -188,7 +194,7 @@ function DistinctPairs({ pairs }: { pairs: string[][] }) {
   const queryClient = useQueryClient()
   const forget = useMutation({
     mutationFn: ([first, second]: string[]) => api.curate.forgetDistinct(first ?? '', second ?? ''),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['curate', 'normalize'] }),
+    onSuccess: () => afterArchiveEdit(queryClient, ['curate', 'normalize']),   // the sidebar counts the pair again
   })
   return (
     <Card title="Ruled different" hint={`${pairs.length} pair(s)`}>

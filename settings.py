@@ -136,6 +136,14 @@ class AppConfig(BaseModel):
     prefix_suggestion_max_length: int = 24
     prefix_suggestion_min_length: int = 3
     prefix_suggestion_min_count: int = 2
+    #: The sidebar's counts on Brand registry and Normalize, set apart from what those pages show: a few
+    #: names sharing a prefix, or a loose similarity, is mostly noise, and the count should mean there is
+    #: something worth opening the page for. Brand registry counts prefixes shared by this many names.
+    sidebar_brands_min_names: int = 4
+    #: Normalize counts the name groups this engine finds at its threshold below.
+    sidebar_normalize_engine: str = "string"
+    sidebar_normalize_string_similarity: int = 90
+    sidebar_normalize_embedding_threshold: float = 0.05
     #: A tilt worth fixing on Fix Rotation, as a share of the page's short side (deskew.DEFAULT_TILT_SHARE).
     tilt_share: float = 0.03
     calendar_period: str = "week"

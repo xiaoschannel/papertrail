@@ -18,4 +18,6 @@ export function afterArchiveEdit(queryClient: QueryClient, own: readonly unknown
     },
     refetchType: 'none',
   })
+  // The sidebar is always on screen, and its curate counts are what an edit here changes
+  void queryClient.invalidateQueries({ queryKey: ['curate', 'counts'] })
 }

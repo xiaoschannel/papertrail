@@ -51,3 +51,24 @@ def test_cached_result_equals_fresh_build(api_client, configured_archive):
 
     api_client.get("/api/years")  # warm
     assert api_client.get("/api/viz/records").json() == df_records(build_viz_records(configured_archive))
+
+
+def test_a_sidebar_count_is_kept_until_its_inputs_change_or_the_cache_clears(configured_archive):
+    calls = []
+
+    def count(inputs):
+        return cache.sidebar_count(configured_archive, "test", inputs, lambda: calls.append(1) or len(calls))
+
+    assert count((1,)) == count((1,)) == 1
+    assert count((2,)) == 2                     # an input changed
+    cache.clear()
+    assert count((2,)) == 3                     # an in-place edit cleared it
+
+
+def test_a_sidebar_count_taken_across_a_clear_is_not_kept(configured_archive):
+    def stale():
+        cache.clear()                           # an edit lands while the count is being taken
+        return "stale"
+
+    assert cache.sidebar_count(configured_archive, "test", (), stale) == "stale"
+    assert cache.sidebar_count(configured_archive, "test", (), lambda: "fresh") == "fresh"

@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { api } from '../api/client.ts'
+import { api, type CountsPreview } from '../api/client.ts'
 import type { AppConfig, ConfigOptions, Shortcuts } from '../api/types.ts'
 import { TiltDemo } from '../components/TiltDemo.tsx'
+import { useDebounced } from '../components/useDebounced.ts'
+import { num } from '../format.ts'
 import { Card, ErrorState, Loading } from '../components/ui.tsx'
 import { keyLabel, keyOf } from '../components/useShortcuts.ts'
 import './config.css'
@@ -33,6 +35,7 @@ function ConfigForm({ saved, options }: { saved: AppConfig; options: ConfigOptio
   ) as Partial<AppConfig>
   const changed = Object.keys(patch)
   const clashes = shortcutClashes(draft.shortcuts)
+  const counts = useCountsPreview(draft)
 
   const save = useMutation({
     mutationFn: () => api.patchConfig(patch),
@@ -40,6 +43,7 @@ function ConfigForm({ saved, options }: { saved: AppConfig; options: ConfigOptio
       setEdits({})
       queryClient.setQueryData(['config'], fresh)
       void queryClient.invalidateQueries({ queryKey: ['ingest'] })  // the ingest pages show these choices too
+      void queryClient.invalidateQueries({ queryKey: ['curate', 'counts'] })  // the sidebar's count settings
     },
   })
 
@@ -135,6 +139,36 @@ function ConfigForm({ saved, options }: { saved: AppConfig; options: ConfigOptio
         </div>
       </Card>
 
+      <Card title="Sidebar counts" hint="What the Curate pages' counts in the sidebar count">
+        <div className="config-sub">
+          <h3>Normalize: name groups, usually at a stricter bar than the page's</h3>
+          <div className="config-grid">
+            <Choice label="Engine" value={draft.sidebar_normalize_engine}
+              options={options.normalize_engines.map((e) => e.id)}
+              labels={Object.fromEntries(options.normalize_engines.map((e) => [e.id, e.label]))}
+              hint="an embedding count leaves out names Normalize hasn't embedded yet"
+              onChange={(v) => set('sidebar_normalize_engine', v)} />
+            <Slider label="Embedding distance threshold" value={draft.sidebar_normalize_embedding_threshold}
+              min={options.embedding_threshold_step} max={options.embedding_threshold_step * 100}
+              step={options.embedding_threshold_step} format={(v) => v.toFixed(4)}
+              onChange={(v) => set('sidebar_normalize_embedding_threshold', v)} />
+            <Slider label="String similarity" value={draft.sidebar_normalize_string_similarity} min={50} max={100}
+              step={1} format={(v) => `${v}%`} onChange={(v) => set('sidebar_normalize_string_similarity', v)} />
+          </div>
+          <CountPreview count={counts.data?.normalize} what="name group(s)" settling={counts.isFetching}
+            note={counts.data?.normalize_engine === 'embedding' && counts.data.normalize_unembedded
+              ? `${num(counts.data.normalize_unembedded)} name(s) not embedded yet, left out` : ''} />
+        </div>
+        <div className="config-sub">
+          <h3>Brand registry: prefix suggestions shared by enough names</h3>
+          <div className="config-grid">
+            <Count label="Names sharing the prefix, at least" value={draft.sidebar_brands_min_names} min={1} max={50}
+              onChange={(v) => set('sidebar_brands_min_names', v)} />
+          </div>
+          <CountPreview count={counts.data?.brands} what="prefix suggestion(s)" settling={counts.isFetching} />
+        </div>
+      </Card>
+
       <Card title="Shortcuts" hint="click a key, then press the new one">
         {SHORTCUT_GROUPS.map(({ title, actions }) => (
           <div key={title} className="config-keys">
@@ -174,6 +208,41 @@ function ConfigForm({ saved, options }: { saved: AppConfig; options: ConfigOptio
         </span>
       </div>
     </div>
+  )
+}
+
+/** The sidebar's curate counts at the settings as they stand here, saved or not: clustering the names
+ *  takes a fraction of a second, so a setting can be judged by what it would count before it is saved. */
+function useCountsPreview(draft: AppConfig) {
+  const embedding = draft.sidebar_normalize_engine === 'embedding'
+  const brandsMinNames = draft.sidebar_brands_min_names
+  const prefixBoundaryOnly = draft.prefix_suggestion_boundary_only
+  const prefixMaxLength = draft.prefix_suggestion_max_length
+  const prefixMinLength = draft.prefix_suggestion_min_length
+  const normalizeEngine = draft.sidebar_normalize_engine
+  const normalizeThreshold = embedding ? draft.sidebar_normalize_embedding_threshold
+    : draft.sidebar_normalize_string_similarity
+  // One object per change of a setting, not per render: useDebounced restarts on a new value, and a fresh
+  // object every render would settle, re-render and settle again for as long as the page is open
+  const settings: CountsPreview = useMemo(
+    () => ({ brandsMinNames, prefixBoundaryOnly, prefixMaxLength, prefixMinLength, normalizeEngine, normalizeThreshold }),
+    [brandsMinNames, prefixBoundaryOnly, prefixMaxLength, prefixMinLength, normalizeEngine, normalizeThreshold])
+  const preview = useDebounced(settings, 300)
+  return useQuery({
+    queryKey: ['curate', 'counts', 'preview', preview],
+    queryFn: () => api.curate.counts(preview),
+    placeholderData: (previous) => previous,
+  })
+}
+
+/** What the sidebar would show at these settings. Always there, dimmed while a new answer comes. */
+function CountPreview({ count, what, settling, note = '' }:
+  { count: number | undefined; what: string; settling: boolean; note?: string }) {
+  return (
+    <p className={`config-note config-preview${settling ? ' is-settling' : ''}`} aria-live="polite">
+      The sidebar would show <strong>{count === undefined ? '…' : num(count)}</strong> {what}
+      {note && <> · {note}</>}
+    </p>
   )
 }
 

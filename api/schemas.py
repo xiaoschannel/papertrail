@@ -546,6 +546,18 @@ class PipelineCountsOut(_Model):
     archive: int                        # documents Archive would file now
 
 
+class CurateCountsOut(_Model):
+    """What waits on each curate page, for the sidebar, with the settings the counts were taken at."""
+    workshop: int                       # marked documents
+    dedupe: int                         # clusters Dedupe offers
+    brands: int                         # prefix suggestions shared by at least ``brands_min_names`` names
+    brands_min_names: int
+    normalize: int                      # name groups ``normalize_engine`` finds at ``normalize_threshold``
+    normalize_engine: str
+    normalize_threshold: float          # percent similarity (string), or cosine distance (embedding)
+    normalize_unembedded: int           # names not embedded yet, so left out of an embedding count
+
+
 class InkOutlineOut(_Model):
     """Where a scan's ink is: its convex hull's corners as ``[x, y]`` fractions of the scan's width and height.
     Straightening crops nothing inside it, so a preview crops the same way."""
