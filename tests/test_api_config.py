@@ -148,9 +148,11 @@ def test_normalize_thresholds_are_kept_to_what_their_slider_offers(api_client):
     assert 0 < engines["embedding"]["threshold_step"] == engines["embedding"]["threshold_min"] < 0.05
     saved = api_client.patch("/api/config", json={"normalize_string_similarity": 62,
                                                   "normalize_embedding_threshold": 0.1}).json()
-    for bad in ({"normalize_string_similarity": 0}, {"normalize_string_similarity": 101},
-                {"normalize_embedding_threshold": 80}, {"normalize_embedding_threshold": 0}):
-        assert api_client.patch("/api/config", json=bad).status_code == 422, bad
+    for prefix in ("", "sidebar_"):  # the sidebar's count has its own thresholds, on the same sliders
+        for bad in ({"normalize_string_similarity": 0}, {"normalize_string_similarity": 101},
+                    {"normalize_embedding_threshold": 80}, {"normalize_embedding_threshold": 0}):
+            bad = {prefix + key: value for key, value in bad.items()}
+            assert api_client.patch("/api/config", json=bad).status_code == 422, bad
     assert api_client.get("/api/config").json() == saved
 
 

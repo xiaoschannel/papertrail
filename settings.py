@@ -161,13 +161,13 @@ class AppConfig(BaseModel):
     calendar_date: str = ""
     shortcuts: Shortcuts = Shortcuts()
 
-    @field_validator("normalize_embedding_threshold")
+    @field_validator("normalize_embedding_threshold", "sidebar_normalize_embedding_threshold")
     @classmethod
     def _a_distance_the_slider_can_show(cls, value: float) -> float:
         check_normalize_threshold("embedding", value)
         return value
 
-    @field_validator("normalize_string_similarity")
+    @field_validator("normalize_string_similarity", "sidebar_normalize_string_similarity")
     @classmethod
     def _a_similarity_the_slider_can_show(cls, value: int) -> int:
         check_normalize_threshold("string", value)

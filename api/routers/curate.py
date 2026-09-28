@@ -75,6 +75,10 @@ def curate_counts(
     embedding = engine_id == "embedding"
     threshold = float(normalize_threshold or (cfg.sidebar_normalize_embedding_threshold if embedding
                                               else cfg.sidebar_normalize_string_similarity))
+    try:  # Config previews an unsaved threshold: one engine's value with the other would count nonsense
+        check_normalize_threshold(engine_id, threshold)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     def name_groups() -> tuple[int, int]:
         by_name, canonical = name_merge.names_in_use(output_path, cache.archive_state(output_path))

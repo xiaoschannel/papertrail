@@ -381,6 +381,8 @@ def test_counts_can_be_previewed_at_settings_not_saved(api_client):
     assert _counts(api_client) == saved                                  # nothing was saved
     assert api_client.get("/api/config").json()["sidebar_normalize_string_similarity"] == 90
     assert api_client.get("/api/curate/counts", params={"normalize_engine": "nope"}).status_code == 422
+    mismatched = api_client.get("/api/curate/counts", params={"normalize_engine": "string", "normalize_threshold": 0.05})
+    assert mismatched.status_code == 422 and "between 50 and 100" in mismatched.json()["detail"]
 
 
 def test_a_normalize_count_at_full_similarity_groups_only_identical_names(api_client):
