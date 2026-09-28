@@ -20,8 +20,10 @@ from __future__ import annotations
 
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TypeVar
 
 import pandas as pd
 
@@ -31,6 +33,8 @@ from models import Sidecar
 from viz_records import build_viz_records, viz_items_from_records
 
 TTL_SECONDS = 120.0
+
+T = TypeVar("T")
 
 
 @dataclass
@@ -47,6 +51,8 @@ class _Entry:
 _registry_lock = threading.Lock()
 _path_locks: dict[str, threading.Lock] = {}
 _entries: dict[str, _Entry] = {}
+_counts: dict[tuple[str, str], tuple[tuple, object]] = {}
+_cleared = 0   # how many times clear() ran: a count computed across one is not kept
 
 
 def _archive_signature(output_path: Path) -> tuple:
@@ -106,7 +112,30 @@ def viz_items(output_path: Path) -> pd.DataFrame:
         return entry.items
 
 
+def sidebar_count(output_path: Path, name: str, inputs: tuple, compute: Callable[[], T]) -> T:
+    """One of the sidebar's curate counts, kept until the archive's structure or ``inputs`` change.
+
+    The sidebar asks on every page change, and a count can mean clustering every merchant name. No TTL:
+    an in-place sidecar edit shows once something calls ``clear()`` — the edits that change a count do —
+    and a count a little behind is fine, where a page's own list must not be.
+    """
+    key = (str(output_path.resolve()), name)
+    signature = (_archive_signature(output_path), inputs)
+    with _registry_lock:
+        held, generation = _counts.get(key), _cleared
+    if held is not None and held[0] == signature:
+        return held[1]  # type: ignore[return-value]
+    value = compute()
+    with _registry_lock:
+        if generation == _cleared:
+            _counts[key] = (signature, value)
+    return value
+
+
 def clear() -> None:
     """Drop everything. Call after any write that changes archive-derived data."""
+    global _cleared
     with _registry_lock:
         _entries.clear()
+        _counts.clear()
+        _cleared += 1

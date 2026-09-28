@@ -150,7 +150,12 @@ def suggestions(
                   prefix_suggestion_max_length=settings["max_length"],
                   prefix_suggestion_min_length=settings["min_length"],
                   prefix_suggestion_min_count=settings["min_count"])
+    return [PrefixSuggestionOut(prefix=s.prefix, count=s.count, names=s.names)
+            for s in prefix_suggestions(output_path, **settings)]
+
+
+def prefix_suggestions(output_path: Path, **settings) -> list[registry.PrefixSuggestion]:
+    """Prefixes shared by the names no brand matches: the page's list, and the sidebar's count of it."""
     _receipts, _matched, unmatched = registry.brand_overview(cache.viz_records(output_path), _directory())
     names = [row.prefix for row in unmatched]   # build_prefix_suggestions counts distinct names
-    return [PrefixSuggestionOut(prefix=s.prefix, count=s.count, names=s.names)
-            for s in registry.build_prefix_suggestions(names, **settings)]
+    return registry.build_prefix_suggestions(names, **settings)

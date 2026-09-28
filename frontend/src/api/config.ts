@@ -17,7 +17,7 @@ export function useShortcutKeys() {
 /**
  * Save a few settings. Only the given fields are sent (PATCH), so a page remembering its own view
  * can't revert a model another page just chose, and the fresh config replaces the cached one. Pages whose
- * answers carry a setting (OCR's and Parse's status, the Experiment bench) are re-read too.
+ * answers carry a setting (OCR's and Parse's status, the Experiment bench, the sidebar's curate counts) are re-read too.
  */
 export function useSaveConfig() {
   const queryClient = useQueryClient()
@@ -26,6 +26,7 @@ export function useSaveConfig() {
     onSuccess: (fresh) => {
       queryClient.setQueryData(CONFIG_KEY, fresh)
       void queryClient.invalidateQueries({ queryKey: ['ingest'] })
+      void queryClient.invalidateQueries({ queryKey: ['curate', 'counts'] })   // the sidebar's own settings
       void queryClient.invalidateQueries({ queryKey: ['dev', 'experiment'], exact: true })
     },
   })

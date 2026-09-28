@@ -1,5 +1,5 @@
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
-import { StageCount, usePipelineCounts, type Stage } from './components/pipelineCounts.tsx'
+import { StageCount, useSidebarCounts, type Stage } from './components/sidebarCounts.tsx'
 import Dashboard from './pages/Dashboard.tsx'
 import Merchant from './pages/Merchant.tsx'
 import CalendarPage from './pages/CalendarPage.tsx'
@@ -44,10 +44,10 @@ const NAV: { group: string; items: { to: string; label: string; stage?: Stage }[
   {
     group: 'Curate',
     items: [
-      { to: '/workshop', label: 'Marked Workshop' },
-      { to: '/dedupe', label: 'Dedupe' },
-      { to: '/normalize', label: 'Normalize' },
-      { to: '/brands', label: 'Brand registry' },
+      { to: '/workshop', label: 'Marked Workshop', stage: 'workshop' },
+      { to: '/dedupe', label: 'Dedupe', stage: 'dedupe' },
+      { to: '/normalize', label: 'Normalize', stage: 'normalize' },
+      { to: '/brands', label: 'Brand registry', stage: 'brands' },
     ],
   },
   {
@@ -76,7 +76,7 @@ const NAV: { group: string; items: { to: string; label: string; stage?: Stage }[
 ]
 
 export default function App() {
-  const counts = usePipelineCounts()
+  const counts = useSidebarCounts()
   return (
     <div className="app">
       <nav className="sidebar">

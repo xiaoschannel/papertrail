@@ -1,4 +1,4 @@
-import { useState, type MouseEvent } from 'react'
+import { useEffect, useState, type MouseEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { afterArchiveEdit } from '../api/invalidate.ts'
 import { api, type SuggestionSettings } from '../api/client.ts'
@@ -113,6 +113,11 @@ function Suggestions({ brands, unmatched }: { brands: Brand[]; unmatched: { name
     enabled: config.isSuccess,
     placeholderData: (previous) => previous,
   })
+  // Asking saves these settings, and the sidebar's count is taken at them too
+  const asked = suggestions.isSuccess ? suggestions.dataUpdatedAt : 0
+  useEffect(() => {
+    if (asked) void queryClient.invalidateQueries({ queryKey: ['curate', 'counts'] })
+  }, [asked, queryClient])
   const done = () => afterArchiveEdit(queryClient, ['brands'])   // brand grouping on every chart changes too
   // Suggestions are casefolded for matching; the label is what you read in the charts, so title it
   // and keep the prefix exactly as suggested.

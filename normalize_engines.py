@@ -6,6 +6,7 @@ from rapidfuzz.process import cdist
 from sklearn.cluster import DBSCAN
 from sklearn.metrics.pairwise import cosine_distances
 
+from data import load_embeddings_cache
 from name_similarity import DEFAULT_THRESHOLD, ensure_embeddings
 
 
@@ -15,7 +16,9 @@ class NormalizeEngine:
     def _cluster(
         self, dist_matrix: np.ndarray, eps: float, names: list[str]
     ) -> dict[int, list[str]]:
-        labels = DBSCAN(eps=eps, min_samples=2, metric="precomputed").fit(dist_matrix).labels_
+        # 100% similarity is distance 0, which DBSCAN refuses: the smallest distance above it groups only
+        # names that are the same, as 100% means
+        labels = DBSCAN(eps=max(eps, 1e-9), min_samples=2, metric="precomputed").fit(dist_matrix).labels_
         cluster_map: dict[int, list[str]] = {}
         for i, label in enumerate(labels):
             if label == -1:
@@ -32,6 +35,12 @@ class NormalizeEngine:
         dist_matrix = self._dist_matrix(output_path, all_names)
         return self._cluster(dist_matrix, eps, all_names)
 
+    def run_offline(
+        self, output_path: Path, all_names: list[str], eps: float
+    ) -> tuple[dict[int, list[str]], list[str]]:
+        """Like ``run``, but never asks a model: (clusters, the names it had nothing for and left out)."""
+        return self.run(output_path, all_names, eps), []
+
 
 class EmbeddingEngine(NormalizeEngine):
     label = "Embedding (cosine)"
@@ -42,6 +51,20 @@ class EmbeddingEngine(NormalizeEngine):
         indices = [cached_lookup[n] for n in all_names]
         embedding_matrix = cached_matrix[indices]
         return cosine_distances(embedding_matrix)
+
+    def run_offline(
+        self, output_path: Path, all_names: list[str], eps: float
+    ) -> tuple[dict[int, list[str]], list[str]]:
+        """Only the names already embedded (``name_embeddings.npz``): a new name waits until the Normalize
+        page embeds it, rather than asking Ollama here."""
+        cached_names, cached_matrix = load_embeddings_cache(output_path)
+        cached_lookup = {n: i for i, n in enumerate(cached_names)}
+        known = [n for n in all_names if n in cached_lookup]
+        missing = [n for n in all_names if n not in cached_lookup]
+        if len(known) < 2:
+            return {}, missing
+        dist_matrix = cosine_distances(cached_matrix[[cached_lookup[n] for n in known]])
+        return self._cluster(dist_matrix, eps, known), missing
 
     def render_slider(self, st, key: str, default: float = DEFAULT_THRESHOLD, on_change=None) -> float:
         step = DEFAULT_THRESHOLD / 20
