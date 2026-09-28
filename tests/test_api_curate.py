@@ -124,25 +124,28 @@ def test_a_stricter_similarity_groups_fewer_names(api_client):
     assert all(len(g["names"]) < loose["names"] for g in strict["groups"])
 
 
-def test_one_engines_threshold_sent_with_the_other_is_refused_not_saved(api_client, monkeypatch):
-    """Switching engines once sent the new engine with the old one's threshold: a 0.05 distance
-    was saved as 0% string similarity, and an 80% similarity as an embedding distance of 80."""
+def test_asking_for_clusters_saves_nothing(api_client):
+    """The page saves what you settle on through the config; a request made on the way (the one a switch
+    of engine once sent with the old engine's threshold) must not become your setting."""
+    saved = api_client.patch("/api/config", json={"normalize_engine": "embedding",
+                                                  "normalize_string_similarity": 62}).json()
+
+    assert _clusters(api_client, threshold=70)["engine"] == "string"
+    assert api_client.get("/api/config").json() == saved
+
+
+def test_one_engines_threshold_with_the_other_is_refused(api_client, monkeypatch):
+    """0.05 read as a similarity is 0%: every name would cluster with every other."""
     import normalize_engines
 
     def no_embedding(*_args):
         raise AssertionError("refused before any name is embedded (that would call Ollama)")
     monkeypatch.setattr(normalize_engines, "ensure_embeddings", no_embedding)
-    before = api_client.patch("/api/config", json={"normalize_engine": "string", "normalize_string_similarity": 62,
-                                                   "normalize_embedding_threshold": 0.1}).json()
 
     as_string = api_client.get("/api/curate/normalize", params={"engine": "string", "threshold": 0.05})
     assert as_string.status_code == 422 and "between 50 and 100" in as_string.json()["detail"]
     as_embedding = api_client.get("/api/curate/normalize", params={"engine": "embedding", "threshold": 80})
     assert as_embedding.status_code == 422
-    after = api_client.get("/api/config").json()
-    assert after["normalize_string_similarity"] == before["normalize_string_similarity"] == 62
-    assert after["normalize_embedding_threshold"] == before["normalize_embedding_threshold"] == 0.1
-    assert after["normalize_engine"] == before["normalize_engine"]
 
 
 def test_keeping_both_stops_the_cluster_coming_back(api_client, configured_archive):

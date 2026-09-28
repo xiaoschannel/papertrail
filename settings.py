@@ -53,6 +53,17 @@ def ensure_layout(root: str | Path) -> None:
 #: The tilt share the Config page offers (``AppConfig.tilt_share``).
 TILT_SHARE_RANGE = (0.005, 0.1)
 
+#: Each Normalize engine's threshold, in the unit its slider shows: (lowest, highest, step). Embedding
+#: distance steps by a twentieth of its default (0.05); string similarity is a whole percent.
+NORMALIZE_THRESHOLDS = {"embedding": (0.0025, 0.25, 0.0025), "string": (50, 100, 1)}
+
+
+def check_normalize_threshold(engine: str, value: float) -> None:
+    """Refuse a threshold its engine can't take: the engines measure in different units."""
+    low, high, _step = NORMALIZE_THRESHOLDS[engine]
+    if not low - 1e-9 <= value <= high + 1e-9:  # a slider's float steps round: allow for it
+        raise ValueError(f"the {engine} engine's threshold is between {low:g} and {high:g}, not {value:g}")
+
 
 #: Keys a shortcut can be besides one character: the names `KeyboardEvent.key` gives them (" " is Space).
 #: Tab moves focus and the modifiers only change other keys, so neither can be a shortcut.
@@ -141,6 +152,18 @@ class AppConfig(BaseModel):
     calendar_period: str = "week"
     calendar_date: str = ""
     shortcuts: Shortcuts = Shortcuts()
+
+    @field_validator("normalize_embedding_threshold")
+    @classmethod
+    def _a_distance_the_slider_can_show(cls, value: float) -> float:
+        check_normalize_threshold("embedding", value)
+        return value
+
+    @field_validator("normalize_string_similarity")
+    @classmethod
+    def _a_similarity_the_slider_can_show(cls, value: int) -> int:
+        check_normalize_threshold("string", value)
+        return value
 
     @field_validator("tilt_share")
     @classmethod

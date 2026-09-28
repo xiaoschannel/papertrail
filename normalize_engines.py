@@ -6,17 +6,11 @@ from rapidfuzz.process import cdist
 from sklearn.cluster import DBSCAN
 from sklearn.metrics.pairwise import cosine_distances
 
-from name_similarity import DEFAULT_THRESHOLD, ensure_embeddings
-
-
-#: The Normalize slider's step for embedding distance; its range is one step to a hundred of them.
-EMBEDDING_THRESHOLD_STEP = DEFAULT_THRESHOLD / 20
+from name_similarity import ensure_embeddings
 
 
 class NormalizeEngine:
     label: str = ""
-    #: The thresholds this engine takes, in the unit the page shows it in (lowest, highest).
-    threshold_range: tuple[float, float]
 
     def _cluster(
         self, dist_matrix: np.ndarray, eps: float, names: list[str]
@@ -41,7 +35,6 @@ class NormalizeEngine:
 
 class EmbeddingEngine(NormalizeEngine):
     label = "Embedding (cosine)"
-    threshold_range = (EMBEDDING_THRESHOLD_STEP, EMBEDDING_THRESHOLD_STEP * 100)
 
     def _dist_matrix(self, output_path: Path, all_names: list[str]) -> np.ndarray:
         cached_names, cached_matrix = ensure_embeddings(output_path, all_names)
@@ -53,7 +46,6 @@ class EmbeddingEngine(NormalizeEngine):
 
 class StringEngine(NormalizeEngine):
     label = "String similarity (Levenshtein)"
-    threshold_range = (50.0, 100.0)  # percent similarity
 
     def _dist_matrix(self, output_path: Path, all_names: list[str]) -> np.ndarray:
         # Every pair at once in rapidfuzz: a Python loop over every pair of names grows with the square of them.

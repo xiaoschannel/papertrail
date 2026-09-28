@@ -33,6 +33,11 @@ function ConfigForm({ saved, options }: { saved: AppConfig; options: ConfigOptio
   ) as Partial<AppConfig>
   const changed = Object.keys(patch)
   const clashes = shortcutClashes(draft.shortcuts)
+  /** An engine's threshold slider, as Normalize draws it (the server refuses a value outside it). */
+  const thresholdSlider = (id: string) => {
+    const engine = options.normalize_engines.find((e) => e.id === id)
+    return { min: engine?.threshold_min ?? 0, max: engine?.threshold_max ?? 1, step: engine?.threshold_step ?? 1 }
+  }
 
   const save = useMutation({
     mutationFn: () => api.patchConfig(patch),
@@ -99,10 +104,9 @@ function ConfigForm({ saved, options }: { saved: AppConfig; options: ConfigOptio
             labels={Object.fromEntries(options.normalize_engines.map((e) => [e.id, e.label]))}
             onChange={(v) => set('normalize_engine', v)} />
           <Slider label="Embedding distance threshold" value={draft.normalize_embedding_threshold}
-            min={options.embedding_threshold_step} max={options.embedding_threshold_step * 100}
-            step={options.embedding_threshold_step} format={(v) => v.toFixed(4)}
+            {...thresholdSlider('embedding')} format={(v) => v.toFixed(4)}
             onChange={(v) => set('normalize_embedding_threshold', v)} />
-          <Slider label="String similarity" value={draft.normalize_string_similarity} min={50} max={100} step={1}
+          <Slider label="String similarity" value={draft.normalize_string_similarity} {...thresholdSlider('string')}
             format={(v) => `${v}%`} onChange={(v) => set('normalize_string_similarity', v)} />
         </div>
       </Card>

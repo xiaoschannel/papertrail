@@ -1,14 +1,21 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api/client.ts'
-import { useConfig } from '../api/config.ts'
+import { useConfig, useSaveConfig } from '../api/config.ts'
 import { useDebounced } from '../components/useDebounced.ts'
-import type { NameGroup } from '../api/types.ts'
+import type { AppConfig, NameGroup } from '../api/types.ts'
 import { ConfirmDialog } from '../components/ConfirmDialog.tsx'
 import { afterArchiveEdit } from '../api/invalidate.ts'
 import { Card, Empty, ErrorState, Loading, Tile } from '../components/ui.tsx'
 import { num } from '../format.ts'
 import './curate.css'
+
+/** A threshold dragged on one engine: the two measure in different units (embedding distance, percent
+ * similarity), so a value is only ever used, or saved, with the engine it was dragged on. */
+type Drag = { engine: string; value: number }
+
+const thresholdSetting = (drag: Drag): Partial<AppConfig> => drag.engine === 'embedding'
+  ? { normalize_embedding_threshold: drag.value } : { normalize_string_similarity: drag.value }
 
 /**
  * Merchant names that are one shop written several ways. Merging rewrites the name everywhere it is
@@ -17,19 +24,32 @@ import './curate.css'
  */
 export default function Normalize() {
   const config = useConfig()
+  const { mutate: saveConfig } = useSaveConfig()
   const [engine, setEngine] = useState<string | null>(null)
   const [merged, setMerged] = useState<string | null>(null)
-  // A dragged threshold keeps its engine: the two measure in different units (embedding distance,
-  // percent similarity), so one engine's value is never sent with the other's.
-  const [dragged, setDragged] = useState<{ engine: string; value: number } | null>(null)
+  const [dragged, setDragged] = useState<Drag | null>(null)
   const chosenEngine = engine ?? config.data?.normalize_engine ?? 'string'
-  const thresholdOf = (drag: typeof dragged) => drag?.engine === chosenEngine ? drag.value
+  const thresholdOf = (drag: Drag | null) => drag?.engine === chosenEngine ? drag.value
     : chosenEngine === 'embedding' ? config.data?.normalize_embedding_threshold ?? 0.05
       : config.data?.normalize_string_similarity ?? 80
   const chosenThreshold = thresholdOf(dragged)
 
   // Clustering runs over every name (and can ask Ollama for embeddings): wait for the drag to settle.
-  const settledThreshold = thresholdOf(useDebounced(dragged, 300))
+  const settled = useDebounced(dragged, 300)
+  const settledThreshold = thresholdOf(settled)
+
+  // The page opens where you left it: the engine is saved when picked, a threshold once its drag settles
+  // (one save per pause, not per step). A drag not settled yet is saved with an engine switch, or on leaving.
+  useEffect(() => { if (settled) saveConfig(thresholdSetting(settled)) }, [settled, saveConfig])
+  const unsettled = useRef<Drag | null>(null)
+  useEffect(() => { unsettled.current = dragged === settled ? null : dragged }, [dragged, settled])
+  useEffect(() => () => { if (unsettled.current) saveConfig(thresholdSetting(unsettled.current)) }, [saveConfig])
+  const pickEngine = (id: string) => {
+    saveConfig({ ...(unsettled.current ? thresholdSetting(unsettled.current) : {}), normalize_engine: id })
+    unsettled.current = null
+    setEngine(id)
+    setDragged(null)
+  }
   const clusters = useQuery({
     queryKey: ['curate', 'normalize', chosenEngine, settledThreshold],
     queryFn: () => api.curate.normalize(chosenEngine, settledThreshold),
@@ -41,6 +61,7 @@ export default function Normalize() {
   if (clusters.error) return <ErrorState error={clusters.error} />
   const data = clusters.data
   const embedding = chosenEngine === 'embedding'
+  const slider = data.engines.find((e) => e.id === chosenEngine)
 
   return (
     <div className="curate-page normalize-page">
@@ -53,7 +74,7 @@ export default function Normalize() {
           <div className="segmented">
             {data.engines.map((e) => (
               <button key={e.id} className={chosenEngine === e.id ? 'on' : ''}
-                onClick={() => { setEngine(e.id); setDragged(null) }}>{e.label}</button>
+                onClick={() => pickEngine(e.id)}>{e.label}</button>
             ))}
           </div>
         </div>
@@ -64,7 +85,7 @@ export default function Normalize() {
             </strong>
           </label>
           <input id="nm-threshold" type="range"
-            min={embedding ? 0.0025 : 50} max={embedding ? 0.25 : 100} step={embedding ? 0.0025 : 1}
+            min={slider?.threshold_min} max={slider?.threshold_max} step={slider?.threshold_step}
             value={chosenThreshold}
             onChange={(e) => setDragged({ engine: chosenEngine, value: Number(e.target.value) })} />
         </div>

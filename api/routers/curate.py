@@ -26,7 +26,7 @@ from models import ReviewDecision
 from name_merge import NameGroup
 from name_similarity import EMBED_MODEL, unload_embeddings
 from normalize_engines import ENGINES
-from settings import get_config, update_config
+from settings import NORMALIZE_THRESHOLDS, check_normalize_threshold, get_config
 
 router = APIRouter(prefix="/api/curate", tags=["curate"])
 
@@ -133,6 +133,13 @@ def restore_tossed(body: RestoreIn, output_path: Path = Depends(get_output_path)
 
 
 # --- Normalize: merging merchant-name variants -------------------------------------------------
+def normalize_engine_options() -> list[NormalizeEngineOut]:
+    """The engines, each with its threshold slider: Normalize and the Config page draw the same one."""
+    return [NormalizeEngineOut(id=key, label=engine.label or key, threshold_min=low, threshold_max=high,
+                               threshold_step=step)
+            for key, engine in ENGINES.items() for low, high, step in [NORMALIZE_THRESHOLDS[key]]]
+
+
 @router.get("/normalize", response_model=NormalizeOut)
 def normalize_clusters(
     engine: str | None = None,
@@ -140,22 +147,20 @@ def normalize_clusters(
     output_path: Path = Depends(get_output_path),
 ):
     """Names one engine thinks are the same shop. Embedding clustering asks Ollama for any new name,
-    so it takes the single model slot and is refused while a job holds it."""
+    so it takes the single model slot and is refused while a job holds it.
+
+    Only reads: the page saves the engine and threshold you settle on through the config, never as a side
+    effect of asking for clusters."""
     cfg = get_config()
     engine_id = engine or (cfg.normalize_engine if cfg.normalize_engine in ENGINES else next(iter(ENGINES)))
     if engine_id not in ENGINES:
         raise HTTPException(status_code=422, detail=f"unknown engine: {engine_id}")
     eps = threshold if threshold is not None else (
         cfg.normalize_embedding_threshold if engine_id == "embedding" else float(cfg.normalize_string_similarity))
-    # The engines measure in different units, so one engine's threshold sent with the other is refused,
-    # not saved as that engine's setting (a 0.05 distance would become 0% similarity).
-    low, high = ENGINES[engine_id].threshold_range
-    if not low - 1e-9 <= eps <= high + 1e-9:  # the slider's steps are floats: allow their rounding
-        raise HTTPException(status_code=422, detail=f"a {engine_id} threshold is between {low:g} and {high:g}, "
-                                                    f"not {eps:g}")
-    update_config(normalize_engine=engine_id,
-                  **({"normalize_embedding_threshold": float(eps)} if engine_id == "embedding"
-                     else {"normalize_string_similarity": round(eps)}))
+    try:  # one engine's threshold with the other would cluster nonsense (0.05 read as 0% similarity)
+        check_normalize_threshold(engine_id, eps)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     # The page speaks in the units the user sees — percent similarity, or embedding distance — while
     # both engines cluster on distance, so percent similarity is converted here.
@@ -175,8 +180,7 @@ def normalize_clusters(
         groups = name_merge.visible_groups(clusters, by_name, canonical, pairs)
 
     return NormalizeOut(
-        engines=[NormalizeEngineOut(id=key, label=value.label or key) for key, value in ENGINES.items()],
-        engine=engine_id, threshold=float(eps), names=len(names),
+        engines=normalize_engine_options(), engine=engine_id, threshold=float(eps), names=len(names),
         groups=[NameGroupOut(id=group.id, names=group.names,
                              counts=[NameCount(name=name, count=group.counts[name]) for name in group.names],
                              canonical=group.canonical) for group in groups],
