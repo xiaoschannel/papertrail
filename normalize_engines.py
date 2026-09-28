@@ -7,7 +7,7 @@ from sklearn.cluster import DBSCAN
 from sklearn.metrics.pairwise import cosine_distances
 
 from data import load_embeddings_cache
-from name_similarity import DEFAULT_THRESHOLD, ensure_embeddings
+from name_similarity import ensure_embeddings
 
 
 class NormalizeEngine:
@@ -66,20 +66,6 @@ class EmbeddingEngine(NormalizeEngine):
         dist_matrix = cosine_distances(cached_matrix[[cached_lookup[n] for n in known]])
         return self._cluster(dist_matrix, eps, known), missing
 
-    def render_slider(self, st, key: str, default: float = DEFAULT_THRESHOLD, on_change=None) -> float:
-        step = DEFAULT_THRESHOLD / 20
-        return float(
-            st.slider(
-                "Distance threshold",
-                min_value=step,
-                max_value=step * 100,
-                value=default,
-                step=step,
-                key=key,
-                on_change=on_change,
-            )
-        )
-
 
 class StringEngine(NormalizeEngine):
     label = "String similarity (Levenshtein)"
@@ -88,18 +74,6 @@ class StringEngine(NormalizeEngine):
         # Every pair at once in rapidfuzz: a Python loop over every pair of names grows with the square of them.
         similarity = cdist(all_names, all_names, scorer=Levenshtein.normalized_similarity, dtype=np.float64)
         return 1.0 - similarity
-
-    def render_slider(self, st, key: str, default: int = 80, on_change=None) -> float:
-        pct = st.slider(
-            "Min similarity (%)",
-            min_value=50,
-            max_value=100,
-            value=default,
-            step=1,
-            key=key,
-            on_change=on_change,
-        )
-        return 1.0 - pct / 100.0
 
 
 ENGINES: dict[str, NormalizeEngine] = {

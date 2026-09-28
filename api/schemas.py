@@ -934,6 +934,10 @@ class PrefixSuggestionOut(_Model):
 class NormalizeEngineOut(_Model):
     id: str
     label: str
+    #: Its threshold slider, in the unit the page shows (embedding distance, percent similarity).
+    threshold_min: float
+    threshold_max: float
+    threshold_step: float
 
 
 class ConfigOptions(_Model):
@@ -944,7 +948,6 @@ class ConfigOptions(_Model):
     normalize_engines: list[NormalizeEngineOut]
     indexing_schemes: list[str]
     dashboard_rank_by: list[str]
-    embedding_threshold_step: float
     #: The tilt share the Config page offers, and the tilts it can't go under or over (degrees): its demo.
     tilt_share_range: list[float]
     tilt_min_degrees: float

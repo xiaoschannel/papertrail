@@ -140,6 +140,22 @@ def test_the_tilt_worth_fixing_is_kept_to_what_the_config_page_offers(api_client
     assert options["tilt_min_degrees"] < options["tilt_max_degrees"]
 
 
+def test_normalize_thresholds_are_kept_to_what_their_slider_offers(api_client):
+    """The engines measure in different units: an embedding distance saved as a string similarity (0.05 as
+    0%), or the other way round, is refused."""
+    engines = {e["id"]: e for e in api_client.get("/api/config/options").json()["normalize_engines"]}
+    assert (engines["string"]["threshold_min"], engines["string"]["threshold_max"]) == (50, 100)
+    assert 0 < engines["embedding"]["threshold_step"] == engines["embedding"]["threshold_min"] < 0.05
+    saved = api_client.patch("/api/config", json={"normalize_string_similarity": 62,
+                                                  "normalize_embedding_threshold": 0.1}).json()
+    for prefix in ("", "sidebar_"):  # the sidebar's count has its own thresholds, on the same sliders
+        for bad in ({"normalize_string_similarity": 0}, {"normalize_string_similarity": 101},
+                    {"normalize_embedding_threshold": 80}, {"normalize_embedding_threshold": 0}):
+            bad = {prefix + key: value for key, value in bad.items()}
+            assert api_client.patch("/api/config", json=bad).status_code == 422, bad
+    assert api_client.get("/api/config").json() == saved
+
+
 def test_shortcuts_reject_what_a_page_could_not_tell_apart(api_client):
     keys = api_client.get("/api/config").json()["shortcuts"]
     for bad in ({"mark": "a"}, {"cancel": "e"}, {"toss": "1"}, {"quick_3": "r"}, {"hold_original": "a"}, {"prev": ""}, {"next": "cc"}, {"undo": "Tab"},
