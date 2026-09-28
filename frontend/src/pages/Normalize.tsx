@@ -19,14 +19,17 @@ export default function Normalize() {
   const config = useConfig()
   const [engine, setEngine] = useState<string | null>(null)
   const [merged, setMerged] = useState<string | null>(null)
-  const [threshold, setThreshold] = useState<number | null>(null)
+  // A dragged threshold keeps its engine: the two measure in different units (embedding distance,
+  // percent similarity), so one engine's value is never sent with the other's.
+  const [dragged, setDragged] = useState<{ engine: string; value: number } | null>(null)
   const chosenEngine = engine ?? config.data?.normalize_engine ?? 'string'
-  const chosenThreshold = threshold ?? (chosenEngine === 'embedding'
-    ? config.data?.normalize_embedding_threshold ?? 0.05
-    : config.data?.normalize_string_similarity ?? 80)
+  const thresholdOf = (drag: typeof dragged) => drag?.engine === chosenEngine ? drag.value
+    : chosenEngine === 'embedding' ? config.data?.normalize_embedding_threshold ?? 0.05
+      : config.data?.normalize_string_similarity ?? 80
+  const chosenThreshold = thresholdOf(dragged)
 
   // Clustering runs over every name (and can ask Ollama for embeddings): wait for the drag to settle.
-  const settledThreshold = useDebounced(chosenThreshold, 300)
+  const settledThreshold = thresholdOf(useDebounced(dragged, 300))
   const clusters = useQuery({
     queryKey: ['curate', 'normalize', chosenEngine, settledThreshold],
     queryFn: () => api.curate.normalize(chosenEngine, settledThreshold),
@@ -50,7 +53,7 @@ export default function Normalize() {
           <div className="segmented">
             {data.engines.map((e) => (
               <button key={e.id} className={chosenEngine === e.id ? 'on' : ''}
-                onClick={() => { setEngine(e.id); setThreshold(null) }}>{e.label}</button>
+                onClick={() => { setEngine(e.id); setDragged(null) }}>{e.label}</button>
             ))}
           </div>
         </div>
@@ -62,7 +65,8 @@ export default function Normalize() {
           </label>
           <input id="nm-threshold" type="range"
             min={embedding ? 0.0025 : 50} max={embedding ? 0.25 : 100} step={embedding ? 0.0025 : 1}
-            value={chosenThreshold} onChange={(e) => setThreshold(Number(e.target.value))} />
+            value={chosenThreshold}
+            onChange={(e) => setDragged({ engine: chosenEngine, value: Number(e.target.value) })} />
         </div>
       </div>
 

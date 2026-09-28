@@ -10,8 +10,7 @@ import deskew
 from api import ingest_registry as registry
 from api.schemas import ConfigOptions, NormalizeEngineOut, PathCheck
 from indexing_schemes import SCHEMES
-from name_similarity import DEFAULT_THRESHOLD
-from normalize_engines import ENGINES
+from normalize_engines import EMBEDDING_THRESHOLD_STEP, ENGINES
 from settings import NAMED_KEYS, TILT_SHARE_RANGE, AppConfig, ensure_layout, get_config, save_config, update_config
 
 router = APIRouter(prefix="/api/config", tags=["config"])
@@ -72,7 +71,7 @@ def config_options():
         normalize_engines=[NormalizeEngineOut(id=key, label=engine.label or key) for key, engine in ENGINES.items()],
         indexing_schemes=list(SCHEMES),
         dashboard_rank_by=["Total Spend", "Visit Count"],
-        embedding_threshold_step=DEFAULT_THRESHOLD / 20,
+        embedding_threshold_step=EMBEDDING_THRESHOLD_STEP,
         tilt_share_range=list(TILT_SHARE_RANGE), tilt_min_degrees=deskew.MIN_DEGREES,
         tilt_max_degrees=deskew.MAX_DEGREES,
         shortcut_named_keys=list(NAMED_KEYS),

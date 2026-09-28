@@ -124,6 +124,27 @@ def test_a_stricter_similarity_groups_fewer_names(api_client):
     assert all(len(g["names"]) < loose["names"] for g in strict["groups"])
 
 
+def test_one_engines_threshold_sent_with_the_other_is_refused_not_saved(api_client, monkeypatch):
+    """Switching engines once sent the new engine with the old one's threshold: a 0.05 distance
+    was saved as 0% string similarity, and an 80% similarity as an embedding distance of 80."""
+    import normalize_engines
+
+    def no_embedding(*_args):
+        raise AssertionError("refused before any name is embedded (that would call Ollama)")
+    monkeypatch.setattr(normalize_engines, "ensure_embeddings", no_embedding)
+    before = api_client.patch("/api/config", json={"normalize_engine": "string", "normalize_string_similarity": 62,
+                                                   "normalize_embedding_threshold": 0.1}).json()
+
+    as_string = api_client.get("/api/curate/normalize", params={"engine": "string", "threshold": 0.05})
+    assert as_string.status_code == 422 and "between 50 and 100" in as_string.json()["detail"]
+    as_embedding = api_client.get("/api/curate/normalize", params={"engine": "embedding", "threshold": 80})
+    assert as_embedding.status_code == 422
+    after = api_client.get("/api/config").json()
+    assert after["normalize_string_similarity"] == before["normalize_string_similarity"] == 62
+    assert after["normalize_embedding_threshold"] == before["normalize_embedding_threshold"] == 0.1
+    assert after["normalize_engine"] == before["normalize_engine"]
+
+
 def test_keeping_both_stops_the_cluster_coming_back(api_client, configured_archive):
     original, copy = _duplicate_of(api_client)
     [cluster] = api_client.get("/api/curate/dedupe").json()["clusters"]

@@ -147,9 +147,15 @@ def normalize_clusters(
         raise HTTPException(status_code=422, detail=f"unknown engine: {engine_id}")
     eps = threshold if threshold is not None else (
         cfg.normalize_embedding_threshold if engine_id == "embedding" else float(cfg.normalize_string_similarity))
+    # The engines measure in different units, so one engine's threshold sent with the other is refused,
+    # not saved as that engine's setting (a 0.05 distance would become 0% similarity).
+    low, high = ENGINES[engine_id].threshold_range
+    if not low - 1e-9 <= eps <= high + 1e-9:  # the slider's steps are floats: allow their rounding
+        raise HTTPException(status_code=422, detail=f"a {engine_id} threshold is between {low:g} and {high:g}, "
+                                                    f"not {eps:g}")
     update_config(normalize_engine=engine_id,
                   **({"normalize_embedding_threshold": float(eps)} if engine_id == "embedding"
-                     else {"normalize_string_similarity": int(eps)}))
+                     else {"normalize_string_similarity": round(eps)}))
 
     # The page speaks in the units the user sees — percent similarity, or embedding distance — while
     # both engines cluster on distance, so percent similarity is converted here.
