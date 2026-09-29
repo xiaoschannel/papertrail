@@ -1,10 +1,11 @@
-import { useEffect, useState, type MouseEvent } from 'react'
+import { useEffect, useMemo, useState, type MouseEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { afterArchiveEdit } from '../../api/invalidate.ts'
 import { api, type SuggestionSettings } from '../../api/client.ts'
 import { useConfig } from '../../api/config.ts'
 import type { Brand } from '../../api/types.ts'
 import { ConfirmDialog } from '../../components/ConfirmDialog.tsx'
+import { SearchSelect } from '../../components/SearchSelect.tsx'
 import { Card, Empty, ErrorState, Loading, Tile } from '../../components/ui.tsx'
 import { num } from '../../format.ts'
 import './curate.css'
@@ -125,6 +126,7 @@ function Suggestions({ brands, unmatched }: { brands: Brand[]; unmatched: { name
   const create = useMutation({ mutationFn: (prefix: string) =>
     api.brands.create({ label: titled(prefix), prefixes: [prefix] }), onSuccess: done })
   const chosenTarget = target || brands[0]?.id || ''   // the first brand until you pick one
+  const targets = useMemo(() => brands.map((b) => ({ value: b.id, label: b.label })), [brands])
   const add = useMutation({ mutationFn: (prefix: string) => api.brands.addPrefix(chosenTarget, prefix), onSuccess: done })
   const set = <K extends keyof SuggestionSettings>(key: K, value: SuggestionSettings[K]) =>
     setSettings({ ...current, [key]: value })
@@ -154,10 +156,9 @@ function Suggestions({ brands, unmatched }: { brands: Brand[]; unmatched: { name
         </div>
         <div className="field">
           <label htmlFor="sg-target">Add to brand</label>
-          <select id="sg-target" value={chosenTarget} onChange={(e) => setTarget(e.target.value)} disabled={!brands.length}>
-            {!brands.length && <option value="">(no brands yet)</option>}
-            {brands.map((b) => <option key={b.id} value={b.id}>{b.label}</option>)}
-          </select>
+          <SearchSelect id="sg-target" choices={targets} value={chosenTarget} onChange={setTarget}
+            disabled={!brands.length}
+            placeholder={brands.length ? 'Type a brand' : '(no brands yet)'} />
         </div>
       </div>
 

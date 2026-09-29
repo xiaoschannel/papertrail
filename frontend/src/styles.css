@@ -230,7 +230,6 @@ table.fixed td, table.fixed th { overflow: hidden; text-overflow: ellipsis; whit
 }
 .scan-full { display: grid; gap: 10px; justify-items: center; }
 .document-picker { margin-bottom: 14px; }
-.document-picker input { width: 100%; max-width: 32rem; }
 .scan-full .trimmed-scan { max-width: var(--scan-col); --scan-radius: 6px; }
 /* With its boxes drawn, the scan still fills the column: the column's width is the zoom. */
 .detail-scan { --scan-width: 100%; }
@@ -285,6 +284,37 @@ button:disabled { opacity: .45; cursor: default; }
 .segmented button { border: 0; border-radius: 0; border-right: 1px solid var(--border); }
 .segmented button:last-child { border-right: 0; }
 .segmented button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+
+/* SearchSelect: a text input that opens a list floating over the page (so opening it moves nothing),
+   with a select's chevron so it reads as a dropdown. */
+.search-select { position: relative; width: 100%; max-width: 20rem; }
+.search-select.wide { max-width: 32rem; }
+.search-select input { width: 100%; max-width: none; box-sizing: border-box; padding-right: 26px; }
+.search-select::after {
+  content: ''; position: absolute; right: 11px; top: 50%; width: 5px; height: 5px; pointer-events: none;
+  border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted);
+  transform: translateY(-70%) rotate(45deg);
+}
+.search-select__list {
+  position: absolute; z-index: 10; top: calc(100% + 4px); left: 0;
+  min-width: 100%; width: max-content; max-width: max(100%, 32rem);   /* a narrow picker's list may widen */
+  max-height: 20rem; overflow-y: auto; margin: 0; padding: 4px; list-style: none; box-sizing: border-box;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 7px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / .18); font-size: 13px;
+}
+.search-select__list.up { top: auto; bottom: calc(100% + 4px); }
+.search-select__option {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+  padding: 5px 8px; border-radius: 5px; cursor: pointer;
+}
+.search-select__option.active { background: var(--panel-2); }
+.search-select__option.current { color: var(--accent); font-weight: 600; }
+.search-select__label { flex: 1 1 0; min-width: 0; overflow-wrap: anywhere; }
+.search-select__detail {
+  max-width: 60%; text-align: right; overflow-wrap: anywhere;
+  color: var(--muted); font-size: 12px; font-weight: 400;
+}
+.search-select__none { padding: 5px 8px; color: var(--muted); }
 
 /* --- misc ----------------------------------------------------------------- */
 .state { color: var(--muted); padding: 28px 0; font-size: 13.5px; max-width: var(--measure); }
