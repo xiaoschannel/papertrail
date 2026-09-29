@@ -24,6 +24,7 @@ from papertrail.models import (
     SmartMatchHistoryRow,
     RotationDecision,
     WorkshopRecord,
+    batch_serial_key,
 )
 
 
@@ -380,6 +381,27 @@ def load_smart_match_cache(output_path: Path) -> dict[str, dict]:
 
 def save_smart_match_cache(output_path: Path, cache: dict[str, dict]):
     atomic_write_text(output_path / "smart_match_cache.json", json.dumps(cache, indent=2, ensure_ascii=False))
+
+
+def remember_confirmed_names(output_path: Path, confirmed: list[tuple[Sidecar, str]]) -> None:
+    """Teach the smart-match cache, for each filed document (its first page's sidecar), the name its extraction
+    read and the name it is filed under, so Review suggests that name when the same reading comes up again.
+
+    Keyed as Archive keys it: the document's key, or its page's for a single page."""
+    if not confirmed:
+        return
+    cache = load_smart_match_cache(output_path)
+    for sidecar, name in confirmed:
+        read = sidecar.extraction
+        key = sidecar.document_key or (batch_serial_key(sidecar.batch_id, sidecar.serial)
+                                       if sidecar.batch_id is not None and sidecar.serial is not None
+                                       else sidecar.original_filename)
+        cache[key] = {
+            "extracted": getattr(read, "name", "") or getattr(read, "title", ""),
+            "confirmed": name,
+            "extracted_phone": read.phone if isinstance(read, ReceiptResult) else "",
+        }
+    save_smart_match_cache(output_path, cache)
 
 
 def build_smart_match_history(
