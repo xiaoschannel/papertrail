@@ -22,22 +22,24 @@ UsageSink = Callable[[TokenUse], None] | None
 OLLAMA_MODEL = "qwen3:8b"
 #: The hosted models on offer, each its own extractor, cheapest first: Luna is what a whole batch runs
 #: on, Sol is there for the awkward ones.
-OPENAI_MODELS = ("gpt-6-luna", "gpt-6-sol")
+OPENAI_MODELS = ("gpt-6-luna", "gpt-6.1-sol")
 
 
 class Price(BaseModel):
-    """Dollars per million tokens. A prompt the model has already seen bills at ``cached_input``."""
+    """Dollars per million tokens. A prompt the model has already seen bills at ``cached_input``; the part
+    of a prompt saved for later calls to read bills at ``cache_write``, a little above ``input``."""
 
     input: float
     cached_input: float
+    cache_write: float
     output: float
 
 
-#: What each hosted model charges, from OpenAI's pricing page, checked 2026-09-23. Models that run on
+#: What each hosted model charges, from OpenAI's pricing page, checked 2026-09-30. Models that run on
 #: this machine are absent: they cost time and electricity, not money.
 PRICES = {
-    "OpenAI - gpt-6-luna": Price(input=0.10, cached_input=0.01, output=0.50),
-    "OpenAI - gpt-6-sol": Price(input=2.00, cached_input=0.20, output=10.00),
+    "OpenAI - gpt-6-luna": Price(input=0.10, cached_input=0.01, cache_write=0.125, output=0.50),
+    "OpenAI - gpt-6.1-sol": Price(input=2.00, cached_input=0.10, cache_write=2.50, output=10.00),
 }
 
 EXTRACTION_PROMPT = """You are extracting structured data from OCR text of a scanned document.
@@ -125,13 +127,14 @@ Both can be unreliable, but they can be used as additional cues for inference-ba
 
 def extraction_messages(ocr_text: str, has_boxes: bool = False,
                         custom_instruction: str = "") -> list[dict[str, str]]:
-    """The instructions, then the document: two messages, because a message boundary is what caches.
+    """The instructions, then the document: two messages, so the instructions can be cached on their own.
 
-    A hosted model saves a prefix that ends where a message ends, not wherever two requests happen to
-    stop agreeing. Everything that stays the same between documents therefore goes in the first
-    message and only the document's own text in the second, so a run pays for the instructions once.
-    With boxes and without are two instruction messages, each cached in its own right; editing the
-    custom instructions writes a new one, at the cost of a single miss.
+    A hosted model saves a prefix only where the request marks one, not wherever two requests happen
+    to stop agreeing. Everything that stays the same between documents therefore goes in the first
+    message and only the document's own text in the second, and ``extract_openai`` marks the end of
+    the first, so a run pays for the instructions once. With boxes and without are two instruction
+    messages, each cached in its own right; editing the custom instructions writes a new one, at the
+    cost of a single miss.
     """
     stripped = custom_instruction.strip()
     optional_custom = f"Additional instructions:\n{stripped}\n" if stripped else ""
@@ -164,11 +167,17 @@ def extract_ollama(ocr_text: str, has_boxes: bool = False, custom_instruction: s
 def extract_openai(ocr_text: str, has_boxes: bool = False, custom_instruction: str = "",
                    model: str = OPENAI_MODELS[0], on_usage: UsageSink = None) -> DocumentExtraction:
     client = OpenAI()
-    messages = extraction_messages(ocr_text, has_boxes, custom_instruction=custom_instruction)
+    instructions, document = extraction_messages(ocr_text, has_boxes, custom_instruction=custom_instruction)
+    # Cache the instructions and nothing after them. Left to itself the model saves up to the end of the
+    # last user message -- this document, which no later call repeats -- and a save bills above the
+    # input rate. So mark the end of the instructions and switch that automatic save off.
+    instructions = {**instructions, "content": [{"type": "text", "text": instructions["content"],
+                                                 "prompt_cache_breakpoint": {"mode": "explicit"}}]}
     # Reading fields off OCR text is closer to transcription than reasoning, and thinking is billed at the
     # output rate, so ask for little of it -- enough to weigh the custom instructions, not to deliberate.
     # No temperature: these models take their own and refuse any other, and a refusal costs a whole call.
-    request = dict(model=model, messages=messages, response_format=ExtractionFlat, reasoning_effort="low")
+    request = dict(model=model, messages=[instructions, document], response_format=ExtractionFlat,
+                   reasoning_effort="low", prompt_cache_options={"mode": "explicit"})
     try:
         response = _call(client, request)
     except BadRequestError as exc:
@@ -199,14 +208,15 @@ def token_use(response) -> TokenUse:
     raw["usage"] = usage.model_dump()
     return TokenUse(prompt=usage.prompt_tokens, completion=usage.completion_tokens,
                     cached=getattr(usage.prompt_tokens_details, "cached_tokens", 0) or 0,
+                    cache_write=getattr(usage.prompt_tokens_details, "cache_write_tokens", 0) or 0,
                     thinking=getattr(usage.completion_tokens_details, "reasoning_tokens", 0) or 0,
                     raw=raw)
 
 
 def report(on_usage: UsageSink, model: str, use: TokenUse) -> None:
     """Log what the call consumed, and hand it to a caller that asked (the Experiment bench does)."""
-    log.info("%s: %d prompt tokens (%d cached), %d completion (%d thinking)",
-             model, use.prompt, use.cached, use.completion, use.thinking)
+    log.info("%s: %d prompt tokens (%d cached, %d written to the cache), %d completion (%d thinking)",
+             model, use.prompt, use.cached, use.cache_write, use.completion, use.thinking)
     if on_usage is not None:
         on_usage(use)
 
@@ -216,8 +226,8 @@ def cost_of(extractor: str, use: TokenUse) -> float | None:
     price = PRICES.get(extractor)
     if price is None:
         return None
-    return ((use.prompt - use.cached) * price.input + use.cached * price.cached_input
-            + use.completion * price.output) / 1_000_000
+    return ((use.prompt - use.cached - use.cache_write) * price.input + use.cached * price.cached_input
+            + use.cache_write * price.cache_write + use.completion * price.output) / 1_000_000
 
 
 def call_extractor(extract: typing.Callable[..., DocumentExtraction], ocr_text: str, has_boxes: bool,

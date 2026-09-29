@@ -408,6 +408,7 @@ function Cost({ parse, prices }: { parse: NonNullable<ExperimentRun['parse']>; p
         <tbody>
           <tr><th>prompt_tokens</th><td>{num(tokens.prompt)}</td></tr>
           <tr><th>cached_tokens</th><td>{num(tokens.cached)}</td></tr>
+          <tr><th>cache_write_tokens</th><td>{num(tokens.cache_write)}</td></tr>
           <tr><th>completion_tokens</th><td>{num(tokens.completion)}</td></tr>
           <tr><th>reasoning_tokens</th><td>{num(tokens.thinking)}</td></tr>
         </tbody>
@@ -433,8 +434,9 @@ function Cost({ parse, prices }: { parse: NonNullable<ExperimentRun['parse']>; p
           </thead>
           <tbody>
             {billed.map(([name, price]) => {
-              const each = (tokens.prompt - tokens.cached) * price.input / 1e6
-                + tokens.cached * price.cached_input / 1e6 + tokens.completion * price.output / 1e6
+              const each = ((tokens.prompt - tokens.cached - tokens.cache_write) * price.input
+                + tokens.cached * price.cached_input + tokens.cache_write * price.cache_write
+                + tokens.completion * price.output) / 1e6
               return (
                 <tr key={name} className={name === parse.extractor ? 'active' : ''}>
                   <td>{name.replace(/^OpenAI - /, '')}{name === parse.extractor ? ' (this run)' : ''}</td>

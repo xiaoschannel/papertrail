@@ -309,7 +309,8 @@ def fake_extractor(sb: Sandbox):
                                    "system_fingerprint": "fp_sandbox",
                                    "usage": {"prompt_tokens": prompt, "completion_tokens": 320,
                                              "total_tokens": prompt + 320,
-                                             "prompt_tokens_details": {"cached_tokens": 1024, "audio_tokens": 0},
+                                             "prompt_tokens_details": {"cached_tokens": 1024, "cache_write_tokens": 0,
+                                                                       "audio_tokens": 0},
                                              "completion_tokens_details": {"reasoning_tokens": 180}}}))
         # Given boxes ("[P1-BOX-3] text"), cite them like a grounding extractor, so the scans get field boxes.
         cited = [(f"{m[1]}:{m[2]}", m[3]) for m in (re.match(r"\[P(\d+)-BOX-(\d+)\] (.*)", l) for l in ocr_text.splitlines()) if m]

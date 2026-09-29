@@ -157,6 +157,7 @@ function TokenBreakdown({ job }: { job: Job }) {
   const rows: [string, string, string][] = [
     ['prompt_tokens', job.prompt_tokens.toLocaleString(), per(job.prompt_tokens)],
     ['cached_tokens', job.cached_tokens.toLocaleString(), per(job.cached_tokens)],
+    ['cache_write_tokens', job.cache_write_tokens.toLocaleString(), per(job.cache_write_tokens)],
     ['completion_tokens', job.completion_tokens.toLocaleString(), per(job.completion_tokens)],
     ['reasoning_tokens', job.thinking_tokens.toLocaleString(), per(job.thinking_tokens)],
   ]
@@ -201,7 +202,7 @@ export function JobPanel({ job }: { job: Job }) {
         {running && job.eta_seconds != null && <span>~{duration(job.eta_seconds)} left</span>}
         {job.spent > 0 && (
           // A model that bills by the token: what the run has spent, what all of it comes to at that
-          // rate, and how much of the prompt is being charged a tenth. Only Parse on a hosted model does.
+          // rate, and how much of the prompt is read back from the cache. Only Parse on a hosted model does.
           <span>
             {spend(job.spent)} spent
             {running && job.done > 0 && job.total > job.done && ` · ${spend(job.spent / job.done * job.total)} for all ${job.total}`}

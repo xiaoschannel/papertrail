@@ -19,14 +19,16 @@ class DetectedBox(BaseModel):
 class TokenUse(BaseModel):
     """What one extraction call consumed: the few numbers pricing needs, and the response verbatim.
 
-    ``cached`` is the part of ``prompt`` that was billed at a tenth; ``thinking`` is part of
-    ``completion``. ``raw`` is the provider's own payload -- its ``usage`` object as it arrived, with
-    the response fields that say which model and machine served the call -- for when the numbers look
-    wrong and the summary is the thing in doubt.
+    ``cached`` is the part of ``prompt`` read back from the provider's cache, billed at a fraction;
+    ``cache_write`` the part saved to it for later calls, billed a little above the rest; ``thinking``
+    is part of ``completion``. ``raw`` is the provider's own payload -- its ``usage`` object as it
+    arrived, with the response fields that say which model and machine served the call -- for when the
+    numbers look wrong and the summary is the thing in doubt.
     """
 
     prompt: int = 0
     cached: int = 0
+    cache_write: int = 0
     completion: int = 0
     thinking: int = 0
     raw: dict | None = None
