@@ -35,6 +35,11 @@ What each stage holds for a feature today:
 * Workshop straighten: the marked 1:5 was fed in crooked; the Workshop starts its reread from the tilt.
 * Mend white lines: the marked 1:7 was printed by a thermal head with dead dots, so white lines run down it
   and cut its print; the Workshop's Mend white lines treatment joins it back up.
+* Unnamed: 1:8 to 1:12 print no shop name at the top (they start with the date), so the extractor reads no
+  name. 8 to 11 were filed as "Receipt": on the Unnamed page, 8, 9 and 11 say Sandbox Bakery at the foot and
+  10 Kissa Example; pick the three and name them together. 9 and 11 were bought in the same minute, so they
+  share a filed name ("… Receipt", "… Receipt (2)"): naming the first renumbers the second's files. 12 was
+  named in Review (Coffee Stand Foo, from its foot), so it is one of the named by hand.
 """
 
 from __future__ import annotations
@@ -135,6 +140,13 @@ class Sandbox(BaseModel):
         self.scan(name, [((80, 40, 880, 104), shop), ((80, 140, 470, 176), when), *extra,
                          ((80, 300, 520, 338), f"合計 ¥{total}")], rotate, tilt, dead_dots)
 
+    def nameless_receipt(self, name: str, when: str, item: str, total: int, foot: str) -> None:
+        """A receipt with no shop name at the top: its date first, then an item and the total, the shop only in
+        the thank-you line at its foot."""
+        self.scan(name, [((80, 40, 470, 76), when), ((80, 140, 700, 176), f"{item}    ¥{total}"),
+                         ((80, 300, 520, 338), f"合計 ¥{total}"), ((80, 440, 880, 476), "ご来店ありがとうございました"),
+                         ((80, 500, 880, 536), foot)])
+
     def coupon_receipt(self, name: str, shop: str, when: str, total: int) -> None:
         """A receipt with a coupon printed under it, whose own total extraction takes for the receipt's
         (it comes first): trimmed off, the receipt's is read. Trim at COUPON_TRIM to cut the coupon off."""
@@ -188,10 +200,18 @@ def archived_batch(sb: Sandbox) -> None:
     # hold the compare key to see the strokes join (the fake OCR reads it the same either way).
     sb.receipt("02152026090100_7.png", "Sandbox Pharmacy", "2026/02/14 18:20", 760, dead_dots=True,
                extra=[((80, 200 + 36 * n, 700, 232 + 36 * n), f"品目 {n + 1}    ¥{120 * (n + 1)}") for n in range(2)])
+    # Unnamed: no shop name at the top, only at the foot, where the extractor doesn't look for one.
+    sb.nameless_receipt("02152026090110_8.png", "2026/02/15 08:05", "メロンパン", 180, "Sandbox Bakery")
+    sb.nameless_receipt("02152026090120_9.png", "2026/02/16 08:20", "食パン", 320, "Sandbox Bakery")
+    sb.nameless_receipt("02152026090130_10.png", "2026/02/16 15:10", "ブレンド", 450, "Kissa Example")
+    sb.nameless_receipt("02152026090140_11.png", "2026/02/16 08:20", "クロワッサン", 240, "Sandbox Bakery")   # 9's minute
+    sb.nameless_receipt("02152026090150_12.png", "2026/02/18 09:30", "カフェラテ", 380, "Coffee Stand Foo")   # NAMED_BY_HAND
 
 
 ARCHIVED_TRIMMED_BEFORE_OCR = {3: COUPON_TRIM}
 MARKED = {4: "the total looks like the coupon's", 5: "faded print", 7: "white lines through the print"}
+#: read with no name and named in Review: the named by hand
+NAMED_BY_HAND = {12: "Coffee Stand Foo"}
 
 
 def review_batch(sb: Sandbox) -> None:
@@ -322,10 +342,11 @@ def fake_extractor(sb: Sandbox):
         when = next((l for l in lines if re.match(r"\d{4}/\d\d/\d\d", l)), "")
         total = next((l for l in lines if l.startswith("合計")), "¥0")
         date, _, clock = when.partition(" ")
-        sources = {name: [refs[text]] for name, text in (("name", lines[0]), ("date", when), ("time", when),
-                                                         ("cost", total)) if text in refs}
+        shop = "" if lines[0] == when else lines[0]          # a receipt that starts with its date names no shop
+        sources = {name: [refs[text]] for name, text in (("name", shop), ("date", when), ("time", when),
+                                                         ("cost", total)) if text and text in refs}
         return ReceiptResult(document_type="receipt", language="ja", date=date.replace("/", "-"), time=clock,
-                             name=lines[0], currency="JPY", address="", cost=float(total.split("¥")[-1]),
+                             name=shop, currency="JPY", address="", cost=float(total.split("¥")[-1]),
                              field_sources=sources)
 
     return fake_extract
@@ -451,7 +472,7 @@ def build(sb: Sandbox) -> None:
             serial = int(key.split(":")[1].split("-")[0])
             decisions[key] = ReviewDecision(
                 verdict="marked" if serial in MARKED else "accepted", document_type=defaults.document_type,
-                name=defaults.name, date=defaults.date, time=defaults.time, cost=defaults.cost,
+                name=NAMED_BY_HAND.get(serial, defaults.name), date=defaults.date, time=defaults.time, cost=defaults.cost,
                 currency=defaults.currency, comment=MARKED.get(serial, ""))
         save_decisions(sb.archive, decisions)
         pipeline.run_archive(sb.archive, sb.scans, _Quiet())

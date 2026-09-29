@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from papertrail.curate.naming import NamingDocument
 from papertrail.scans.deskew import MAX_DEGREES as MAX_TILT_DEGREES
 from papertrail.models import (DocumentExtraction, ModelRun, RotationDecision, RotationPrediction, SheetGrid, TokenUse, TopPoints,
                     Trim)
@@ -557,6 +558,7 @@ class CurateCountsOut(_Model):
     normalize_engine: str
     normalize_threshold: float          # percent similarity (string), or cosine distance (embedding)
     normalize_unembedded: int           # names not embedded yet, so left out of an embedding count
+    unnamed: int                        # documents filed under no name
 
 
 class InkOutlineOut(_Model):
@@ -908,6 +910,34 @@ class BrandOverview(_Model):
 class NameCount(_Model):
     name: str
     count: int
+
+
+class UnnamedOut(_Model):
+    """The Unnamed page: the documents filed under no name, the named by hand, the names in use to pick from
+    (most documents first), and the names that are no name. ``kept`` is the documents the page asked to keep
+    (the ones it named), as they are filed now."""
+    unnamed: list[NamingDocument]
+    named_by_hand: list[NamingDocument]
+    kept: list[NamingDocument]
+    names: list[NameCount]
+    placeholders: list[str]
+
+
+class NameDocumentsIn(_Model):
+    documents: list[str] = Field(min_length=1)
+    name: str
+
+
+class NamedDocumentOut(_Model):
+    """A document as it is filed now, and the name it had: what an undo needs."""
+    document: NamingDocument
+    previous_name: str
+
+
+class NamedOut(_Model):
+    """The documents named, from the first; with ``error``, the next one couldn't be, and the rest weren't tried."""
+    named: list[NamedDocumentOut]
+    error: str | None
 
 
 class BrandsOut(_Model):

@@ -1,0 +1,38 @@
+{
+  "original_filename": "11232024190000_111.png",
+  "batch_id": 5,
+  "serial": 111,
+  "review": {
+    "verdict": "accepted",
+    "document_type": "receipt",
+    "name": "パン工房サンプル",
+    "date": "2024-11-23",
+    "time": "19:00:00",
+    "cost": 860.0,
+    "currency": "JPY",
+    "comment": ""
+  },
+  "page": 1,
+  "ocr": {
+    "markdown": "2024/11/23 19:00\nクロワッサン ¥860\n合計 ¥860",
+    "succeeded": true
+  },
+  "extraction": {
+    "document_type": "receipt",
+    "language": "ja",
+    "date": "2024-11-23",
+    "time": "19:00:00",
+    "name": "",
+    "phone": "",
+    "currency": "JPY",
+    "address": "",
+    "items": [
+      {
+        "name": "クロワッサン",
+        "total_price": 860.0
+      }
+    ],
+    "cost": 860.0,
+    "field_sources": {}
+  }
+}

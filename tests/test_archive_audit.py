@@ -17,8 +17,8 @@ def test_batch_coverage_full(archive_dir):
     rows = batch_coverage(index, organized)
     assert len(rows) == 1
     row = rows[0]
-    assert row["batch_id"] == 5 and row["in_batch"] == 9
-    assert row["organized"] == 9 and row["missing"] == []
+    assert row["batch_id"] == 5 and row["in_batch"] == 11
+    assert row["organized"] == 11 and row["missing"] == []
 
 
 def test_check_archive_sidecars_clean_then_broken(archive_dir):
@@ -38,9 +38,9 @@ def test_batch_statistics(archive_dir):
     stats = batch_statistics(load_scan_index(archive_dir))
     assert stats["total_batches"] == 1
     assert stats["archived"] == 1 and stats["non_archived"] == 0
-    assert stats["total_entries"] == 9 and stats["unique_filenames"] == 9
+    assert stats["total_entries"] == 11 and stats["unique_filenames"] == 11
     assert stats["lost_to_dedup"] == 0
-    assert stats["per_batch"][0]["running_total"] == 9
+    assert stats["per_batch"][0]["running_total"] == 11
 
 
 def test_count_duplicate_filenames():

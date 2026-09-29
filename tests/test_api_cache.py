@@ -26,13 +26,13 @@ def test_merchant_page_no_longer_parses_twice(api_client, monkeypatch):
 
 
 def test_removing_a_document_invalidates(api_client, configured_archive):
-    assert len(api_client.get("/api/viz/records").json()) == 8
+    assert len(api_client.get("/api/viz/records").json()) == 10
 
     month = configured_archive / "2023" / "05"
     for f in list(month.iterdir()):  # Tealive, the only doc in 2023/05
         f.unlink()
 
-    assert len(api_client.get("/api/viz/records").json()) == 7
+    assert len(api_client.get("/api/viz/records").json()) == 9
 
 
 def test_ttl_expiry_rebuilds(api_client, monkeypatch):

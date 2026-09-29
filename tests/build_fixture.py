@@ -35,7 +35,8 @@ Design notes
 - **Edge cases are deliberate.** JP/CN/EN docs; a multi-page document group; an
   undated doc; a corrupted doc; tossed + marked docs; a dedupe pair (equal cost,
   <5 min apart); a near-duplicate merchant name for normalization; a brand-prefix
-  family; a name-collision pair (suffixing); item totals that match AND mismatch
+  family; a name-collision pair (suffixing); an unnamed receipt (filed as "Receipt")
+  and one named by hand (read with no name, filed with one); item totals that match AND mismatch
   ``cost``; a large-cost doc; an uncommon currency. (Future-dated and very-old
   dates are built inline in ``tests/test_rules.py``.)
   Keep these intact when editing -- the tests assert against them.
@@ -405,6 +406,24 @@ def build_archive(root: Path) -> None:
                 extraction=receipt_extraction(language="ja", date="2023-11-03", time="08:30:00",
                                               name="スターバックス 渋谷店", currency="JPY",
                                               cost=540.0, items=[item("ラテ", 540.0)])))
+
+    # --- unnamed: the extractor found no name, and it was filed under the form's "Receipt" (the Unnamed page) ---
+    add("2024/11", "2024年11月16日 11：20 Receipt",
+        sidecar(original_filename="11162024112000_110.png", batch_id=5, serial=110,
+                review_=review(verdict="accepted", document_type="receipt", name="Receipt",
+                               date="2024-11-16", time="11:20:00", cost=1280.0, currency="JPY"),
+                ocr=ocr_result("2024/11/16 11:20\nメロンパン ¥280\n食パン ¥1,000\n合計 ¥1,280"),
+                extraction=receipt_extraction(language="ja", date="2024-11-16", time="11:20:00", name="",
+                                              currency="JPY", cost=1280.0,
+                                              items=[item("メロンパン", 280.0), item("食パン", 1000.0)])))
+    # --- named by hand: read with no name as well, and filed under the name a person gave it ---
+    add("2024/11", "2024年11月23日 19：00 パン工房サンプル",
+        sidecar(original_filename="11232024190000_111.png", batch_id=5, serial=111,
+                review_=review(verdict="accepted", document_type="receipt", name="パン工房サンプル",
+                               date="2024-11-23", time="19:00:00", cost=860.0, currency="JPY"),
+                ocr=ocr_result("2024/11/23 19:00\nクロワッサン ¥860\n合計 ¥860"),
+                extraction=receipt_extraction(language="ja", date="2024-11-23", time="19:00:00", name="",
+                                              currency="JPY", cost=860.0, items=[item("クロワッサン", 860.0)])))
 
     archived_serials: dict[int, str] = {}
     for folder, base, sc in docs:

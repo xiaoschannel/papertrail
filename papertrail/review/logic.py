@@ -95,8 +95,13 @@ def initial_name(default_name: str, candidates: list[SmartMatchCandidate]) -> st
     return default_name
 
 
+def is_placeholder_name(name: str) -> bool:
+    """Whether a name is no name: blank, or one the form falls back to."""
+    return not name.strip() or name in PLACEHOLDER_NAMES
+
+
 def name_status(name: str, confirmed_names: set[str]) -> NameStatus:
-    if not name.strip() or name in PLACEHOLDER_NAMES:
+    if is_placeholder_name(name):
         return "placeholder"
     return "approved" if name in confirmed_names else "unseen"
 

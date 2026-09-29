@@ -20,7 +20,7 @@ def test_sanity_reports_a_clean_archive(api_client):
     assert body["indexed"] is True
     assert body["sidecar_mismatches"] == []
     [batch] = body["batches"]
-    assert batch == {"batch_id": 5, "archived": True, "files": 9, "organized": 9,
+    assert batch == {"batch_id": 5, "archived": True, "files": 11, "organized": 11,
                      "missing_from_archive": [], "missing_from_input": None}
 
 
@@ -62,9 +62,9 @@ def test_index_audit_totals_and_batches(api_client):
 
     assert body["index_file"]["size"] > 0
     assert (body["total_batches"], body["archived"], body["non_archived"]) == (1, 1, 0)
-    assert (body["total_entries"], body["unique_filenames"], body["lost_to_dedup"]) == (9, 9, 0)
+    assert (body["total_entries"], body["unique_filenames"], body["lost_to_dedup"]) == (11, 11, 0)
     assert body["duplicates"] == []
-    assert body["batches"] == [{"batch_id": 5, "files": 9, "running_total": 9, "archived": True,
+    assert body["batches"] == [{"batch_id": 5, "files": 11, "running_total": 11, "archived": True,
                                 "start": "2023-05-18 16:45:00", "end": "2025-03-02 10:00:00"}]
     assert body["input"] is None                      # the configured scan folder doesn't exist
 
@@ -85,8 +85,8 @@ def test_index_audit_finds_a_file_indexed_twice_and_the_scan_folder_delta(api_cl
 
     assert body["duplicates"] == [{"filename": "01102025132642_101.png", "count": 2, "batch_ids": [5, 6]}]
     assert body["lost_to_dedup"] == 1
-    assert body["batches"][1]["running_total"] == 10
-    assert body["input"] == {"on_disk": 2, "indexed_not_on_disk": 8, "on_disk_not_indexed": ["09092026090000_1.png"]}
+    assert body["batches"][1]["running_total"] == 12
+    assert body["input"] == {"on_disk": 2, "indexed_not_on_disk": 10, "on_disk_not_indexed": ["09092026090000_1.png"]}
 
 
 # --- Experiment ------------------------------------------------------------------------------------------

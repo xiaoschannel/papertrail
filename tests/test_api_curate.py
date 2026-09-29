@@ -1,6 +1,8 @@
 """Contract tests: Dedupe — finding likely duplicates and tossing one."""
 
-from papertrail.data import read_sidecar
+import pytest
+
+from papertrail.data import load_smart_match_cache, read_sidecar, write_sidecar
 
 
 def _duplicate_of(api_client, index=1):
@@ -288,6 +290,7 @@ def test_each_count_is_what_its_page_lists(api_client):
     assert counts["normalize_engine"] == "string" and counts["normalize_threshold"] == 90
     assert counts["normalize"] == len(_clusters(api_client, threshold=90)["groups"]) > 0
     assert counts["brands_min_names"] == 4
+    assert counts["unnamed"] == len(api_client.get("/api/curate/unnamed").json()["unnamed"]) > 0
 
 
 def test_the_dedupe_count_follows_the_page(api_client):
@@ -402,3 +405,154 @@ def test_a_preview_takes_the_unsaved_prefix_settings_too(api_client):
     assert api_client.get("/api/curate/counts", params={"brands_min_names": 2}).json()["brands"] >= 1
     assert api_client.get("/api/curate/counts", params=long_only).json()["brands"] == len(
         api_client.get("/api/brands/suggestions", params={"min_count": 2, "min_length": 20}).json())
+
+
+# --- Unnamed ---------------------------------------------------------------------------------------
+UNNAMED, BY_HAND, BIC = "11162024112000_110.png", "11232024190000_111.png", "5:106-107"
+
+
+def _unnamed(api_client):
+    return api_client.get("/api/curate/unnamed").json()
+
+
+def _name(api_client, documents, name):
+    return api_client.post("/api/curate/unnamed/name", json={"documents": documents, "name": name})
+
+
+def test_the_unnamed_are_filed_under_a_placeholder_and_the_named_by_hand_were_read_without_a_name(api_client):
+    body = _unnamed(api_client)
+
+    [unnamed] = body["unnamed"]
+    assert (unnamed["filename"], unnamed["name"], unnamed["read"]) == (UNNAMED, "Receipt", "")
+    assert unnamed["path"].endswith("Receipt.png") and unnamed["pages"] == 1
+    [by_hand] = body["named_by_hand"]
+    assert (by_hand["filename"], by_hand["name"], by_hand["read"]) == (BY_HAND, "パン工房サンプル", "")
+    names = [n["name"] for n in body["names"]]
+    assert "Receipt" not in names and "パン工房サンプル" in names
+    counts = [n["count"] for n in body["names"]]
+    assert counts == sorted(counts, reverse=True)                                  # most used first
+
+
+def test_naming_files_the_document_under_the_name_and_keeps_what_was_read(api_client, configured_archive):
+    before = _unnamed(api_client)["unnamed"][0]
+
+    response = _name(api_client, [UNNAMED], "  パン工房サンプル ")
+
+    assert response.status_code == 200
+    [named] = response.json()["named"]
+    assert named["previous_name"] == "Receipt"
+    assert named["document"]["name"] == "パン工房サンプル" and named["document"]["path"].endswith("パン工房サンプル.png")
+    assert not (configured_archive / before["path"]).exists()                    # re-filed under the name
+    sidecar = read_sidecar(configured_archive / named["document"]["path"])
+    assert sidecar.review.name == "パン工房サンプル" and sidecar.review.cost == 1280.0
+    assert sidecar.extraction.name == ""                                          # what the model read stays
+    assert load_smart_match_cache(configured_archive)["5:110"] == {
+        "extracted": "", "confirmed": "パン工房サンプル", "extracted_phone": ""}
+    body = _unnamed(api_client)
+    assert body["unnamed"] == [] and _counts(api_client)["unnamed"] == 0
+    assert [d["filename"] for d in body["named_by_hand"]] == [UNNAMED, BY_HAND]   # one of the named by hand now
+
+
+def test_naming_back_to_the_placeholder_undoes_it(api_client):
+    _name(api_client, [UNNAMED], "Some Bakery")
+
+    [named] = _name(api_client, [UNNAMED], "Receipt").json()["named"]
+
+    assert named["previous_name"] == "Some Bakery"
+    assert [d["filename"] for d in _unnamed(api_client)["unnamed"]] == [UNNAMED]
+
+
+def test_naming_several_at_once_moves_every_page_of_each(api_client, configured_archive):
+    named = _name(api_client, [UNNAMED, BIC, UNNAMED], "Quillfeather Stores").json()["named"]
+
+    assert [n["document"]["filename"] for n in named] == [UNNAMED, BIC]         # each once, in the order asked
+    bic = next(r for r in api_client.get("/api/viz/records").json() if r["filename"] == BIC)
+    assert [p.rsplit("/", 1)[1] for p in bic["paths"]] == ["2025年3月2日 10：00 Quillfeather Stores.png",
+                                                            "2025年3月2日 10：00 Quillfeather Stores (2).png"]
+    assert {read_sidecar(configured_archive / p).review.name for p in bic["paths"]} == {"Quillfeather Stores"}
+    assert not list((configured_archive / "2025" / "03").glob("*ビックカメラ*"))
+
+
+def test_a_document_read_with_a_name_can_be_filed_unnamed(api_client, configured_archive):
+    """The name read may be no name at all (a slogan, a garble): the page shows what it was."""
+    path = configured_archive / "2023" / "11" / "2023年11月3日 08：30 スターバックス 渋谷店.png"
+    sidecar = read_sidecar(path)
+    write_sidecar(path, sidecar.model_copy(update={"review": sidecar.review.model_copy(update={"name": "Receipt"})}))
+
+    unnamed = {d["filename"]: d for d in _unnamed(api_client)["unnamed"]}
+
+    assert unnamed["11032023083000_109.png"]["read"] == "スターバックス 渋谷店"
+
+
+def test_naming_refuses_a_blank_name_and_documents_not_in_the_archive(api_client, configured_archive):
+    blank = _name(api_client, [UNNAMED], "   ")
+    assert blank.status_code == 422 and blank.json()["detail"] == "Type a name."
+    assert _name(api_client, [UNNAMED, "9:999"], "Somewhere").status_code == 404
+    assert _name(api_client, [], "Somewhere").status_code == 422
+    assert [d["filename"] for d in _unnamed(api_client)["unnamed"]] == [UNNAMED]   # nothing was renamed
+
+
+def _second_unnamed_beside_the_first(api_client):
+    """Another receipt filed unnamed in the same minute, so the two share a name: "… Receipt" and "… Receipt (2)"."""
+    other = next(r for r in api_client.get("/api/viz/records").json() if r["filename"] == "11032023083000_109.png")
+    _rename(api_client, {**other, "date": "2024-11-16", "time": "11:20:00"}, "Receipt")
+    paths = {d["filename"]: d["path"] for d in _unnamed(api_client)["unnamed"]}
+    assert paths[UNNAMED].endswith("Receipt.png") and paths[other["filename"]].endswith("Receipt (2).png")
+    return other["filename"]
+
+
+def test_naming_documents_that_share_a_name_moves_every_one(api_client, configured_archive):
+    """Moving the first closes the gap it leaves, which renames the second before its turn comes."""
+    second = _second_unnamed_beside_the_first(api_client)
+
+    response = _name(api_client, [UNNAMED, second], "Somewhere")
+
+    assert response.status_code == 200, response.text
+    assert [n["document"]["name"] for n in response.json()["named"]] == ["Somewhere", "Somewhere"]
+    assert _unnamed(api_client)["unnamed"] == []
+    assert not list((configured_archive / "2024" / "11").glob("*Receipt*"))
+
+
+def test_a_naming_that_fails_part_way_says_which_were_named(api_client, configured_archive, monkeypatch):
+    from papertrail.curate import naming
+
+    second = _second_unnamed_beside_the_first(api_client)
+    real, calls = naming.place_document, []
+
+    def fails_the_second(*args, **kwargs):
+        calls.append(1)
+        if len(calls) == 2:
+            raise OSError("the file is in the way")
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(naming, "place_document", fails_the_second)
+
+    response = _name(api_client, [UNNAMED, second], "Somewhere")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [n["document"]["filename"] for n in body["named"]] == [UNNAMED]
+    assert body["error"] == "Named 1 of 2; the next one couldn't be moved: the file is in the way"
+    assert [d["filename"] for d in _unnamed(api_client)["unnamed"]] == [second]   # the other stayed as it was
+
+
+def test_the_page_gets_back_the_documents_it_named_as_they_are_filed_now(api_client):
+    """Naming one of two that share a name renumbers the other's files: the page asks for both again."""
+    second = _second_unnamed_beside_the_first(api_client)
+    _name(api_client, [UNNAMED, second], "Somewhere")
+    _name(api_client, [UNNAMED], "Receipt")                      # "Somewhere (2)" moves down to "Somewhere"
+
+    body = api_client.get("/api/curate/unnamed", params={"keep": [second, UNNAMED, "9:999"]}).json()
+
+    assert [(d["filename"], d["unnamed"]) for d in body["kept"]] == [(second, False), (UNNAMED, True)]
+    assert body["kept"][0]["path"].endswith("Somewhere.png")
+    assert body["placeholders"] == ["Corrupted", "Document", "Receipt"]
+
+
+def test_naming_is_refused_before_anything_moves_when_a_document_has_moved_since(configured_archive):
+    from papertrail.curate import naming
+
+    gone = "2024/11/2024年11月16日 11：20 Elsewhere.png"
+    with pytest.raises(naming.NotNamed, match="Open it again"):
+        naming.name_documents(configured_archive, [["2024/11/2024年11月23日 19：00 パン工房サンプル.png"], [gone]], "X")
+    assert (configured_archive / "2024/11/2024年11月23日 19：00 パン工房サンプル.png").exists()   # nothing moved

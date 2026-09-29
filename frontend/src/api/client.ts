@@ -190,6 +190,12 @@ export const api = {
       unwrap(client.POST('/api/curate/normalize/distinct', { body: { names } })),
     forgetDistinct: (first: string, second: string) =>
       unwrap(client.DELETE('/api/curate/normalize/distinct', { params: { query: { first, second } } })),
+    /** The documents filed under no name, the named by hand, and the names in use; `keep`, documents the page
+     *  named, as they are filed now. */
+    unnamed: (keep: string[] = []) => unwrap(client.GET('/api/curate/unnamed', { params: { query: { keep } } })),
+    /** File these documents under one name: only the name changes, and their files are renamed. */
+    nameDocuments: (documents: string[], name: string) =>
+      unwrap(client.POST('/api/curate/unnamed/name', { body: { documents, name } })),
   },
 
   workshop: {
