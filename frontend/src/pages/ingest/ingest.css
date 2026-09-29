@@ -1,0 +1,145 @@
+/* Ingest pages: File Index, OCR, Parse, Archive. */
+
+/* These pages are a stack of forms: models to pick, counts to read, a button to
+   press. The page takes the form bound and centres.
+   File Index is the exception: its grouping grid turns width into more scans, so
+   that page takes the window and its other cards keep the form bound at the left
+   (a bounded block among full-width ones — see the WIDTH note in styles.css). */
+.ingest-page { max-width: var(--form-max); margin-inline: auto; }
+.ingest-page--wide { max-width: none; }
+.ingest-page--wide .card { max-width: var(--form-max); }
+.ingest-page--wide .card.card--full { max-width: none; }
+.ingest-page .card + .card, .ingest-page .card + .job-panel { margin-top: 16px; }
+.ingest-page .tiles { margin: 4px 0 12px; }
+.ingest-note { color: var(--muted); font-size: 12.5px; margin: 8px 0; max-width: var(--measure); }
+.ingest-warning { color: #b8860b; font-weight: 600; }
+.ingest-blocker { color: var(--text); font-weight: 600; }
+.ingest-subhead { font-size: 14px; margin: 16px 0 8px; font-weight: 620; }
+.ingest-details { margin: 6px 0; font-size: 13px; }
+.ingest-details summary { cursor: pointer; }
+.file-list { margin: 6px 0 0; padding-left: 18px; max-height: 15rem; overflow: auto; font-size: 12.5px; }
+.file-list code { color: var(--muted); }
+.start-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 14px; }
+.start-bar .ingest-note { margin: 0; }
+.limit-input {
+  width: 7rem; background: var(--panel); color: var(--text); border: 1px solid var(--border);
+  border-radius: 7px; padding: 6px 9px; font: inherit; font-size: 13px;
+}
+.parse-instructions { margin-bottom: 12px; }
+.parse-instructions textarea {
+  width: 100%; box-sizing: border-box; resize: vertical; background: var(--panel); color: var(--text);
+  border: 1px solid var(--border); border-radius: 7px; padding: 7px 9px; font: inherit; font-size: 13px;
+}
+
+/* --- grouping grid: whole rows per page; each cell is a page and its link to the next page --- */
+/* align-items: start: a short scan (sideways, trimmed) keeps a short tile, as in the galleries */
+.page-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)); gap: 14px 0; margin: 12px 0;
+  align-items: start;
+}
+.page-cell { display: flex; min-width: 0; }
+.page-tile {
+  flex: 1; min-width: 0; margin: 0; padding: 6px; border: 2px solid var(--border); border-radius: 8px; background: var(--panel);
+}
+.page-tile.grouped { border-color: hsl(var(--group-hue) 70% 55%); background: hsl(var(--group-hue) 70% 55% / .07); }
+.page-tile.tossed { opacity: .5; border-style: dashed; }
+.page-tile__tools { display: flex; justify-content: space-between; align-items: center; gap: 4px; margin-bottom: 6px; }
+.page-tile__tools button { padding: 2px 8px; font-size: 12px; }
+.page-tile__key { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* the scan fills the tile's width and is capped, like every thumbnail (CappedImage) */
+.page-tile__scan { background: var(--panel-2); border-radius: 4px; }
+.page-tile__scan > .ingest-note { display: block; margin: 0; padding: 3rem 8px; text-align: center; }
+.page-tile figcaption { font-size: 11.5px; color: var(--muted); margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.page-tile figcaption strong { color: var(--text); }
+
+.page-link { width: 34px; flex: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; }
+.page-link button { padding: 3px 5px; font-size: 13px; line-height: 1; filter: grayscale(1); opacity: .6; }
+.page-link button:disabled { opacity: .2; }
+.page-link.on .page-link__toggle { filter: none; opacity: 1; background: var(--accent-soft); border-color: var(--accent); }
+.page-link__swap { filter: none !important; opacity: 1 !important; }
+
+/* clicking a tile's scan opens it full size (on Group, with the rulers that trim it) */
+.page-tile__zoom { all: unset; cursor: zoom-in; display: block; width: 100%; }
+.page-tile__zoom:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* Finalize: the step's one commit, kept in view at the foot of a page that scrolls through every batch */
+.finalize-bar {
+  position: sticky; bottom: 0; z-index: 2; margin-top: 16px; padding: 12px 16px; border-radius: 10px;
+  background: var(--panel); border: 1px solid var(--border); box-shadow: 0 -4px 16px rgb(0 0 0 / .12);
+}
+.finalize-bar .start-bar { margin-top: 0; }
+.ingest-note.ok { color: #28a745; font-weight: 600; }
+
+/* Slice and Group: a crop says which sheet it was cut from, a sheet which pages it was cut into */
+.page-badge {
+  display: inline-block; padding: 0 6px; border-radius: 999px; font-size: 11px; line-height: 1.6;
+  background: var(--accent-soft); color: var(--accent); font-weight: 600;
+}
+.slice-warnings { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+
+/* --- Fix Rotation: a scan and the controls that decide on it (components/scans/rotation.tsx) ----------------- */
+.scan-viewer__suggest {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px;
+  color: var(--text); background: var(--panel); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 12px; font-size: 12.5px;
+}
+.scan-viewer__suggestion { color: var(--accent); font-weight: 600; }
+.scan-viewer__check { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); }
+.scan-viewer__actions { display: inline-flex; gap: 8px; margin-left: auto; }
+.scan-viewer__suggest .error-banner, .scan-viewer__suggest .ingest-note { flex-basis: 100%; max-width: none; margin: 0; }
+
+.scan-viewer figure:has(.scan-viewer__suggest) { min-width: min(42rem, 92vw); }   /* room for the slider's row */
+.scan-viewer__frame {
+  position: relative; display: grid; place-items: center; justify-self: center; overflow: hidden; border-radius: 6px;
+  background: #fff;
+}
+.scan-viewer__frame > img { max-width: 100%; max-height: 82vh; object-fit: contain; }
+/* straightening previewed: the scan as it is and straightened, side by side, each under its own guides */
+.scan-viewer__compare { display: flex; gap: 12px; justify-content: center; align-items: flex-start; justify-self: stretch; }
+.scan-viewer__compare > div { flex: 1 1 0; min-width: 0; display: grid; gap: 4px; justify-items: center; }
+.scan-viewer__compare > div > span { color: var(--muted); font-size: 12px; }
+.scan-viewer__compare .scan-viewer__frame > img { max-height: 78vh; }
+/* straightened as it would be saved: the turned scan laid across a frame the levelled page's size */
+/* the right half when nothing is to change: the scan's size, kept, and a word in it */
+.scan-viewer__unchanged { background: var(--panel-2); border: 1px dashed var(--border); }
+.scan-viewer__unchanged > span { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted);
+  font-size: 13px; }
+.scan-viewer--guides .scan-viewer__unchanged::after { display: none; }
+.scan-viewer__straightened > img { position: absolute; left: 50%; top: 50%; max-width: none; max-height: none; }
+/* level and plumb lines to judge a tilt by, over the scan (the preview, or the trim rulers' scan): a text
+   line should run along the one, a column's edge along the other */
+.scan-viewer--guides .scan-viewer__frame::after, .scan-viewer--guides .trim-editor__stage::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background:
+    repeating-linear-gradient(to bottom, transparent 0 27px, rgb(220 40 40 / .4) 27px 28px),
+    repeating-linear-gradient(to right, transparent 0 27px, rgb(220 40 40 / .25) 27px 28px);
+}
+.scan-viewer__line { flex-basis: 100%; }
+/* fixed widths: the slider takes what is left, and must not change size while it is dragged */
+.scan-viewer__dial { flex-basis: 100%; display: flex; align-items: center; gap: 12px; }
+.scan-viewer__dial input[type='range'] { flex: 1; min-width: 0; }
+.scan-viewer__turn { width: 24ch; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.scan-viewer__unused { visibility: hidden; }
+
+/* Fix Rotation's queue: the scan (as it is, and fixed) over its controls, which keep one place scan after
+   scan; the controls are the scan viewer's, laid out for every scan (see RotationDecider) */
+.rotation-decider { display: grid; gap: 10px; }
+/* at most 90rem wide: the preview sizes its halves to the room its parent (this) has, so the cap is here */
+.rotation-decider__stage { display: grid; place-items: center; min-height: 12rem; overflow: hidden;
+  width: min(100%, 90rem); justify-self: center; }
+.rotation-decider .rotation-controls { width: min(46rem, 100%); justify-self: center; }
+.rotation-nav { display: flex; align-items: center; gap: 12px; width: min(46rem, 100%); justify-self: center; }
+.rotation-nav > span:not(.segmented) { margin-inline: auto; }
+.rotation-controls__turn { display: inline-flex; align-items: center; gap: 8px; flex-basis: 100%; }
+.rotation-controls__turn .segmented button { width: 2.75em; padding: 3px 0; text-align: center; }
+/* the detectors' suggestion: coloured when it isn't the one chosen (the chosen one is filled) */
+.rotation-controls__turn .segmented button.is-suggested:not(.on) { color: var(--accent); font-weight: 700;
+  box-shadow: inset 0 -2px 0 var(--accent); }
+.rotation-controls__hold { color: var(--muted); }
+/* the preview takes the width its scans need at the stage's height (a wider document, a wider preview),
+   centred, rather than spreading the two halves across the window */
+.rotation-decider .scan-viewer__compare { justify-self: center; justify-content: center; }
+.rotation-decider .scan-viewer__compare > div { flex: 0 1 auto; }
+.rotation-recent { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 13px; }
+.rotation-recent li { display: flex; align-items: center; gap: 8px; }
+.rotation-recent button { padding: 2px 10px; font-size: 12px; margin-left: auto; }
+.rotation-batch + .rotation-batch { margin-top: 18px; }

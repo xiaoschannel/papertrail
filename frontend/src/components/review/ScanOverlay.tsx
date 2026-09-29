@@ -1,10 +1,10 @@
 import { useState, type ReactNode } from 'react'
 import { useShortcutKeys } from '../../api/config.ts'
 import type { BoxRect, FieldBox, ReviewPage, TopPoints, Trim } from '../../api/types.ts'
-import { ScanViewer } from '../scans.tsx'
-import { TrimmedImage } from '../TrimmedImage.tsx'
+import { ScanViewer } from '../scans/scans.tsx'
+import { TrimmedImage } from '../scans/TrimmedImage.tsx'
 import { Empty } from '../ui.tsx'
-import { useHeldKey } from '../useShortcuts.ts'
+import { useHeldKey } from '../../hooks/useShortcuts.ts'
 import './ScanOverlay.css'
 
 /** Colors per extracted field; other fields get DEFAULT_FIELD_COLOR. */

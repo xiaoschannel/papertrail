@@ -1,6 +1,6 @@
 import { useEffect, useRef, type ReactNode } from 'react'
 import { useShortcutKeys } from '../api/config.ts'
-import { keyLabel, keyOf, pressesFocused } from './useShortcuts.ts'
+import { keyLabel, keyOf, pressesFocused } from '../hooks/useShortcuts.ts'
 
 const TYPING = 'input, textarea, select, [contenteditable="true"]'
 

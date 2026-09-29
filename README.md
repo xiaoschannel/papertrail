@@ -125,7 +125,8 @@ papertrail/          all of the app's Python; everything that is imported lives 
                      the core, by the app's sections: the ingest steps, image work on scans, Review's
                      rules, filing and the folder's history, the Curate pages, the Visualize pages
   dev/               the sandbox, each checkout's ports, deploying live
-frontend/            the React + TypeScript web app
+frontend/            the React + TypeScript web app: src/pages/ by the sidebar's sections, src/components/
+                     what the pages share
 tests/               the test suite, its fixtures, and build_fixture.py, which generates them
 docs/                design notes and setup guides
 deploy.py  sandbox.py  worktree_setup.py

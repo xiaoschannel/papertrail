@@ -3,11 +3,11 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { api } from '../api/client.ts'
 import type { HistoryChange, HistoryCommit } from '../api/types.ts'
 import { ConfirmDialog } from '../components/ConfirmDialog.tsx'
-import { ago } from '../components/historyPip.tsx'
+import { ago } from '../components/status/historyPip.tsx'
 import { Card, ErrorState, Loading } from '../components/ui.tsx'
 import { plural } from '../format.ts'
-import '../components/history.css'
-import './ingest.css'
+import '../components/status/history.css'
+import './ingest/ingest.css'
 
 /*
  * The Papertrail folder's history (archive.history): what waits uncommitted, the commits, and taking
