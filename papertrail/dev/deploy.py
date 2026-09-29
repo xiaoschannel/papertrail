@@ -1,17 +1,17 @@
 """Deploy the live app: bring the main checkout up to date with main and restart it, safely.
 
-    <main checkout>/.venv/Scripts/python tools/deploy.py            update the main checkout, restart live
-    <main checkout>/.venv/Scripts/python tools/deploy.py restart    restart live as it is
-    <main checkout>/.venv/Scripts/python tools/deploy.py stop        stop live until someone starts it again
-    <main checkout>/.venv/Scripts/python tools/deploy.py status     what live runs, and how far behind it is
-    <main checkout>/.venv/Scripts/python tools/deploy.py install    (re)register the scheduled task
-    <main checkout>/.venv/Scripts/python tools/deploy.py autostart on|off   start live at logon, or not
+    <main checkout>/.venv/Scripts/python deploy.py            update the main checkout, restart live
+    <main checkout>/.venv/Scripts/python deploy.py restart    restart live as it is
+    <main checkout>/.venv/Scripts/python deploy.py stop        stop live until someone starts it again
+    <main checkout>/.venv/Scripts/python deploy.py status     what live runs, and how far behind it is
+    <main checkout>/.venv/Scripts/python deploy.py install    (re)register the scheduled task
+    <main checkout>/.venv/Scripts/python deploy.py autostart on|off   start live at logon, or not
 
 Setting it up on a new machine, once the README's venv and npm install are done: `install`, then `autostart
 on` if live should come back by itself after a reboot, then `deploy`. Windows only — it is a scheduled task.
 
 It runs from any checkout and always acts on the main checkout. Live runs as the "papertrail-live"
-scheduled task, outside every Claude session (tools/live_server.py says why); the first deploy registers it.
+scheduled task, outside every Claude session (papertrail/dev/live_server.py says why); the first deploy registers it.
 
 Everything that could make it refuse is checked before live is stopped, so a refused deploy changes nothing.
 It refuses:
@@ -34,7 +34,7 @@ import urllib.request
 from pathlib import Path
 from xml.sax.saxutils import escape
 
-REPO = Path(__file__).resolve().parent.parent
+REPO = Path(__file__).resolve().parents[2]
 
 TASK = "papertrail-live"
 LIVE_API, LIVE_WEB = 8000, 5173
@@ -165,7 +165,7 @@ def task_xml(pythonw: Path, launcher: Path, main: Path, *, at_logon: bool = Fals
         "<Delay>PT30S</Delay></LogonTrigger></Triggers>")
     return f"""<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
-  <RegistrationInfo><Description>Papertrail's live app (tools/deploy.py).</Description></RegistrationInfo>
+  <RegistrationInfo><Description>Papertrail's live app (deploy.py).</Description></RegistrationInfo>
   {triggers}
   <Principals><Principal id="Author"><LogonType>InteractiveToken</LogonType><RunLevel>LeastPrivilege</RunLevel></Principal></Principals>
   <Settings>
@@ -199,7 +199,7 @@ def starts_at_logon() -> bool:
 
 def refresh_launcher(main: Path) -> None:
     """The launcher the task runs: the main checkout's copy, else this one's (before it has reached main)."""
-    source = main / "tools" / "live_server.py"
+    source = main / "papertrail" / "dev" / "live_server.py"
     target = installed_launcher(main)
     target.parent.mkdir(exist_ok=True)
     shutil.copyfile(source if source.is_file() else Path(__file__).with_name("live_server.py"), target)
@@ -341,7 +341,7 @@ def halt(main: Path, *, even_with_job: bool) -> int:
         print("Wait for it to finish, or pass --even-with-job.")
         return 2
     stop()
-    print("Live is stopped. Start it again with: python tools/deploy.py restart")
+    print("Live is stopped. Start it again with: python deploy.py restart")
     return 0
 
 
@@ -364,7 +364,7 @@ def autostart(main: Path, on: bool) -> int:
         start(main)
         return 0 if wait_healthy(main) else 1
     if not was_up:
-        print("Live isn't running now; start it with: python tools/deploy.py restart")
+        print("Live isn't running now; start it with: python deploy.py restart")
     return 0
 
 

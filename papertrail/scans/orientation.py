@@ -54,7 +54,7 @@ _SHORT = 256
 #: A square needs this share of dark pixels to vote; paper grain and margins don't.
 _MIN_INK = 0.02
 #: Grey levels between a page's darkest and lightest tones below which it isn't contrast-stretched: a
-#: blank back's faint shading spans under 30 (the fixture's, from tools/build_fixture.py), which stretched
+#: blank back's faint shading spans under 30 (the fixture's, from tests/build_fixture.py), which stretched
 #: would read as ink.
 _MIN_CONTRAST = 32
 _MEAN = np.array([0.485, 0.456, 0.406], np.float32)

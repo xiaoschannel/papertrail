@@ -47,7 +47,7 @@ Design notes
 
 Run from the repo root::
 
-    python tools/build_fixture.py
+    python tests/build_fixture.py
 """
 
 from __future__ import annotations

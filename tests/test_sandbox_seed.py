@@ -1,11 +1,11 @@
-"""The sandbox's shared state (tools/sandbox_seed.py): built through the real pipeline, every stage as it says."""
+"""The sandbox's shared state (papertrail/dev/sandbox_seed.py): built through the real pipeline, every stage as it says."""
 
 import pytest
 
 from papertrail.ingest import pipeline
 from papertrail.data import load_decisions, load_extractions, load_trims, read_sidecar
 from papertrail.models import Trim, load_scan_index
-from tools import sandbox_seed as seed
+from papertrail.dev import sandbox_seed as seed
 
 COUPON = Trim(top=seed.COUPON_TRIM[0], bottom=seed.COUPON_TRIM[1])
 
@@ -132,18 +132,16 @@ def test_a_sandbox_from_before_the_papertrail_folder_is_moved_onto_it(tmp_path, 
 
 def test_the_reset_script_leaves_a_running_sandbox_alone(monkeypatch, tmp_path):
     import socket
-    import sys
     from types import SimpleNamespace
 
-    from tools import sandbox_reset
+    from papertrail.dev import sandbox_reset
 
     with socket.socket() as server:
         server.bind(("127.0.0.1", 0))
         server.listen()
         monkeypatch.setattr(sandbox_reset, "checkout_ports", lambda repo: SimpleNamespace(sandbox_api=server.getsockname()[1]))
-        # the module the script imports; if it ever got that far, nothing real is wiped
-        monkeypatch.setitem(sys.modules, "sandbox_seed",
-                            SimpleNamespace(prepare=lambda *a, **k: pytest.fail("rebuilt under a running server")))
+        # if it ever got that far, nothing real is wiped
+        monkeypatch.setattr(seed, "prepare", lambda *a, **k: pytest.fail("rebuilt under a running server"))
         assert sandbox_reset.main() == 1
 
 

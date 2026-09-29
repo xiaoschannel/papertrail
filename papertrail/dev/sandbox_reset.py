@@ -1,6 +1,6 @@
-"""Put this checkout's sandbox back into the shared state (tools/sandbox_seed.py), whatever was done in it.
+"""Put this checkout's sandbox back into the shared state (papertrail/dev/sandbox_seed.py), whatever was done in it.
 
-    .venv/Scripts/python tools/sandbox_reset.py
+    .venv/Scripts/python sandbox.py reset
 
 Stop the sandbox API first: the server holds the archive open and caches what it read, so the sandbox is
 never rebuilt under a running one (the script says so and changes nothing). Start it again afterwards; the
@@ -10,11 +10,9 @@ import socket
 import sys
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO))
-sys.path.insert(0, str(REPO / "tools"))
+from papertrail.dev.ports import NotSetUp, checkout_ports
 
-from dev_ports import NotSetUp, checkout_ports
+REPO = Path(__file__).resolve().parents[2]
 
 
 def main() -> int:
@@ -29,7 +27,7 @@ def main() -> int:
             print(f"The sandbox API is running on port {port}: stop it, then run this again.", file=sys.stderr)
             return 1
 
-    import sandbox_seed as seed
+    from papertrail.dev import sandbox_seed as seed
     seed.prepare(REPO / ".sandbox", fresh=True)
     print("The sandbox is back in the shared state. Start the sandbox API again to use it.")
     return 0

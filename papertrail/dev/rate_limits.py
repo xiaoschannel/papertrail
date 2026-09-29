@@ -4,8 +4,8 @@ A run paces itself on the limits each response carries (``rate_budget``), which 
 special credential. This prints them ahead of time instead -- useful when deciding how many documents
 to extract at once, or when a run is being held back and the question is by how much.
 
-    python tools/rate_limits.py            # the models Papertrail uses
-    python tools/rate_limits.py --all      # every model the project has a limit for
+    python -m papertrail.dev.rate_limits            # the models Papertrail uses
+    python -m papertrail.dev.rate_limits --all      # every model the project has a limit for
 
 Needs OPENAI_ADMIN_KEY (see .env.example): an admin key reads the organization, so nothing that runs
 unattended should hold one. Read-only: this asks, and changes nothing.
@@ -15,9 +15,6 @@ from __future__ import annotations
 
 import os
 import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import httpx
 

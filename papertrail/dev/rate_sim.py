@@ -5,10 +5,10 @@ endpoint the extractor calls, with the limits of whichever tier is asked for, a 
 the same rate-limit headers the real one sends. Calls over the limit are refused with 429 and a
 Retry-After, so the path that exists for when the pacing is wrong is exercised rather than assumed.
 
-    python tools/rate_sim.py                                  # 300 documents, a large account's limits
-    python tools/rate_sim.py --rpm 5000 --tpm 2000000         # the limits your own account reports
-    python tools/rate_sim.py --size small --documents 60
-    python tools/rate_sim.py --latency 3.0                    # a slower model: more calls in flight
+    python -m papertrail.dev.rate_sim                                  # 300 documents, a large account's limits
+    python -m papertrail.dev.rate_sim --rpm 5000 --tpm 2000000         # the limits your own account reports
+    python -m papertrail.dev.rate_sim --size small --documents 60
+    python -m papertrail.dev.rate_sim --latency 3.0                    # a slower model: more calls in flight
 
 What it prints: a second-by-second timeline of requests, tokens, calls in flight and the pace the run
 chose, then whether the run stayed inside the limits and how much of them it used. A run should sit
@@ -27,11 +27,9 @@ from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
 #: Sizes of limit worth running against, per minute. These are shapes to test, not anybody's tier:
 #: nothing reports which tier an account is on, only what each model's limits are, so use
-#: `python tools/rate_limits.py` for the real ones and `--rpm/--tpm` to simulate them.
+#: `python -m papertrail.dev.rate_limits` for the real ones and `--rpm/--tpm` to simulate them.
 SIZES = {"small": (500, 200_000), "medium": (5_000, 450_000), "large": (5_000, 2_000_000)}
 
 
@@ -261,7 +259,7 @@ def _run(documents: int) -> None:
     from papertrail.ingest.extraction import EXTRACTORS
 
     box = Path(tempfile.mkdtemp()) / "ingest"
-    shutil.copytree(Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "ingest", box)
+    shutil.copytree(Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "ingest", box)
     plan = pipeline.plan_parse(box, reprocess=True, limit=0)
     if not plan.documents:
         raise SystemExit("the fixture has no documents to parse")

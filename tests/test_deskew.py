@@ -1,4 +1,4 @@
-"""Tilt detection and straightening, on the tilt fixtures (tests/fixtures/tilt, from tools/build_fixture.py)."""
+"""Tilt detection and straightening, on the tilt fixtures (tests/fixtures/tilt, from tests/build_fixture.py)."""
 
 import math
 

@@ -11,10 +11,8 @@ import json
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parents[2]
 SNAPSHOT = REPO_ROOT / "frontend" / "openapi.json"
-
-sys.path.insert(0, str(REPO_ROOT))
 
 
 def render() -> str:

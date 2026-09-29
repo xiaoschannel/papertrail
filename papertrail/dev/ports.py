@@ -16,7 +16,7 @@ next time anyone claims.
 A worktree runs the sandbox only. Two API processes on the real archive, running different code, is
 how an archive gets hurt — so the live ports, and the live archive, stay the main checkout's.
 
-``tools/worktree_setup.py`` claims the slot and writes it to ``.dev-ports.json`` at the checkout's root
+``worktree_setup.py`` claims the slot and writes it to ``.dev-ports.json`` at the checkout's root
 (gitignored), where the sandbox server and ``frontend/vite.config.ts`` read it. A worktree without that
 file refuses to start rather than falling back onto the main checkout's ports.
 """
@@ -31,14 +31,14 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent
+REPO_ROOT = Path(__file__).resolve().parents[2]
 PORTS_FILE = ".dev-ports.json"
 
 LIVE_API, LIVE_WEB = 8000, 5173
 SANDBOX_API, SANDBOX_WEB = 8001, 5174
 MAX_SLOT = 20            # 8021 / 5194 at the top: twenty worktrees running at once is plenty
 
-SETUP_HINT = "run: python tools/worktree_setup.py (with the main checkout's .venv)"
+SETUP_HINT = "run: python worktree_setup.py (with the main checkout's .venv)"
 
 
 class NotSetUp(RuntimeError):
@@ -161,7 +161,7 @@ def launch_configurations(ports: Ports, python: str, *, worktree: bool) -> list[
     """The dev servers for this checkout: the main checkout's under their plain names, a worktree's by slot."""
     sandbox = [
         {"name": server_name("sandbox-api", ports), "runtimeExecutable": python,
-         "runtimeArgs": ["tools/sandbox_server.py"], "port": ports.sandbox_api},
+         "runtimeArgs": ["sandbox.py"], "port": ports.sandbox_api},
         {"name": server_name("sandbox-web", ports), "runtimeExecutable": "npm",
          "runtimeArgs": ["--prefix", "frontend", "run", "dev:sandbox"], "port": ports.sandbox_web},
     ]

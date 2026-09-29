@@ -4,7 +4,7 @@ Anything a Claude session starts lives in that session's job object and dies wit
 session started goes down whenever that session restarts or is archived — usually right after the merge
 it was deploying. The task runs outside every session, so live stays up while sessions come and go.
 
-tools/deploy.py copies this file to <main checkout>/.live/ and registers the task to run that copy, so
+deploy.py copies this file to <main checkout>/.live/ and registers the task to run that copy, so
 the task doesn't depend on this file having reached main yet; don't run it by hand. It must stay
 self-contained for the same reason: no imports from the repo.
 

@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from tools import deploy, live_server
-from tools.deploy import Refusal
+from papertrail.dev import deploy, live_server
+from papertrail.dev.deploy import Refusal
 
 NS = {"t": "http://schemas.microsoft.com/windows/2004/02/mit/task"}
 

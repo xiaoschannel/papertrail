@@ -12,18 +12,12 @@ from __future__ import annotations
 
 import json
 import shutil
-import sys
 from pathlib import Path
 
 import pytest
 
-# Make the project root importable (modules live at the repo root, not a package).
-REPO_ROOT = Path(__file__).resolve().parent.parent
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-
-from papertrail import settings  # noqa: E402
-from papertrail.settings import AppConfig  # noqa: E402
+from papertrail import settings
+from papertrail.settings import AppConfig
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 

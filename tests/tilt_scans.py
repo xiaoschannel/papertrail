@@ -1,4 +1,4 @@
-"""The tilt fixtures (``tests/fixtures/tilt``, made by ``tools/build_fixture.py``): printed pages fed in
+"""The tilt fixtures (``tests/fixtures/tilt``, made by ``tests/build_fixture.py``): printed pages fed in
 slightly crooked, with each one's tilt; and turning a page further while a test runs."""
 
 from __future__ import annotations

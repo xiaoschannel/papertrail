@@ -1,22 +1,21 @@
 """Set this checkout up to run beside the others: its own ports, and the dev servers to start them.
 
-    <main checkout>/.venv/Scripts/python tools/worktree_setup.py
+    <main checkout>/.venv/Scripts/python worktree_setup.py
 
 Run it once in each new worktree; running it again is harmless and keeps the same ports. In the main
 checkout it only (re)writes .claude/launch.json — the main checkout's ports never change. The scheme,
-and why worktrees run the sandbox only, is in dev_ports.py.
+and why worktrees run the sandbox only, is in papertrail/dev/ports.py.
 """
 import json
 import sys
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO))
-
-from dev_ports import (  # noqa: E402  (needs the repo on the path first)
+from papertrail.dev.ports import (
     LIVE_API, LIVE_WEB, checkout_ports, claim_slot, is_worktree, launch_configurations, merge_launch,
     save_checkout_ports,
 )
+
+REPO = Path(__file__).resolve().parent
 
 
 def nearest_python(root: Path) -> Path | None:

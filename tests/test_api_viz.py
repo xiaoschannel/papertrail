@@ -277,7 +277,7 @@ def test_documents_lists_every_archived_document_for_the_picker(api_client):
     assert any(d["date"] == "" for d in listed)           # the undated one is reachable too
 
 
-#: The archive fixture's trimmed page: read whole, then trimmed to its top 60% (tools/build_fixture.py).
+#: The archive fixture's trimmed page: read whole, then trimmed to its top 60% (tests/build_fixture.py).
 TRIMMED_PATH_END = "上野店.png"
 
 
