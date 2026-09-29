@@ -239,13 +239,14 @@ def test_a_billed_model_reports_what_the_run_cost_and_a_local_one_only_its_token
                                         json={"extractor": "OpenAI - gpt-6-luna"}))
     parse = api_client.get(f"/api/dev/experiment/{run['id']}").json()["parse"]
     assert {k: v for k, v in parse["tokens"].items() if k != "raw"} == {
-        "prompt": 2000, "cached": 1024, "completion": 400, "thinking": 250}
+        "prompt": 2000, "cached": 1024, "cache_write": 0, "completion": 400, "thinking": 250}
     assert parse["tokens"]["raw"]["model"] == "gpt-6-luna-2026-09-01"    # the payload, as it arrived
     assert parse["cost"] == pytest.approx(0.000308, abs=1e-6)   # the cached prompt billed at a tenth
 
     # The bench hands the page what each billed model charges, and nothing for one that runs here.
     prices = api_client.get("/api/dev/experiment").json()["prices"]
-    assert prices == {"OpenAI - gpt-6-luna": {"input": 0.10, "cached_input": 0.01, "output": 0.50}}
+    assert prices == {"OpenAI - gpt-6-luna": {"input": 0.10, "cached_input": 0.01, "cache_write": 0.125,
+                                               "output": 0.50}}
 
     _finish(api_client, api_client.post(f"/api/dev/experiment/{run['id']}/parse", json={"extractor": "Fake LLM"}))
     local = api_client.get(f"/api/dev/experiment/{run['id']}").json()["parse"]

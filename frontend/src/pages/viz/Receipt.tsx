@@ -347,6 +347,7 @@ function HowItWasRead({ file }: { file: string }) {
                 {run!.cost != null && ` · ${spendExactly(run!.cost)}`}
                 {run!.tokens && ` · ${num(run!.tokens.prompt)} prompt tokens`}
                 {run!.tokens && run!.tokens.cached > 0 && ` (${num(run!.tokens.cached)} cached)`}
+                {run!.tokens && run!.tokens.cache_write > 0 && ` (${num(run!.tokens.cache_write)} written to the cache)`}
               </td>
             </tr>
           ))}

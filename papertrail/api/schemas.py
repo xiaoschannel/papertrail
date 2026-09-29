@@ -370,6 +370,7 @@ class JobOut(_Model):
     calls: int
     prompt_tokens: int
     cached_tokens: int
+    cache_write_tokens: int
     completion_tokens: int
     thinking_tokens: int
     cancel_requested: bool
@@ -1146,6 +1147,7 @@ class PriceOut(_Model):
 
     input: float
     cached_input: float
+    cache_write: float
     output: float
 
 

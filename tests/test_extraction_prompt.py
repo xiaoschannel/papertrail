@@ -66,7 +66,7 @@ HEADERS = {"x-ratelimit-limit-requests": "500", "x-ratelimit-remaining-requests"
 
 #: What the SDK's usage object dumps to, near enough for a test that only passes it through.
 USAGE_PAYLOAD = {"prompt_tokens": 2000, "completion_tokens": 400, "total_tokens": 2400,
-                 "prompt_tokens_details": {"cached_tokens": 1024, "audio_tokens": 0},
+                 "prompt_tokens_details": {"cached_tokens": 1024, "cache_write_tokens": 0, "audio_tokens": 0},
                  "completion_tokens_details": {"reasoning_tokens": 250, "audio_tokens": 0}}
 
 
@@ -99,7 +99,7 @@ def _fake_openai(monkeypatch, refuses=("reasoning_effort",)):
             message = type("Message", (), {"parsed": ExtractionFlat(document_type="corrupted")})
             usage = type("Usage", (), {
                 "prompt_tokens": 2000, "completion_tokens": 400,
-                "prompt_tokens_details": type("P", (), {"cached_tokens": 1024}),
+                "prompt_tokens_details": type("P", (), {"cached_tokens": 1024, "cache_write_tokens": 0}),
                 "completion_tokens_details": type("C", (), {"reasoning_tokens": 250}),
                 "model_dump": lambda self=None: USAGE_PAYLOAD})
             return type("Response", (), {"choices": [type("Choice", (), {"message": message})], "usage": usage,
@@ -126,13 +126,38 @@ def test_a_call_reports_what_it_read_and_wrote_to_a_caller_that_asks(monkeypatch
 
     extraction.EXTRACTORS["OpenAI - gpt-6.1-sol"]("text", on_usage=seen.append)
 
-    assert seen[0].model_dump(exclude={"raw"}) == {"prompt": 2000, "cached": 1024, "completion": 400, "thinking": 250}
+    assert seen[0].model_dump(exclude={"raw"}) == {"prompt": 2000, "cached": 1024, "cache_write": 0,
+                                                     "completion": 400, "thinking": 250}
     # and the provider's own payload, untouched, for when the summary above is the thing in doubt
     assert seen[0].raw == {"model": "gpt-6.1-sol", "service_tier": "default",
                            "system_fingerprint": "fp_test", "usage": USAGE_PAYLOAD}
     # The cached part of the prompt bills at a twentieth, and the thinking bills as output.
     assert extraction.cost_of("OpenAI - gpt-6.1-sol", seen[0]) == pytest.approx(0.0060544)
     assert extraction.cost_of("Ollama - qwen3:8b", seen[0]) is None      # it runs here; it bills nothing
+
+
+def test_the_call_that_saves_the_instructions_pays_a_quarter_more_for_them():
+    first = TokenUse(prompt=2000, cache_write=1024, completion=400)
+
+    # 976 at the input rate, 1024 at the write rate (1.25x input), 400 as output
+    assert extraction.cost_of("OpenAI - gpt-6.1-sol", first) == pytest.approx(0.008512)
+    assert extraction.cost_of("OpenAI - gpt-6-luna", first) == pytest.approx(0.0004256)
+
+
+def test_only_the_instructions_are_saved_for_later_calls_never_the_document(monkeypatch):
+    calls = _fake_openai(monkeypatch, refuses=())
+
+    extraction.EXTRACTORS["OpenAI - gpt-6-luna"]("OCR HERE", custom_instruction="Treat ATM slips specially.")
+
+    instructions, document = calls[0]["messages"]
+    # The instructions end in a breakpoint: what a later call can read back...
+    [part] = instructions["content"]
+    assert part["prompt_cache_breakpoint"] == {"mode": "explicit"}
+    assert "Treat ATM slips specially." in part["text"] and "OCR HERE" not in part["text"]
+    # ...and nothing else is saved: left to itself the model would save up to the end of this
+    # document, which no later call repeats, at a quarter above the input rate.
+    assert calls[0]["prompt_cache_options"] == {"mode": "explicit"}
+    assert document == {"role": "user", "content": "OCR text:\nOCR HERE"}
 
 
 def test_each_hosted_model_is_its_own_extractor_and_one_refusing_a_setting_is_asked_without(monkeypatch):

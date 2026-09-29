@@ -93,6 +93,7 @@ class Job:
     calls: int = 0
     prompt_tokens: int = 0
     cached_tokens: int = 0
+    cache_write_tokens: int = 0
     completion_tokens: int = 0
     thinking_tokens: int = 0
 
@@ -118,6 +119,7 @@ class Job:
             "calls": self.calls,
             "prompt_tokens": self.prompt_tokens,
             "cached_tokens": self.cached_tokens,
+            "cache_write_tokens": self.cache_write_tokens,
             "completion_tokens": self.completion_tokens,
             "thinking_tokens": self.thinking_tokens,
             "cancel_requested": self.cancel_requested,
@@ -158,6 +160,7 @@ class JobContext:
             job.calls += 1
             job.prompt_tokens += use.prompt
             job.cached_tokens += use.cached
+            job.cache_write_tokens += use.cache_write
             job.completion_tokens += use.completion
             job.thinking_tokens += use.thinking
         self._runner._mutate(self._job, change)
