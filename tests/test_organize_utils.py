@@ -1,6 +1,6 @@
 """Archive naming + reorganize planning — including collision suffixing."""
 
-from organize_utils import (
+from papertrail.archive.organize import (
     apply_reorganize,
     build_accepted_name,
     parse_scan_datetime,
@@ -8,7 +8,7 @@ from organize_utils import (
     resolve_single_accepted_destination,
     sanitize_filename,
 )
-from models import ReviewDecision, Sidecar
+from papertrail.models import ReviewDecision, Sidecar
 
 COLON = "："  # FULLWIDTH_COLON used in archive filenames
 
@@ -104,8 +104,8 @@ def _decision(**changes):
 
 def test_reorganize_never_overwrites_a_scan_it_cannot_see(tmp_path):
     """A file with no sidecar is invisible to the archive, but its bytes still matter."""
-    from data import write_sidecar
-    from models import OcrResult
+    from papertrail.data import write_sidecar
+    from papertrail.models import OcrResult
 
     month = tmp_path / "2025" / "03"
     month.mkdir(parents=True)

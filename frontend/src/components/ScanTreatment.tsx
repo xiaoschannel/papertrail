@@ -5,7 +5,7 @@ import { keyLabel, useHeldKey } from './useShortcuts.ts'
 
 /**
  * Making a scan readable before OCR reads it again: which way is up, and a treatment with its sliders.
- * The server renders the result (scan_enhance.py), so the preview is exactly what OCR is given. Shared by
+ * The server renders the result (papertrail/scans/enhance.py), so the preview is exactly what OCR is given. Shared by
  * the Marked Workshop and the Experiment bench.
  */
 export const TREATMENTS = [

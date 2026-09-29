@@ -4,10 +4,10 @@ from pathlib import Path
 
 import pytest
 
-import document_files as df
-from data import read_sidecar
-from models import ReviewDecision
-from viz_records import build_viz_records
+from papertrail.archive import files as df
+from papertrail.data import read_sidecar
+from papertrail.models import ReviewDecision
+from papertrail.viz.records import build_viz_records
 
 
 def _document(archive_dir, multi=False):
@@ -187,7 +187,7 @@ def _same_minute_documents(archive_dir, count):
         copy = first.with_name(f"copy{n}{first.suffix}")
         copy.write_bytes(first.read_bytes())
         sidecar = read_sidecar(first).model_copy(update={"original_filename": f"copy{n}.png", "serial": 900 + n})
-        from data import write_sidecar
+        from papertrail.data import write_sidecar
         write_sidecar(copy, sidecar)
         placed += df.place_document(archive_dir, df.load_pages([copy]), decision,
                                     sidecar_for=lambda s: s.model_copy(update={"review": decision}))

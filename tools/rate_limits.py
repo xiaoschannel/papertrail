@@ -21,8 +21,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import httpx
 
-from env import load_env
-from extraction import OPENAI_MODELS
+from papertrail.env import load_env
+from papertrail.ingest.extraction import OPENAI_MODELS
 
 API = "https://api.openai.com/v1/organization"
 

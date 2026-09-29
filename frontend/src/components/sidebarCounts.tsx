@@ -6,7 +6,7 @@ import type { CurateCounts, PipelineCounts } from '../api/types.ts'
 
 /*
  * The sidebar's counts: how much waits at each ingest step, so the pipeline reads at a glance, and on
- * each curate page. Two cheap requests (api/routers/ingest.py and curate.py, ``/counts``): the ingest one
+ * each curate page. Two cheap requests (papertrail/api/routers/ingest.py and curate.py, ``/counts``): the ingest one
  * under the 'ingest' key, so whatever refreshes the ingest pages refreshes it; the curate one is refreshed
  * by every archive edit (api/invalidate.ts) and by saved settings (api/config.ts, pages/Config.tsx). Both
  * are asked again on each page change too.

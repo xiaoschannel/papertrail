@@ -8,13 +8,13 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-import archive_history
-import ingest_pipeline as ip
-from data import (
+from papertrail.archive import history as archive_history
+from papertrail.ingest import pipeline as ip
+from papertrail.data import (
     load_decisions, load_document_groups, load_extractions, load_ocr_results, load_smart_match_cache, save_decisions,
     load_ocr_batch, save_ocr_batch, save_ocr_results,
 )
-from models import OcrResult, ReceiptResult, TokenUse, iter_indexed_files, load_scan_index
+from papertrail.models import OcrResult, ReceiptResult, TokenUse, iter_indexed_files, load_scan_index
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
@@ -309,7 +309,7 @@ def test_a_run_refused_for_pacing_waits_and_tries_the_document_again(ingest_dir,
 
 def test_a_call_that_failed_is_in_the_log_with_what_the_model_said(ingest_dir):
     """A job keeps its errors only until the next run of its kind; the log is where they last."""
-    import run_log
+    from papertrail.ingest import run_log
 
     plan = ip.plan_parse(ingest_dir, reprocess=True, limit=1)
 
@@ -348,8 +348,8 @@ def test_a_wait_longer_than_a_run_should_sit_through_ends_it_and_says_why(ingest
 
 
 def test_what_each_call_took_is_kept_beside_its_result_and_in_the_log(ingest_dir):
-    from data import EXTRACTION_RUNS, OCR_RUNS, load_model_runs
-    import run_log
+    from papertrail.data import EXTRACTION_RUNS, OCR_RUNS, load_model_runs
+    from papertrail.ingest import run_log
 
     plan = ip.plan_parse(ingest_dir, reprocess=True, limit=0)
     plan.documents = [d for d in plan.documents if str(d) == "1:1"]
@@ -372,7 +372,7 @@ def test_what_each_call_took_is_kept_beside_its_result_and_in_the_log(ingest_dir
 
 
 def test_a_local_model_records_its_time_and_no_money(ingest_dir, tmp_path):
-    from data import OCR_RUNS, load_model_runs
+    from papertrail.data import OCR_RUNS, load_model_runs
 
     page = tmp_path / "page.png"
     page.write_bytes(b"not really a png")
@@ -385,7 +385,7 @@ def test_a_local_model_records_its_time_and_no_money(ingest_dir, tmp_path):
 
 def test_run_parse_does_not_undo_what_changed_the_file_while_it_ran(ingest_dir):
     """Regrouping another batch clears its extractions mid-Parse; the next save must not bring them back."""
-    from data import clear_extractions_decisions_for_batch, save_extractions
+    from papertrail.data import clear_extractions_decisions_for_batch, save_extractions
 
     extractions = load_extractions(ingest_dir)
     extractions["2:1"] = _receipt("Batch two, about to be regrouped")
@@ -425,8 +425,8 @@ def test_swapping_a_group_s_pages_is_saved_and_shown_in_that_order(ingest_dir):
 
 
 def test_archive_files_a_document_s_pages_in_their_grouped_order(ingest_dir, tmp_path):
-    from data import read_sidecar, save_document_groups
-    from models import DocumentGroups
+    from papertrail.data import read_sidecar, save_document_groups
+    from papertrail.models import DocumentGroups
 
     save_document_groups(ingest_dir, DocumentGroups(groups=[["1:5", "1:4"]]))   # 1:5 is page 1
     ip.run_archive(ingest_dir, _scans(tmp_path, ingest_dir), FakeProgress())
@@ -487,8 +487,8 @@ def test_run_archive_copies_finalizes_and_cleans_up(ingest_dir, tmp_path):
 def test_archive_files_each_page_s_rotation_decisions_in_its_sidecar_and_keeps_the_log(ingest_dir, tmp_path):
     """The decisions are training data: each page's go into its sidecar, the working file goes, and the log,
     which keeps every decision ever made, stays and is committed with the filed pages."""
-    from data import ROTATION_DECISIONS, ROTATION_LOG, add_rotation_decision, load_rotation_log
-    from models import RotationDecision
+    from papertrail.data import ROTATION_DECISIONS, ROTATION_LOG, add_rotation_decision, load_rotation_log
+    from papertrail.models import RotationDecision
 
     scans = _indexed_scans(tmp_path, ingest_dir)
     for key, action in (("1:6", "left"), ("1:6", "fixed"), ("1:1", "sent_back")):
@@ -547,7 +547,7 @@ def test_archive_clears_out_scans_filed_earlier_and_leaves_what_is_still_being_i
     assert ip.run_archive(ingest_dir, scans, FakeProgress()) == "Nothing new to file. Removed 1 scan(s) from the scan folder."
 
     # a batch still being ingested that needs a file of the same name keeps it
-    from data import save_scan_index
+    from papertrail.data import save_scan_index
 
     index = load_scan_index(ingest_dir)
     index.batches.append(index.batches[0].model_copy(update={"batch_id": 2, "archived": False,
@@ -595,7 +595,7 @@ def test_an_archive_from_before_the_history_is_committed_and_its_scans_cleared_o
     assert plan.blocker is None and plan.files == 0 and plan.scans_to_remove == 9
     message = ip.run_archive(archive_dir, scans, FakeProgress())
 
-    from data import filed_scan_pages
+    from papertrail.data import filed_scan_pages
     pages = filed_scan_pages(archive_dir)                    # the 9 indexed scans' pages, and a couple filed otherwise
     assert len(pages) > 9
     assert message.startswith(f"Nothing new to file. Committed {len(pages)} page(s) filed earlier (")
@@ -611,8 +611,8 @@ def test_an_archive_from_before_the_history_is_committed_and_its_scans_cleared_o
 
 def test_archiving_files_what_the_calls_behind_a_document_took(ingest_dir, tmp_path):
     """The mid-ingest records are cleaned up with the rest, so they travel into the sidecars first."""
-    from data import EXTRACTION_RUNS, OCR_RUNS, merge_model_runs, read_sidecar
-    from models import ModelRun
+    from papertrail.data import EXTRACTION_RUNS, OCR_RUNS, merge_model_runs, read_sidecar
+    from papertrail.models import ModelRun
 
     merge_model_runs(ingest_dir, OCR_RUNS, {"1:1": ModelRun(model="DeepSeek OCR 2", at=1.0, seconds=31.5)})
     merge_model_runs(ingest_dir, EXTRACTION_RUNS, {"1:1": ModelRun(
@@ -702,8 +702,8 @@ TRIMMED, FIXTURE_TRIM = "1:3", (0.0, 0.75)
 
 
 def test_the_fixture_s_trimmed_page_was_read_under_its_trim(ingest_dir, tmp_path):
-    from data import load_trims
-    from models import Trim
+    from papertrail.data import load_trims
+    from papertrail.models import Trim
 
     band = Trim(top=FIXTURE_TRIM[0], bottom=FIXTURE_TRIM[1])
     assert load_trims(ingest_dir) == {TRIMMED: band}
@@ -713,8 +713,8 @@ def test_the_fixture_s_trimmed_page_was_read_under_its_trim(ingest_dir, tmp_path
 
 
 def test_a_page_trimmed_differently_after_it_was_read_is_read_again(ingest_dir, tmp_path):
-    from data import load_trims
-    from models import Trim
+    from papertrail.data import load_trims
+    from papertrail.models import Trim
 
     scans = _scans(tmp_path, ingest_dir)
     ip.trim_page(ingest_dir, TRIMMED, Trim(top=0.0, bottom=0.6))          # the cut moves up
@@ -733,7 +733,7 @@ def test_a_page_trimmed_differently_after_it_was_read_is_read_again(ingest_dir, 
 
 def test_ocr_of_the_coupon_scan_never_sees_the_coupon(ingest_dir, tmp_path):
     """The trims fixture: a receipt with a coupon under it, and the trim that keeps the receipt."""
-    from models import Trim
+    from papertrail.models import Trim
 
     spec = json.loads((FIXTURES / "trims" / "receipt_with_coupon.json").read_text(encoding="utf-8"))
     scans = _scans(tmp_path, ingest_dir)
@@ -759,7 +759,7 @@ def test_ocr_of_the_coupon_scan_never_sees_the_coupon(ingest_dir, tmp_path):
 
 
 def test_ocr_reads_only_the_band_and_remembers_which(ingest_dir, tmp_path):
-    from models import Trim
+    from papertrail.models import Trim
 
     scans = _scans(tmp_path, ingest_dir)                  # 40 x 80 scans
     ip.trim_page(ingest_dir, "1:1", Trim(top=0.5, bottom=1.0))
@@ -781,8 +781,8 @@ def test_ocr_reads_only_the_band_and_remembers_which(ingest_dir, tmp_path):
 
 
 def test_a_trim_turns_with_its_page(ingest_dir, tmp_path):
-    from data import load_trims
-    from models import Trim
+    from papertrail.data import load_trims
+    from papertrail.models import Trim
 
     scans = _scans(tmp_path, ingest_dir)
     ip.trim_page(ingest_dir, "1:1", Trim(top=0.1, bottom=0.6))
@@ -794,7 +794,7 @@ def test_a_trim_turns_with_its_page(ingest_dir, tmp_path):
 
 
 def test_the_grouping_editor_sees_each_page_s_trim(ingest_dir):
-    from models import Trim
+    from papertrail.models import Trim
 
     pages = {page.key: page.trim for page in ip.grouping_state(ingest_dir, 1).pages}
     assert pages[TRIMMED] == Trim(top=FIXTURE_TRIM[0], bottom=FIXTURE_TRIM[1])
@@ -802,8 +802,8 @@ def test_the_grouping_editor_sees_each_page_s_trim(ingest_dir):
 
 
 def test_archiving_files_each_page_s_trim_with_it(ingest_dir, tmp_path):
-    from data import TRIMS, read_sidecar
-    from models import Trim
+    from papertrail.data import TRIMS, read_sidecar
+    from papertrail.models import Trim
 
     ip.run_archive(ingest_dir, _scans(tmp_path, ingest_dir), FakeProgress())
 

@@ -14,8 +14,8 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-import orientation
-from document_grouping import ROTATIONS, rotate_upright
+from papertrail.scans import orientation
+from papertrail.scans.grouping import ROTATIONS, rotate_upright
 
 PAGES = Path(__file__).resolve().parent / "fixtures" / "orientation"
 KINDS = json.loads((PAGES / "pages.json").read_text(encoding="utf-8"))

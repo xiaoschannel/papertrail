@@ -99,7 +99,7 @@ def test_only_running_jobs_block_a_restart():
 
 
 def test_changed_files_say_what_else_to_install():
-    assert deploy.followups(["api/main.py"]) == []
+    assert deploy.followups(["papertrail/api/main.py"]) == []
     assert deploy.followups(["requirements.txt", "frontend/package-lock.json"]) == ["pip", "npm"]
     assert deploy.followups(["requirements-deepseek.txt"]) == ["gpu"]
 

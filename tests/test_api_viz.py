@@ -1,8 +1,8 @@
 """Contract tests: visualize endpoints == fixture-backed pure-function output."""
 
-import analytics
-from api.serialization import df_records
-from viz_records import build_viz_records
+from papertrail.viz import analytics
+from papertrail.api.serialization import df_records
+from papertrail.viz.records import build_viz_records
 
 
 def test_viz_records_matches_pure_output(api_client, configured_archive):
@@ -70,7 +70,7 @@ def test_monthly_series_keep_time_gaps(api_client):
 def test_dashboard_charts_share_one_timeline(api_client, configured_archive):
     # Side-by-side charts must put the same month at the same position, even when
     # non-receipt documents extend the timeline beyond the first/last receipt.
-    from models import ReviewDecision, Sidecar
+    from papertrail.models import ReviewDecision, Sidecar
 
     early = configured_archive / "2022" / "01"
     early.mkdir(parents=True)
@@ -156,8 +156,8 @@ def test_year_filter_narrows_results(api_client):
 
 
 def test_a_documents_runs_come_from_its_sidecar(api_client, configured_archive):
-    from data import read_sidecar, write_sidecar
-    from models import ModelRun, TokenUse
+    from papertrail.data import read_sidecar, write_sidecar
+    from papertrail.models import ModelRun, TokenUse
 
     page = next((configured_archive / "2025" / "01").glob("*.png"))
     sidecar = read_sidecar(page)
@@ -184,7 +184,7 @@ def test_receipt_lookup_and_404(api_client):
 def _record_with_a_box(api_client, archive):
     """The untrimmed page with an OCR box. Records come in the order the file system lists the archive, which
     isn't the same on every OS, and the trimmed page with a box shows it moved onto its band."""
-    from data import read_sidecar
+    from papertrail.data import read_sidecar
     for record in api_client.get("/api/viz/records").json():
         sidecar = read_sidecar(archive / record["paths"][0])
         if sidecar and sidecar.ocr and sidecar.ocr.boxes and record["trim"] is None:
@@ -206,8 +206,8 @@ def test_receipt_pages_draw_every_box_read_when_no_field_cites_one(api_client, c
 
 
 def test_receipt_pages_draw_only_the_boxes_the_fields_cite(api_client, configured_archive):
-    from api import cache
-    from data import read_sidecar, write_sidecar
+    from papertrail.api import cache
+    from papertrail.data import read_sidecar, write_sidecar
 
     record = _record_with_a_box(api_client, configured_archive)
     page = configured_archive / record["paths"][0]

@@ -4,8 +4,8 @@ import json
 
 import pytest
 
-from data import load_decisions, save_decisions
-from models import ReviewDecision
+from papertrail.data import load_decisions, save_decisions
+from papertrail.models import ReviewDecision
 
 CONFIRMED = "セブン-イレブン 品川駅前店（確認済）"
 
@@ -201,8 +201,8 @@ def test_document_needs_the_scan_index(pending, configured_ingest):
 
 def test_a_page_trimmed_after_it_was_read_shows_its_boxes_on_the_band(pending, configured_ingest):
     """The boxes were measured on the whole page; the page is shown trimmed, so they are placed on the band."""
-    from data import set_trim
-    from models import Trim
+    from papertrail.data import set_trim
+    from papertrail.models import Trim
 
     set_trim(configured_ingest, "1:1", Trim(top=0.0, bottom=0.5))
 

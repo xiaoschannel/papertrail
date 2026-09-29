@@ -2,9 +2,9 @@
 
 import pytest
 
-import extraction
-from extraction import FIELD_SOURCES_ADDENDUM, build_extraction_prompt, extraction_messages
-from models import CorruptedResult, ExtractionFlat, FieldSourceEntry, OtherResult, ReceiptResult, TokenUse
+from papertrail.ingest import extraction
+from papertrail.ingest.extraction import FIELD_SOURCES_ADDENDUM, build_extraction_prompt, extraction_messages
+from papertrail.models import CorruptedResult, ExtractionFlat, FieldSourceEntry, OtherResult, ReceiptResult, TokenUse
 
 
 def test_prompt_embeds_ocr_text():

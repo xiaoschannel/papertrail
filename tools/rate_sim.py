@@ -208,8 +208,8 @@ def main() -> int:
     os.environ["OPENAI_BASE_URL"] = f"http://127.0.0.1:{args.port}/v1"
     os.environ.setdefault("OPENAI_API_KEY", "sk-simulated")
 
-    import extraction
-    from rate_budget import MARGIN, RateBudget
+    from papertrail.ingest import extraction
+    from papertrail.ingest.rate_budget import MARGIN, RateBudget
 
     extraction.budget = RateBudget()
     budget = extraction.budget
@@ -256,9 +256,9 @@ def _run(documents: int) -> None:
     import shutil
     import tempfile
 
-    import ingest_pipeline as pipeline
-    from rate_budget import MAX_SLOTS
-    from extraction import EXTRACTORS
+    from papertrail.ingest import pipeline
+    from papertrail.ingest.rate_budget import MAX_SLOTS
+    from papertrail.ingest.extraction import EXTRACTORS
 
     box = Path(tempfile.mkdtemp()) / "ingest"
     shutil.copytree(Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "ingest", box)

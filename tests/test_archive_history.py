@@ -1,4 +1,4 @@
-"""The folder's history (archive_history): a git repository at the Papertrail folder's root, committed at
+"""The folder's history (archive.history): a git repository at the Papertrail folder's root, committed at
 milestones with only what each produced."""
 
 import subprocess
@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-import archive_history as history
+from papertrail.archive import history
 
 
 def _git(root: Path, *args: str) -> str:

@@ -1,7 +1,7 @@
 """The SANDBOX environment: the API on a throwaway archive of invented scans, with fake OCR/LLM models.
 
 It never reads or writes the live archive, never loads a real OCR or LLM model (so it takes no VRAM from a
-live OCR run; the check for turned scans does run its small CPU model, orientation.py), and listens on its
+live OCR run; the check for turned scans does run its small CPU model, papertrail/scans/orientation.py), and listens on its
 own port — 8001 in the main checkout, the live API keeping 8000; a worktree's own slot otherwise
 (dev_ports.py) — so every checkout's sandbox and the live app can all run at once:
 
@@ -37,16 +37,16 @@ import sandbox_seed as seed
 
 sb = seed.prepare(BOX, fresh="--fresh" in sys.argv[1:])
 
-import experiment_runs
+from papertrail.ingest import experiment as experiment_runs
 experiment_runs.ROOT = BOX / "experiment"
-from api import ingest_registry
+from papertrail.api import ingest_registry
 ingest_registry.ocr_providers = lambda: {seed.OCR_MODEL: seed.FakeOcr(sb)}
 # The hosted models' own names too, so the Experiment bench can price a run the way it would for real.
-from extraction import PRICES
+from papertrail.ingest.extraction import PRICES
 fake_extract = seed.fake_extractor(sb)
 ingest_registry.extractors = lambda: {seed.EXTRACTOR: fake_extract, **{name: fake_extract for name in PRICES}}
 ingest_registry.unload_extractor = lambda name: (lambda: print(f"[sandbox] unloaded {name}", flush=True))
 
 import uvicorn
-from api.main import create_app
+from papertrail.api.main import create_app
 uvicorn.run(create_app(), host="127.0.0.1", port=PORT)

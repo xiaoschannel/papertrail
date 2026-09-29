@@ -2,7 +2,7 @@
 
 import pandas as pd
 
-from viz_records import build_viz_items, build_viz_records
+from papertrail.viz.records import build_viz_items, build_viz_records
 
 
 def test_build_viz_records_collapses_multipage(configured_archive):

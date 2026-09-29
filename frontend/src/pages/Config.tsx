@@ -270,7 +270,7 @@ const SHORTCUT_GROUPS: { title: string; actions: [keyof Shortcuts, string][] }[]
   ] },
 ]
 
-/** Actions live on one page at once, so they can't share a key (`Shortcuts.GROUPS` in settings.py). */
+/** Actions live on one page at once, so they can't share a key (`Shortcuts.GROUPS` in papertrail/settings.py). */
 const QUICK: (keyof Shortcuts)[] = ['quick_1', 'quick_2', 'quick_3']
 const LIVE_TOGETHER: (keyof Shortcuts)[][] = [
   ['accept', 'mark', 'toss', 'prev', 'next', 'undo', 'hide_boxes', ...QUICK],
@@ -278,7 +278,7 @@ const LIVE_TOGETHER: (keyof Shortcuts)[][] = [
   ['leave_as_is', 'fix_scan', 'toggle_guides', 'prev', 'next', 'cancel'],
 ]
 
-/** The actions the server would refuse (the same rules as `Shortcuts` in settings.py). */
+/** The actions the server would refuse (the same rules as `Shortcuts` in papertrail/settings.py). */
 function shortcutClashes(keys: Shortcuts): Set<keyof Shortcuts> {
   const bad = new Set<keyof Shortcuts>()
   for (const group of LIVE_TOGETHER) {

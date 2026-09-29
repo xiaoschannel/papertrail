@@ -2,9 +2,9 @@
 
 import pytest
 
-import ingest_pipeline as pipeline
-from data import load_decisions, load_extractions, load_trims, read_sidecar
-from models import Trim, load_scan_index
+from papertrail.ingest import pipeline
+from papertrail.data import load_decisions, load_extractions, load_trims, read_sidecar
+from papertrail.models import Trim, load_scan_index
 from tools import sandbox_seed as seed
 
 COUPON = Trim(top=seed.COUPON_TRIM[0], bottom=seed.COUPON_TRIM[1])
@@ -29,7 +29,7 @@ def test_the_first_batch_is_filed_with_some_of_it_marked(sandbox):
 
 
 def test_the_filed_batch_s_scans_left_the_scan_folder_for_the_archive_s_history(sandbox):
-    import archive_history
+    from papertrail.archive import history as archive_history
 
     import subprocess
 
@@ -106,8 +106,8 @@ def test_a_sandbox_from_before_the_papertrail_folder_is_moved_onto_it(tmp_path, 
     import json
     import shutil
 
-    import archive_history
-    import settings
+    from papertrail.archive import history as archive_history
+    from papertrail import settings
 
     monkeypatch.setattr(settings, "CONFIG_PATH", settings.CONFIG_PATH)   # prepare points it at the sandbox
     box = tmp_path / "sandbox"
@@ -150,7 +150,7 @@ def test_the_reset_script_leaves_a_running_sandbox_alone(monkeypatch, tmp_path):
 def test_a_marked_receipt_has_white_lines_for_the_workshop_to_mend(sandbox):
     from PIL import Image
 
-    from scan_enhance import Enhancement, enhance
+    from papertrail.scans.enhance import Enhancement, enhance
 
     [page] = (sandbox.archive / "marked").glob("*_7.png")
     assert read_sidecar(page).review.comment == seed.MARKED[7]

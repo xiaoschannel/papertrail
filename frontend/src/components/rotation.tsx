@@ -10,7 +10,7 @@ import { keyLabel, useDialogKeys, useHeldKey } from './useShortcuts.ts'
  * Deciding on a scan's rotation, as Fix Rotation's queue and its all-scans view do: the scan beside it as
  * the fix would leave it, a turn (preset from the detectors, any of the four), a straightening slider
  * (preset from the tilt measured on the scan turned), and Fix or Leave as is. Every decision is kept on
- * the server as training data for the detectors (rotation_review.py).
+ * the server as training data for the detectors (papertrail/ingest/rotation_review.py).
  */
 
 /** The CSS turn (clockwise) that shows a scan whose top points this way upright. */

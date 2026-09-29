@@ -1,6 +1,6 @@
 import pytest
 
-from brand_registry import BrandDirectory, BrandEntry, resolve_brand
+from papertrail.curate.brands import BrandDirectory, BrandEntry, resolve_brand
 
 
 def test_resolve_brand_empty_name_returns_empty_result():

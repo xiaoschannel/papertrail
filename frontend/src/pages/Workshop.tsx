@@ -27,7 +27,7 @@ import { Card, Empty, ErrorState, Loading } from '../components/ui.tsx'
 import '../components/review/review.css'
 import './curate.css'
 
-/** Colors per verdict, as review_logic's VERDICT_COLORS. */
+/** Colors per verdict, as review.logic's VERDICT_COLORS. */
 const VERDICT_COLORS: Record<string, string> = { accepted: '#28a745', marked: '#ffc107', tossed: '#6c757d' }
 
 /** The part of a page a reread reads when it is turned from `top` and straightened `degrees` (mirror of

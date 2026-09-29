@@ -6,7 +6,7 @@ alwaysApply: true
 Do not use dataclass and always prefer pydantic instead.
 
 If a data migration is needed, create a page under the Dev section of the web app (frontend/src/App.tsx),
-with its endpoints in api/routers/.
+with its endpoints in papertrail/api/routers/.
 
 Maintain the test fixtures. A feature that reads a new kind of input (a file layout, a kind of scan, a
 record) adds a synthetic example of it to tools/build_fixture.py, with tests that run against it, in the

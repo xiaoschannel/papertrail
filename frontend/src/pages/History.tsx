@@ -10,7 +10,7 @@ import '../components/history.css'
 import './ingest.css'
 
 /*
- * The Papertrail folder's history (archive_history): what waits uncommitted, the commits, and taking
+ * The Papertrail folder's history (archive.history): what waits uncommitted, the commits, and taking
  * either back. Milestones commit their own files as they happen; here everything else is committed by
  * hand. Uncommitting the last commit keeps its files as they are, uncommitted again; throwing changes away
  * (Discard) is a separate step, file by file or all at once.

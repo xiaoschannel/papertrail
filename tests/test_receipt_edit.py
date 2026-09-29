@@ -4,12 +4,12 @@ from pathlib import Path
 
 import pytest
 
-import document_files
-from data import load_smart_match_cache, read_sidecar
-from models import ReviewDecision
-from organize_utils import build_accepted_name
-from receipt_edit import NotEditable, ReceiptEdit, apply_receipt_edit, edit_error
-from viz_records import build_viz_records
+from papertrail.archive import files
+from papertrail.data import load_smart_match_cache, read_sidecar
+from papertrail.models import ReviewDecision
+from papertrail.archive.organize import build_accepted_name
+from papertrail.viz.receipt_edit import NotEditable, ReceiptEdit, apply_receipt_edit, edit_error
+from papertrail.viz.records import build_viz_records
 
 
 def _record(archive_dir, key=None):
@@ -81,7 +81,7 @@ def test_an_edit_failing_part_way_leaves_the_document_as_it_was(archive_dir, mon
     row = next(r for _, r in build_viz_records(archive_dir).iterrows() if len(r["paths"]) > 1)
     month = (archive_dir / row["path"]).parent
     before = sorted((f.name, f.read_bytes()) for f in month.iterdir())
-    real_rename = document_files.os.rename
+    real_rename = files.os.rename
     moves = []
 
     def second_page_fails(src, dst):
@@ -91,7 +91,7 @@ def test_an_edit_failing_part_way_leaves_the_document_as_it_was(archive_dir, mon
                 raise OSError("disk hiccup")
         return real_rename(src, dst)
 
-    monkeypatch.setattr(document_files.os, "rename", second_page_fails)
+    monkeypatch.setattr(files.os, "rename", second_page_fails)
     with pytest.raises(OSError):
         apply_receipt_edit(archive_dir, list(row["paths"]), _edit(row, name="Half Done"))
 

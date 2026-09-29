@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from indexing_schemes import canon_imageformula, parse_canon_filename, single_batch_by_filename
+from papertrail.ingest.indexing_schemes import canon_imageformula, parse_canon_filename, single_batch_by_filename
 
 
 def test_parse_canon_filename_valid():

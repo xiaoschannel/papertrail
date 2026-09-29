@@ -5,8 +5,8 @@ import math
 import pytest
 from PIL import Image
 
-import deskew
-from models import Trim
+from papertrail.scans import deskew
+from papertrail.models import Trim
 from tilt_scans import BLANK_BACK, PAGES, scan, tilt
 
 def shows(page: dict, share: float = deskew.DEFAULT_TILT_SHARE) -> bool:

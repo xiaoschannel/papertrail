@@ -2,8 +2,8 @@
 
 import numpy as np
 
-from models import SmartMatchHistoryRow
-from name_similarity import (
+from papertrail.models import SmartMatchHistoryRow
+from papertrail.curate.similarity import (
     find_similar_names,
     fold_for_match,
     get_smart_match_candidates,

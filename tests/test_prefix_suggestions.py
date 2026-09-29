@@ -1,4 +1,4 @@
-from brand_registry import build_prefix_suggestions
+from papertrail.curate.brands import build_prefix_suggestions
 
 
 def test_prefix_suggestions_supersession_prefers_longer_equal_support_prefix():

@@ -97,7 +97,7 @@ function rebase(draft: Draft, g: Grouping): Draft {
 /** Unsaved edits per batch, kept while the app is open (leaving the page doesn't lose them). */
 const unsavedDrafts = new Map<number, Draft>()
 
-/** Consecutive runs of linked keys (mirror of document_grouping.compute_groups). */
+/** Consecutive runs of linked keys (mirror of scans.grouping.compute_groups). */
 function computeGroups(keys: string[], links: boolean[]): string[][] {
   const groups: string[][] = []
   keys.forEach((key, i) => {

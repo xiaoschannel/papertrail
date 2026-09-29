@@ -1,6 +1,6 @@
 import type { components } from './schema'
 
-/** Short names for the generated API models used across pages (source: `api/schemas.py`). */
+/** Short names for the generated API models used across pages (source: `papertrail/api/schemas.py`). */
 type Schemas = components['schemas']
 
 export type VizRecord = Schemas['VizRecord']

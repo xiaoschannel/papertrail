@@ -2,8 +2,8 @@
 
 from datetime import datetime
 
-import data
-import dedupe_candidates as dd
+from papertrail import data
+from papertrail.curate import dedupe as dd
 
 
 def test_parse_verdict_datetime_valid_and_invalid():
@@ -31,7 +31,7 @@ def test_find_dedupe_ignores_tossed_and_non_receipts(ingest_dir):
 
 
 def test_find_dedupe_separates_on_cost():
-    from models import ReviewDecision
+    from papertrail.models import ReviewDecision
 
     base = dict(verdict="accepted", document_type="receipt", name="X",
                 date="2025-01-10", time="10:00:00", currency="JPY")

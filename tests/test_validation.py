@@ -1,6 +1,6 @@
 """Archive submission blockers."""
 
-from validation import is_date_time_safe_for_archive
+from papertrail.review.validation import is_date_time_safe_for_archive
 
 
 def test_valid_date_and_time():

@@ -1,11 +1,11 @@
-"""Persistence round-trips and archive-state derivations in data.py."""
+"""Persistence round-trips and archive-state derivations in papertrail/data.py."""
 
 import json
 import shutil
 
 import pytest
 
-import data
+from papertrail import data
 
 
 def _dump(d):
@@ -119,7 +119,7 @@ def test_clear_extractions_decisions_keeps_tossed_decisions(tmp_path):
     # Regrouping a batch drops all of its extractions and every non-tossed decision. Tosses survive
     # (tossed pages can't be regrouped, so their document keys stay valid), including a tossed decision
     # that has an extraction: dropping it would silently un-toss the document.
-    from models import ReceiptResult, ReviewDecision
+    from papertrail.models import ReceiptResult, ReviewDecision
 
     def receipt(name, cost):
         return ReceiptResult(document_type="receipt", language="ja", date="2025-01-10",
@@ -161,7 +161,7 @@ def test_load_reorganized_state(archive_dir):
 def test_legacy_ocr_superset_sidecar_loads(archive_dir):
     # Older archived sidecars store OCR with legacy `filename`/`raw` keys
     # alongside the current `markdown`/`succeeded`. The loader must tolerate them.
-    from models import Sidecar
+    from papertrail.models import Sidecar
 
     path = archive_dir / "2025/01/2025年1月10日 13：26 セブン-イレブン 品川駅前店.json"
     on_disk = json.loads(path.read_text(encoding="utf-8"))
@@ -185,7 +185,7 @@ def test_save_decisions_retries_while_the_file_is_briefly_locked(ingest_dir, mon
     # Windows refuses to replace a file another process has open; the save waits it out.
     from pathlib import Path
 
-    import data
+    from papertrail import data
 
     decisions = data.load_decisions(ingest_dir)
     real_replace = Path.replace
@@ -212,7 +212,7 @@ def test_save_decisions_gives_up_and_cleans_up_when_locked_for_good(ingest_dir, 
 
     import pytest
 
-    import data
+    from papertrail import data
 
     before = (ingest_dir / "decisions.json").read_text(encoding="utf-8")
     monkeypatch.setattr(Path, "replace", lambda self, target: (_ for _ in ()).throw(PermissionError("locked")))
@@ -224,7 +224,7 @@ def test_save_decisions_gives_up_and_cleans_up_when_locked_for_good(ingest_dir, 
 
 
 def test_the_ocr_cache_follows_every_batch_file(ingest_dir):
-    from api import ingest_store as store
+    from papertrail.api import ingest_store as store
 
     store.clear()
     first = store.ocr_results(ingest_dir)
@@ -236,7 +236,7 @@ def test_the_ocr_cache_follows_every_batch_file(ingest_dir):
 
 
 def test_the_ocr_cache_migrates_before_it_measures(ingest_dir):
-    from api import ingest_store as store
+    from papertrail.api import ingest_store as store
 
     store.clear()
     _legacy(ingest_dir)

@@ -1,7 +1,7 @@
 """brand -> prefix -> branch, the tree the Manage section draws."""
 import pandas as pd
 
-from brand_registry import BrandDirectory, BrandEntry, brand_breakdown
+from papertrail.curate.brands import BrandDirectory, BrandEntry, brand_breakdown
 
 
 def _records(rows: list[tuple[str, str]]) -> pd.DataFrame:

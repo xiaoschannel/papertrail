@@ -40,7 +40,7 @@ and kept in `~/.cache/papertrail`.
 
 ---
 The hosted extractors need an API key. Copy `.env.example` to `.env` and put yours in it; the file is
-gitignored, and `env.py` says which one is read when you have several checkouts.
+gitignored, and `papertrail/env.py` says which one is read when you have several checkouts.
 
 ---
 Everything lives in one **Papertrail folder**, set on the Config page: the scanner drops images into its
@@ -50,7 +50,7 @@ on `PATH`.
 
 Run the API and the web app, each in its own terminal:
 ```
-.venv\Scripts\python -m uvicorn api.main:app --host 127.0.0.1 --port 8000
+.venv\Scripts\python -m uvicorn papertrail.api.main:app --host 127.0.0.1 --port 8000
 npm --prefix frontend run dev
 ```
 Then open http://127.0.0.1:5173. Both listen on this machine only.

@@ -164,7 +164,7 @@ def main() -> int:
     if npm is None:
         (logs / "web.log").write_bytes(b"npm is not on the PATH the task sees; install Node.js for all users\n")
         return 1
-    run({"api": [str(root / ".venv" / "Scripts" / "python.exe"), "-m", "uvicorn", "api.main:app",
+    run({"api": [str(root / ".venv" / "Scripts" / "python.exe"), "-m", "uvicorn", "papertrail.api.main:app",
                  "--host", "127.0.0.1", "--port", str(LIVE_API)],
          "web": [npm, "--prefix", "frontend", "run", "dev"]}, root, logs)
     return 1

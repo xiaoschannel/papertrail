@@ -1,6 +1,6 @@
 """Contract tests: the Config page's option lists and folder check."""
 
-from api import ingest_registry
+from papertrail.api import ingest_registry
 
 
 def test_options_lists_models_engines_and_schemes(api_client, monkeypatch):

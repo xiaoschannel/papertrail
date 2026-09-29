@@ -99,7 +99,7 @@ class Sandbox(BaseModel):
 
     def filed(self) -> set[str]:
         """The scans the archive holds: Archive took them out of ``scans/``, so they aren't drawn again."""
-        from data import filed_scan_pages
+        from papertrail.data import filed_scan_pages
 
         return set(filed_scan_pages(self.archive)) if self.archive.is_dir() else set()
 
@@ -274,8 +274,8 @@ class FakeOcr:
         Mid-ingest pages keep their trim in trims.json, marked ones in their sidecar. A marked page handed
         over turned a quarter (its stored size, swapped) is the whole page: the Workshop reads it whole.
         """
-        from data import load_trims, read_sidecar
-        from models import batch_serial_key, filename_to_batch_serial, load_scan_index
+        from papertrail.data import load_trims, read_sidecar
+        from papertrail.models import batch_serial_key, filename_to_batch_serial, load_scan_index
 
         marked = self.sb.archive / "marked" / original
         if marked.exists():
@@ -299,7 +299,7 @@ def fake_extractor(sb: Sandbox):
     """An extractor that reads the fake OCR's lines back: the first is the shop, the first 合計 the total."""
 
     def fake_extract(ocr_text, has_boxes=False, custom_instruction="", on_usage=None):
-        from models import CorruptedResult, ReceiptResult, TokenUse
+        from papertrail.models import CorruptedResult, ReceiptResult, TokenUse
         time.sleep(sb.extract_delay)
         if on_usage is not None:
             # Roughly what a hosted model would report: four characters to a token, the fixed prompt cached.
@@ -377,7 +377,7 @@ def prepare(box: Path, fresh: bool = False) -> Sandbox:
     """
     import json
 
-    import settings
+    from papertrail import settings
 
     if fresh and box.exists():
         remove_tree(box)
@@ -412,10 +412,10 @@ def prepare(box: Path, fresh: bool = False) -> Sandbox:
 
 def build(sb: Sandbox) -> None:
     """Take an empty sandbox to the shared state, one stage at a time, through the real pipeline."""
-    import ingest_pipeline as pipeline
-    import review_logic as rl
-    from data import save_decisions
-    from models import ReviewDecision, Trim, batch_serial_key
+    from papertrail.ingest import pipeline
+    from papertrail.review import logic as rl
+    from papertrail.data import save_decisions
+    from papertrail.models import ReviewDecision, Trim, batch_serial_key
 
     delays = sb.ocr_delay, sb.extract_delay
     sb.ocr_delay = sb.extract_delay = 0.0            # nobody is waiting on a fake model yet
@@ -443,7 +443,7 @@ def build(sb: Sandbox) -> None:
         first = index()
         trim(first, ARCHIVED_TRIMMED_BEFORE_OCR)
         read_and_parse(first)
-        from data import load_extractions
+        from papertrail.data import load_extractions
         decisions = {}
         for key, extraction in load_extractions(sb.archive).items():
             defaults = rl.form_defaults(extraction)

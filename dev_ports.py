@@ -98,7 +98,7 @@ def claim_slot(
     no other worktree holds it. A new slot must have both its ports free, so an unrelated program sitting
     on 8003 just moves the claim along to the next slot.
     """
-    from data import atomic_write_text   # the app's own safe write; imported here so readers stay light
+    from papertrail.data import atomic_write_text   # the app's own safe write; imported here so readers stay light
 
     registry = registry or registry_path(root)
     key = str(root.resolve())
@@ -169,7 +169,7 @@ def launch_configurations(ports: Ports, python: str, *, worktree: bool) -> list[
         return sandbox   # the live archive is the main checkout's alone
     live = [
         {"name": "live-api", "runtimeExecutable": python,
-         "runtimeArgs": ["-m", "uvicorn", "api.main:app", "--port", str(LIVE_API), "--host", "127.0.0.1"],
+         "runtimeArgs": ["-m", "uvicorn", "papertrail.api.main:app", "--port", str(LIVE_API), "--host", "127.0.0.1"],
          "port": LIVE_API},
         {"name": "live-web", "runtimeExecutable": "npm", "runtimeArgs": ["--prefix", "frontend", "run", "dev"],
          "port": LIVE_WEB},

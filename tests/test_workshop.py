@@ -6,10 +6,10 @@ import shutil
 import pytest
 from PIL import Image
 
-import workshop
-from data import load_smart_match_cache, read_sidecar
-from models import ReceiptResult, ReviewDecision
-from scan_enhance import Enhancement, enhance
+from papertrail.curate import workshop
+from papertrail.data import load_smart_match_cache, read_sidecar
+from papertrail.models import ReceiptResult, ReviewDecision
+from papertrail.scans.enhance import Enhancement, enhance
 
 
 def _two_page_marked(archive_dir):
@@ -64,7 +64,7 @@ def test_accepting_files_every_page_and_keeps_what_the_model_read(archive_dir):
 def test_accepting_keeps_a_pending_reread_and_turns_the_pages_it_read(archive_dir):
     from PIL import Image
 
-    from models import DetectedBox, OcrResult
+    from papertrail.models import DetectedBox, OcrResult
 
     key = _two_page_marked(archive_dir)
     document = workshop.find(archive_dir, key)
@@ -119,7 +119,7 @@ def test_ocr_text_joins_the_pages(archive_dir):
 
 
 def test_the_extractor_is_given_every_page_as_parse_gives_it():
-    from models import DetectedBox, OcrResult
+    from papertrail.models import DetectedBox, OcrResult
 
     plain, has_boxes = workshop.extractor_input([OcrResult(markdown="just text")])
     assert (plain, has_boxes) == ("--- Page 1 ---\njust text", False)
@@ -166,7 +166,7 @@ def test_a_scan_marked_by_hand_without_a_sidecar_is_listed_and_can_be_decided(ar
 
 # --- trims ----------------------------------------------------------------------------------------------
 def _trimmed_reread(document, top_points, band):
-    from models import OcrResult
+    from papertrail.models import OcrResult
 
     read = ReceiptResult(document_type="receipt", language="ja", date="2025-08-10", time="14:20",
                          name="ローソン 池袋店", currency="JPY", address="", cost=300.0)
@@ -176,7 +176,7 @@ def _trimmed_reread(document, top_points, band):
 
 
 def test_trimming_a_marked_page_keeps_the_cut_with_the_page(archive_dir):
-    from models import Trim
+    from papertrail.models import Trim
 
     path, sidecar = workshop.marked_page(archive_dir, "08102025142000_202.png")
     workshop.trim_page(path, sidecar, Trim(top=0.0, bottom=0.7))
@@ -187,7 +187,7 @@ def test_trimming_a_marked_page_keeps_the_cut_with_the_page(archive_dir):
 
 
 def test_accepting_a_page_turned_upside_down_turns_its_trim_too(archive_dir):
-    from models import Trim
+    from papertrail.models import Trim
 
     path, sidecar = workshop.marked_page(archive_dir, "08102025142000_202.png")
     band = Trim(top=0.1, bottom=0.6)
@@ -202,7 +202,7 @@ def test_accepting_a_page_turned_upside_down_turns_its_trim_too(archive_dir):
 
 def test_a_quarter_turn_reads_the_whole_page_and_files_it_whole(archive_dir):
     """A trim runs along the page as stored; turned a quarter, it would lie across, so it isn't kept."""
-    from models import Trim
+    from papertrail.models import Trim
 
     path, sidecar = workshop.marked_page(archive_dir, "08102025142000_202.png")
     band = Trim(top=0.1, bottom=0.6)
@@ -217,7 +217,7 @@ def test_a_quarter_turn_reads_the_whole_page_and_files_it_whole(archive_dir):
 
 
 def test_a_scan_marked_by_hand_can_be_trimmed(archive_dir):
-    from models import Trim
+    from papertrail.models import Trim
 
     shutil.copy(archive_dir / "marked" / "08102025142000_202.png", archive_dir / "marked" / "by hand.png")
     path, sidecar = workshop.marked_page(archive_dir, "by hand.png")

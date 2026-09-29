@@ -18,7 +18,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 
 def render() -> str:
-    from api.main import create_app
+    from papertrail.api.main import create_app
 
     return json.dumps(create_app().openapi(), indent=2, ensure_ascii=False) + "\n"
 

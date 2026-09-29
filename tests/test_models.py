@@ -2,9 +2,9 @@
 
 import json
 
-import data
-import models
-from models import DocumentIndex, DocumentKey, FileKey
+from papertrail import data
+from papertrail import models
+from papertrail.models import DocumentIndex, DocumentKey, FileKey
 
 
 # --- FileKey ---------------------------------------------------------------
@@ -104,7 +104,7 @@ def test_document_index_expand_decisions(ingest_dir):
 
 # --- Trim ------------------------------------------------------------------
 def test_a_trim_that_keeps_the_whole_page_is_no_trim():
-    from models import Trim, trim_of
+    from papertrail.models import Trim, trim_of
 
     assert trim_of(0, 1) is None
     assert trim_of(0.2, 1) == Trim(top=0.2, bottom=1.0)
@@ -115,7 +115,7 @@ def test_a_trim_keeps_some_of_the_page():
     import pytest
     from pydantic import ValidationError
 
-    from models import Trim
+    from papertrail.models import Trim
 
     for top, bottom in [(0.5, 0.5), (0.6, 0.4), (0.5, 0.51), (-0.1, 0.5), (0.2, 1.5)]:
         with pytest.raises(ValidationError):
@@ -124,14 +124,14 @@ def test_a_trim_keeps_some_of_the_page():
 
 def test_the_thinnest_trim_the_rulers_allow_is_kept():
     """The rulers stop 2% apart; 0.3 - 0.28 is 0.01999... in floating point, and must still pass."""
-    from models import MIN_TRIM_BAND, Trim
+    from papertrail.models import MIN_TRIM_BAND, Trim
 
     for top in (0.28, 0.07, 0.5, 0.0, 0.98):
         Trim(top=top, bottom=round(top + MIN_TRIM_BAND, 4))
 
 
 def test_a_trim_as_pixel_rows_is_never_empty():
-    from models import Trim
+    from papertrail.models import Trim
 
     assert Trim(top=0.25, bottom=0.75).rows(100) == (25, 75)
     assert Trim(top=0.0, bottom=0.02).rows(10) == (0, 1)
@@ -139,7 +139,7 @@ def test_a_trim_as_pixel_rows_is_never_empty():
 
 
 def test_a_trim_turns_with_its_file():
-    from models import Trim, turned_trim
+    from papertrail.models import Trim, turned_trim
 
     band = Trim(top=0.1, bottom=0.6)
     assert turned_trim(band, "") == band
@@ -149,7 +149,7 @@ def test_a_trim_turns_with_its_file():
 
 
 def test_a_height_on_the_band_read_is_placed_on_the_band_shown():
-    from models import Trim, reframe_y
+    from papertrail.models import Trim, reframe_y
 
     whole, top_half, middle = None, Trim(top=0, bottom=0.5), Trim(top=0.25, bottom=0.75)
     assert reframe_y(300, middle, middle) == 300

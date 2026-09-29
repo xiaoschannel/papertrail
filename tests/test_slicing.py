@@ -1,16 +1,16 @@
-"""Slicing a sheet of small receipts into crops: the grid, the plan, and applying it (slicing.py)."""
+"""Slicing a sheet of small receipts into crops: the grid, the plan, and applying it (papertrail/scans/slicing.py)."""
 
 from pathlib import Path
 
 import pytest
 from PIL import Image
 
-import slicing as sl
-from data import (
+from papertrail.scans import slicing as sl
+from papertrail.data import (
     OCR_RUNS, load_decisions, load_extractions, load_model_runs, load_ocr_batch, merge_model_runs,
     save_decisions, save_ocr_batch,
 )
-from models import Box, ModelRun, OcrResult, ReviewDecision, SheetGrid, iter_indexed_files, load_scan_index
+from papertrail.models import Box, ModelRun, OcrResult, ReviewDecision, SheetGrid, iter_indexed_files, load_scan_index
 
 
 def grid(cells, rows=(), cols=(), frame=(0, 0, 1000, 1000)) -> SheetGrid:
@@ -51,7 +51,7 @@ def give_results(ingest_dir, *serials):
     ocr = load_ocr_batch(ingest_dir, 1)
     extraction = next(iter(load_extractions(ingest_dir).values()))
     decisions = load_decisions(ingest_dir)
-    from data import merge_extractions
+    from papertrail.data import merge_extractions
     for serial in serials:
         key = f"1:{serial}"
         ocr[key] = OcrResult(markdown=f"ticket {serial}")
@@ -309,7 +309,7 @@ def test_a_grid_without_its_toss_is_reported(ingest_dir, scans):
 
 
 def test_the_crops_are_pages_ocr_reads_like_any_other_and_the_sheet_is_not(ingest_dir, scans):
-    import ingest_pipeline as ip
+    from papertrail.ingest import pipeline as ip
 
     slice_(ingest_dir, scans, 2, THREE)
     plan = ip.plan_ocr(ingest_dir, scans, None, reprocess=False, limit=0)
@@ -345,8 +345,8 @@ def test_the_fixture_grid_cuts_every_ticket_out_whole_and_in_reading_order(inges
 
 # --- archive ---------------------------------------------------------------------------------------------
 def test_archive_files_crops_with_where_they_came_from_and_the_sheet_under_tossed(ingest_dir, scans):
-    import ingest_pipeline as ip
-    from data import read_sidecar
+    from papertrail.ingest import pipeline as ip
+    from papertrail.data import read_sidecar
 
     slice_(ingest_dir, scans, 2, THREE)                          # 1:9, 1:10, 1:11
     decisions = load_decisions(ingest_dir)
@@ -385,8 +385,8 @@ class _Progress:
 # --- trims (a band of one page) on sheets and crops ---------------------------------------------------
 def test_slicing_a_trimmed_sheet_drops_its_trim_and_the_plan_says_so(ingest_dir, scans):
     """The grid is drawn on the whole sheet, and its crops are what is read: a trim on the sheet means nothing."""
-    from data import load_trims, set_trim
-    from models import Trim
+    from papertrail.data import load_trims, set_trim
+    from papertrail.models import Trim
 
     set_trim(ingest_dir, "1:2", Trim(top=0.1, bottom=0.9))
 
@@ -397,8 +397,8 @@ def test_slicing_a_trimmed_sheet_drops_its_trim_and_the_plan_says_so(ingest_dir,
 
 
 def test_a_crop_that_moves_loses_its_trim_with_its_other_results(ingest_dir, scans):
-    from data import load_trims, set_trim
-    from models import Trim
+    from papertrail.data import load_trims, set_trim
+    from papertrail.models import Trim
 
     assert slice_(ingest_dir, scans, 3, TWO).trims == 1         # 1:9, 1:10; sheet 1:3's own trim goes
     assert load_trims(ingest_dir) == {}
@@ -411,9 +411,9 @@ def test_a_crop_that_moves_loses_its_trim_with_its_other_results(ingest_dir, sca
 
 
 def test_a_crop_can_be_trimmed_but_a_sliced_sheet_cant(ingest_dir, scans):
-    import ingest_pipeline as ip
-    from data import load_trims
-    from models import Trim
+    from papertrail.ingest import pipeline as ip
+    from papertrail.data import load_trims
+    from papertrail.models import Trim
 
     slice_(ingest_dir, scans, 2, THREE)
     band = Trim(top=0.0, bottom=0.8)
