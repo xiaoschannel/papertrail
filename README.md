@@ -3,13 +3,13 @@
 > _Ex vestigiis veritas_  
 > Truth from traces.
 
-<img src="sample-annotated-receipt.jpg" alt="Sample annotated receipt" width="360" />
+<img src="docs/sample-annotated-receipt.jpg" alt="Sample annotated receipt" width="360" />
 
 A personal document archival tool for digitizing receipts, tickets, and other timed documents into a structured timeline. Tested with over 3000 real documents in Japanese, Chinese and English.
 
 This project is also built to test the "fast fashion era of SaaS from AI coding" idea and practice AI-assisted coding against a messy, real-world problem.
 
-Design decisions are documented in [design_decisions.md](design_decisions.md).
+Design decisions are documented in [design_decisions.md](docs/design_decisions.md).
 
 # Setup
 
@@ -19,7 +19,7 @@ python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements-deepseek.txt
 ```
-Then follow the below guide to [install flash-attention on Windows](flash_attn.md).
+Then follow the below guide to [install flash-attention on Windows](docs/flash_attn.md).
 
 ---
 If you don't want to use Deepseek OCR 2:
@@ -115,6 +115,25 @@ Either way nothing is stopped, so a refused deploy costs no uptime.
 `restart` restarts it as it is, and `stop` takes it down until someone starts it again — killing the servers
 by hand instead leaves the task believing it still runs them. Live's output goes to `.live\api.log` and
 `.live\web.log` in the main checkout.
+
+## Where things are
+
+```
+papertrail/          all of the app's Python; everything that is imported lives here
+  api/               the FastAPI server (papertrail.api.main:app)
+  ingest/ scans/ review/ archive/ curate/ viz/
+                     the core, by the app's sections: the ingest steps, image work on scans, Review's
+                     rules, filing and the folder's history, the Curate pages, the Visualize pages
+  dev/               the sandbox, each checkout's ports, deploying live
+frontend/            the React + TypeScript web app
+tests/               the test suite, its fixtures, and build_fixture.py, which generates them
+docs/                design notes and setup guides
+deploy.py  sandbox.py  worktree_setup.py
+                     the scripts you run; nothing imports them
+```
+Everything runs from the repo root — a root script, `python -m`, or pytest (`pythonpath = .`) — so the
+package is imported as it is in that checkout, without being installed. Installing it would tie every
+worktree sharing the main checkout's `.venv` to one checkout's code.
 
 # Workflow
 Scan your documents into a folder, and follow this process:

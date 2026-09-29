@@ -96,7 +96,7 @@ def followups(changed: list[str]) -> list[str]:
     if {"frontend/package.json", "frontend/package-lock.json"} & set(changed):
         needed.append("npm")
     if "requirements-deepseek.txt" in changed:
-        needed.append("gpu")       # never installed here: the GPU stack is pinned by hand (flash_attn.md)
+        needed.append("gpu")       # never installed here: the GPU stack is pinned by hand (docs/flash_attn.md)
     return needed
 
 
@@ -111,7 +111,7 @@ def run_followups(main: Path, needed: list[str]) -> None:
         # works for `npm --prefix frontend run <script>`.
         subprocess.run([shutil.which("npm") or "npm", "install"], cwd=main / "frontend", check=True)
     if "gpu" in needed:
-        print("requirements-deepseek.txt changed; the GPU stack is updated by hand (flash_attn.md), not here.")
+        print("requirements-deepseek.txt changed; the GPU stack is updated by hand (docs/flash_attn.md), not here.")
 
 
 # --- jobs on live ---------------------------------------------------------------------------------------
