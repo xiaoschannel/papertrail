@@ -1,5 +1,6 @@
 """Contract tests: visualize endpoints == fixture-backed pure-function output."""
 
+from papertrail.data import read_sidecar
 from papertrail.viz import analytics
 from papertrail.api.serialization import df_records
 from papertrail.viz.records import build_viz_records
@@ -242,6 +243,19 @@ def test_edit_receipt_refiles_and_returns_the_updated_record(api_client, configu
     # the visualize pages see the change immediately (server cache cleared)
     fresh = next(r for r in api_client.get("/api/viz/records").json() if r["filename"] == record["filename"])
     assert (fresh["name"], fresh["cost"], fresh["path"]) == ("Edited Shop", 42.0, updated["path"])
+
+
+def test_edit_receipt_keeps_the_extraction_result(api_client, configured_archive):
+    record = _first_record(api_client)
+    read = read_sidecar(configured_archive / record["path"]).extraction
+    body = {"file": record["filename"], "document_type": record["document_type"], "name": "Edited Shop",
+            "date": record["date"], "time": record["time"], "cost": 42.0, "currency": record["currency"],
+            "address": "編集町2-2", "language": "en", "comment": ""}
+
+    updated = api_client.patch("/api/receipt", json=body).json()
+
+    assert (updated["address"], updated["language"]) == ("編集町2-2", "en")
+    assert read_sidecar(configured_archive / updated["path"]).extraction == read
 
 
 def test_edit_receipt_rejects_bad_values_and_unknown_documents(api_client):

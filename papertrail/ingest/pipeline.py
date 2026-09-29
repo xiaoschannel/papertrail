@@ -1114,6 +1114,10 @@ def run_archive(output_path: Path, input_path: Path, progress: Progress) -> str:
     if plan.moves:
         cache = load_smart_match_cache(output_path)
         for doc_key in plan.doc_keys:
+            # Only an accepted name is confirmed: a tossed or marked document's form still holds whatever was
+            # extracted, and the Workshop teaches a marked document's name when it accepts it.
+            if plan.decisions[doc_key].verdict != "accepted":
+                continue
             extraction = extractions.get(doc_key)
             if isinstance(extraction, ReceiptResult):
                 extracted, phone = extraction.name, extraction.phone

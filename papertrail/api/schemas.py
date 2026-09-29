@@ -301,6 +301,8 @@ class DecisionOut(_Model):
     currency: str
     comment: str
     toss_reason: Literal["sliced"] | None = None
+    address: str | None = None
+    language: str | None = None
 
 
 class ReviewDocument(_Model):

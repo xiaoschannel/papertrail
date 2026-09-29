@@ -470,7 +470,9 @@ def test_run_archive_copies_finalizes_and_cleans_up(ingest_dir, tmp_path):
     assert load_scan_index(ingest_dir).batches[0].archived
     assert not any((ingest_dir / name).exists() for name in ip.CLEANUP_ARTIFACTS)
     assert "ocr" in ip.CLEANUP_ARTIFACTS and "ocr.json.migrated" in ip.CLEANUP_ARTIFACTS
-    assert load_smart_match_cache(ingest_dir)["1:7"]["confirmed"] == "Business Card - John Doe"
+    cache = load_smart_match_cache(ingest_dir)
+    assert cache["1:7"]["confirmed"] == "Business Card - John Doe"
+    assert "1:8" not in cache   # tossed under a name: only an accepted name is confirmed
     # the filed pages are committed, and only then do the scans they came from leave the scan folder
     root = ingest_dir.parent
     assert _git(root, "log", "--format=%s").splitlines() == [

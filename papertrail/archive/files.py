@@ -217,8 +217,8 @@ def place_document(output_path: Path, pages: list[tuple[Path, Sidecar]], decisio
                    sidecar_for=None) -> list[str]:
     """File a document's pages where ``decision`` says they belong; returns the new relative paths.
 
-    ``sidecar_for(sidecar)`` may rewrite each page's sidecar before it is written (the callers update
-    the review, and sometimes the extraction, with what the user just entered). All pages move, or none.
+    ``sidecar_for(sidecar)`` may rewrite each page's sidecar before it is written (the callers put what the
+    user just entered in its review; the extraction result stays as it was). All pages move, or none.
     """
     ensure_movable([path for path, _ in pages])
     first = pages[0][1]

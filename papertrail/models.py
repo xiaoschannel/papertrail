@@ -260,6 +260,10 @@ class ReviewDecision(BaseModel):
     currency: str = ""
     comment: str = ""
     toss_reason: TossReason | None = None
+    #: What a person set these to, in Receipt Detail; None where nobody has (Review's form doesn't show them),
+    #: and what the extraction read stands.
+    address: str | None = None
+    language: str | None = None
 
     @property
     def sliced(self) -> bool:
