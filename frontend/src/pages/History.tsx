@@ -3,14 +3,14 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { api } from '../api/client.ts'
 import type { HistoryChange, HistoryCommit } from '../api/types.ts'
 import { ConfirmDialog } from '../components/ConfirmDialog.tsx'
-import { ago } from '../components/historyPip.tsx'
+import { ago } from '../components/status/historyPip.tsx'
 import { Card, ErrorState, Loading } from '../components/ui.tsx'
 import { plural } from '../format.ts'
-import '../components/history.css'
-import './ingest.css'
+import '../components/status/history.css'
+import './ingest/ingest.css'
 
 /*
- * The Papertrail folder's history (archive_history): what waits uncommitted, the commits, and taking
+ * The Papertrail folder's history (archive.history): what waits uncommitted, the commits, and taking
  * either back. Milestones commit their own files as they happen; here everything else is committed by
  * hand. Uncommitting the last commit keeps its files as they are, uncommitted again; throwing changes away
  * (Discard) is a separate step, file by file or all at once.

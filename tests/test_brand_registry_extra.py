@@ -4,7 +4,7 @@
 
 import pandas as pd
 
-from brand_registry import (
+from papertrail.curate.brands import (
     enrich_receipt_brand_columns,
     load_brand_directory,
     make_brand_id,

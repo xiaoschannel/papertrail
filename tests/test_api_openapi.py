@@ -1,7 +1,7 @@
 """OpenAPI contract: every JSON endpoint has a typed response, since the frontend's TypeScript types are
 generated from this schema (frontend/scripts/export-openapi.mjs)."""
 
-from api.main import create_app
+from papertrail.api.main import create_app
 
 
 def loose_nodes(schema, where="response"):

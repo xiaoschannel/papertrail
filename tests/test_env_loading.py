@@ -2,7 +2,7 @@
 
 import os
 
-import env
+from papertrail import env
 
 KEY = "PAPERTRAIL_TEST_KEY"
 

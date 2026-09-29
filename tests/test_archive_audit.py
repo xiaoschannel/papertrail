@@ -1,14 +1,14 @@
 """Archive/index integrity checks (behind the Dev pages)."""
 
-from archive_audit import (
+from papertrail.archive.audit import (
     batch_coverage,
     batch_statistics,
     check_archive_sidecars,
     count_duplicate_filenames,
     disk_vs_index_delta,
 )
-from data import scan_organized_filenames
-from models import ScanBatch, ScanIndex, load_scan_index
+from papertrail.data import scan_organized_filenames
+from papertrail.models import ScanBatch, ScanIndex, load_scan_index
 
 
 def test_batch_coverage_full(archive_dir):

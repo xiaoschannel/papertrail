@@ -2,13 +2,13 @@
 
 import pytest
 
-import name_merge
-from data import (
+from papertrail.curate import merge as name_merge
+from papertrail.data import (
     load_decisions, load_distinct_pairs, load_name_normalizations, load_smart_match_cache, read_sidecar,
     save_decisions, save_name_normalizations, save_smart_match_cache,
 )
-from models import ReviewDecision
-from viz_records import build_viz_records
+from papertrail.models import ReviewDecision
+from papertrail.viz.records import build_viz_records
 
 
 def _two_names(archive_dir):

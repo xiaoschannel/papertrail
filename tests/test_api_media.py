@@ -6,7 +6,7 @@ from urllib.parse import quote
 import pytest
 from fastapi import HTTPException
 
-from api.routers.media import _safe_file
+from papertrail.api.routers.media import _safe_file
 
 
 def test_serve_archived_image(api_client, configured_archive):

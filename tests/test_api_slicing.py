@@ -5,9 +5,9 @@ import threading
 import pytest
 from PIL import Image
 
-from api import ingest_registry
-from data import load_decisions, save_decisions
-from models import load_scan_index
+from papertrail.api import ingest_registry
+from papertrail.data import load_decisions, save_decisions
+from papertrail.models import load_scan_index
 from tilt_scans import scan as tilt_fixture
 
 THREE = {"frame": {"x1": 0, "y1": 0, "x2": 1000, "y2": 1000}, "row_lines": [500], "col_lines": [500],
@@ -112,9 +112,9 @@ def test_review_cant_decide_a_sliced_sheet(ingest_client, configured_ingest, sca
     """Slicing drops what Parse made of the sheet, so Review has nothing to show; were an extraction to
     come back, a decision on it would still be refused."""
     slice_sheet(ingest_client)
-    from data import load_extractions, merge_extractions
+    from papertrail.data import load_extractions, merge_extractions
     merge_extractions(configured_ingest, {"1:2": next(iter(load_extractions(configured_ingest).values()))})
-    from api import ingest_store
+    from papertrail.api import ingest_store
     ingest_store.clear()
     draft = {"document_type": "other", "name": "x", "date": "", "time": "", "cost": None, "currency": ""}
     decided = ingest_client.post("/api/review/decisions", json={"key": "1:2", "verdict": "marked", "draft": draft})
@@ -123,7 +123,7 @@ def test_review_cant_decide_a_sliced_sheet(ingest_client, configured_ingest, sca
 
 def test_crops_and_sliced_sheets_cant_be_rotated_and_crops_cant_be_linked(ingest_client, configured_ingest, scans):
     slice_sheet(ingest_client)
-    import rotation_review
+    from papertrail.ingest import rotation_review
     from tests.test_api_ingest import decide
 
     for key, filename in (("1:2", "01102025133000_2.png"), ("1:10", CROP)):
@@ -165,8 +165,8 @@ def test_crops_and_sliced_sheets_are_neither_suggested_for_straightening_nor_str
 
 def test_archived_tossed_and_marked_crops_are_known_by_their_scan_names(ingest_client, configured_ingest, scans):
     """Sanity Check and a resumed Archive find a crop filed in tossed/ or marked/ under its batch name."""
-    import ingest_pipeline as ip
-    from data import scan_organized_filenames
+    from papertrail.ingest import pipeline as ip
+    from papertrail.data import scan_organized_filenames
     from tests.test_slicing import _Progress
 
     slice_sheet(ingest_client)
@@ -180,7 +180,7 @@ def test_archived_tossed_and_marked_crops_are_known_by_their_scan_names(ingest_c
     assert {batch.files[s] for s in (9, 10, 11)} <= scan_organized_filenames(configured_ingest)
 
     # the Workshop, working on the marked crop, sees where its batch-mates went and which one it is
-    from api import cache
+    from papertrail.api import cache
     cache.clear()
     scans_in_batch = ingest_client.get("/api/curate/workshop/context", params={"key": "1:10"}).json()["batch"]
     by_name = {scan["filename"]: scan for scan in scans_in_batch}

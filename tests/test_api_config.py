@@ -10,7 +10,7 @@ def test_get_config_reflects_fixture(api_client, configured_archive):
 def test_the_folder_s_subfolders_are_named_as_the_history_expects(tmp_path):
     """Named the obvious way by hand (Archive, Scans), they would match none of a milestone's paths, as git
     reports them as they are on disk; they are renamed, keeping what is in them, and a missing one made."""
-    from settings import ensure_layout
+    from papertrail.settings import ensure_layout
 
     root = tmp_path / "My Receipts"
     (root / "Archive" / "2025").mkdir(parents=True)
@@ -65,7 +65,7 @@ def test_patch_rejects_unknown_fields(api_client):
 def test_config_changes_made_together_all_land_and_a_reader_never_sees_half_a_file(tmp_path, monkeypatch):
     import threading
 
-    import settings
+    from papertrail import settings
 
     monkeypatch.setattr(settings, "CONFIG_PATH", tmp_path / "config.json")
     settings.save_config(settings.AppConfig())
@@ -168,7 +168,7 @@ def test_shortcuts_reject_what_a_page_could_not_tell_apart(api_client):
 def test_a_config_file_naming_only_some_shortcuts_keeps_the_defaults_for_the_rest(tmp_path, monkeypatch):
     import json
 
-    import settings
+    from papertrail import settings
 
     monkeypatch.setattr(settings, "CONFIG_PATH", tmp_path / "config.json")
     (tmp_path / "config.json").write_text(json.dumps({"shortcuts": {"accept": "f"}}), encoding="utf-8")
@@ -192,7 +192,7 @@ def test_a_patch_changes_only_the_shortcuts_it_sends_and_judges_clashes_against_
 def test_a_saved_shortcuts_section_that_no_longer_validates_falls_back_to_its_defaults(tmp_path, monkeypatch):
     import json
 
-    import settings
+    from papertrail import settings
 
     monkeypatch.setattr(settings, "CONFIG_PATH", tmp_path / "config.json")
     (tmp_path / "config.json").write_text(json.dumps({

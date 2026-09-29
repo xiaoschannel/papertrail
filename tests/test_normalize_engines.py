@@ -5,7 +5,7 @@ from pathlib import Path
 
 import numpy as np
 
-from normalize_engines import EmbeddingEngine, StringEngine
+from papertrail.curate.normalize_engines import EmbeddingEngine, StringEngine
 
 
 def test_string_engine_clusters_near_duplicates():

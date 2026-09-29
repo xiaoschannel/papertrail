@@ -3,11 +3,11 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 /**
- * Environments that never share a port, so they can all run at once (the scheme is in dev_ports.py):
+ * Environments that never share a port, so they can all run at once (the scheme is in papertrail/dev/ports.py):
  *   live     — the real archive:  API 8000, dev server 5173  (`npm run dev`), main checkout only
- *   sandbox  — a throwaway archive with fake models, started by tools/sandbox_server.py
+ *   sandbox  — a throwaway archive with fake models, started by sandbox.py
  *              (`npm run dev:sandbox`): API 8001, dev server 5174 in the main checkout; in a worktree,
- *              the slot tools/worktree_setup.py claimed for it, read from .dev-ports.json
+ *              the slot worktree_setup.py claimed for it, read from .dev-ports.json
  * /api is proxied to that environment's API so the browser sees one origin (no CORS config needed).
  */
 const checkout = new URL('../', import.meta.url)
@@ -28,7 +28,7 @@ function sandboxPorts(): { api: number; web: number } {
     claimed = JSON.parse(readFileSync(new URL('.dev-ports.json', checkout), 'utf8'))
   } catch {
     // Not the main checkout's 5174: that would serve this checkout's code against another's API.
-    throw new Error("This worktree has no ports of its own yet — run: python tools/worktree_setup.py (with the main checkout's .venv)")
+    throw new Error("This worktree has no ports of its own yet — run: python worktree_setup.py (with the main checkout's .venv)")
   }
   return { api: claimed.sandbox_api, web: claimed.sandbox_web }
 }

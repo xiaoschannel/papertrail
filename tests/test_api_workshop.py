@@ -6,14 +6,14 @@ import shutil
 
 import pytest
 
-import deskew
+from papertrail.scans import deskew
 from PIL import Image
 
-from api import ingest_registry
-from api.jobs import runner
-from api.model_manager import models
-from data import read_sidecar
-from models import ReceiptResult
+from papertrail.api import ingest_registry
+from papertrail.api.jobs import runner
+from papertrail.api.model_manager import models
+from papertrail.data import read_sidecar
+from papertrail.models import ReceiptResult
 
 
 @pytest.fixture
@@ -123,7 +123,7 @@ def test_a_straightened_reread_is_straightened_on_accept_and_kept_as_training_da
                                                                                   fake_models):
     """The Workshop's rotation decisions are Fix Rotation's: the page's sidecar and the archive's log keep
     what the detectors said and what was done, and a straightened reread reads (and files) the whole page."""
-    from data import load_rotation_log
+    from papertrail.data import load_rotation_log
     from tilt_scans import scan as tilt_fixture
 
     page = configured_archive / "marked" / "08102025142000_202.png"
@@ -152,7 +152,7 @@ def test_a_straightened_reread_is_straightened_on_accept_and_kept_as_training_da
 
 def test_accepting_a_flagged_page_as_it_is_is_kept_as_left_as_is(api_client, configured_archive, fake_models):
     """A page the detectors flag but the reread neither turns nor straightens is their false positive."""
-    from data import load_rotation_log
+    from papertrail.data import load_rotation_log
     from tilt_scans import scan as tilt_fixture
 
     page = configured_archive / "marked" / "08102025142000_202.png"
@@ -192,7 +192,7 @@ def test_accepting_a_reread_records_every_setting_and_what_was_corrected(api_cli
                                                                         fake_models):
     """The record writes out every setting, defaults too, and both what was read and what was accepted in
     full: it means the same after the defaults change."""
-    from data import load_workshop_log
+    from papertrail.data import load_workshop_log
 
     job = api_client.post("/api/curate/workshop/reprocess", json={
         "key": "9:202", "ocr_model": "Fake OCR", "extractor": "Fake LLM", "treatment": "mend", "reach": 2.2}).json()
@@ -216,7 +216,7 @@ def test_accepting_a_reread_records_every_setting_and_what_was_corrected(api_cli
 
 def test_accepting_without_a_reread_records_it_as_read(api_client, configured_archive, fake_models):
     """Only the first page carries the record; the log has it once."""
-    from data import load_workshop_log
+    from papertrail.data import load_workshop_log
 
     _two_page_marked(configured_archive)
     draft = {"document_type": "receipt", "name": "Typed By Hand", "date": "2025-08-10", "time": "14:20",
@@ -232,7 +232,7 @@ def test_accepting_without_a_reread_records_it_as_read(api_client, configured_ar
 
 
 def test_tossing_records_nothing(api_client, configured_archive, fake_models):
-    from data import load_workshop_log
+    from papertrail.data import load_workshop_log
 
     api_client.post("/api/curate/workshop/decide", json={"key": "9:202", "verdict": "tossed", "draft": {
         "document_type": "receipt", "name": "", "date": "", "time": "", "cost": 0.0, "currency": ""}})
@@ -396,7 +396,7 @@ def test_one_impossible_date_in_the_archive_does_not_break_the_week(api_client, 
     sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
     sidecar["review"]["date"] = "2025-02-31"
     sidecar_path.write_text(json.dumps(sidecar, ensure_ascii=False), encoding="utf-8")
-    from api import cache
+    from papertrail.api import cache
     cache.clear()
 
     assert _context(api_client, date=receipt["date"], time=receipt["time"])["week"] is not None
@@ -405,7 +405,7 @@ def test_one_impossible_date_in_the_archive_does_not_break_the_week(api_client, 
 def test_a_marked_document_can_be_decided_while_parse_runs(api_client, configured_archive, fake_models):
     import threading
 
-    from api.jobs import Claim
+    from papertrail.api.jobs import Claim
 
     release = threading.Event()
     runner.start("parse", "Parse (test)", lambda progress: release.wait(10), Claim(batches=frozenset({3})))

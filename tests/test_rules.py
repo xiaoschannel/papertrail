@@ -2,12 +2,12 @@
 
 from datetime import datetime
 
-from models import ReceiptItem, ReceiptResult
-from rules.cost_check import cost_check
-from rules.cost_large_check import cost_large_check
-from rules.cost_zero_check import cost_zero_check
-from rules.currency_uncommon_check import currency_uncommon_check
-from rules.date_check import date_check
+from papertrail.models import ReceiptItem, ReceiptResult
+from papertrail.review.rules.cost_check import cost_check
+from papertrail.review.rules.cost_large_check import cost_large_check
+from papertrail.review.rules.cost_zero_check import cost_zero_check
+from papertrail.review.rules.currency_uncommon_check import currency_uncommon_check
+from papertrail.review.rules.date_check import date_check
 
 GREEN = "#28a745"
 RED = "#dc3545"

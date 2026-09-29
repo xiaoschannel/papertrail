@@ -1,7 +1,7 @@
 """The server-side archive cache: it must avoid re-parsing, and must notice changes."""
 
-import api.cache as cache
-from viz_records import build_viz_records
+from papertrail.api import cache
+from papertrail.viz.records import build_viz_records
 
 
 def test_repeated_requests_parse_archive_once(api_client, monkeypatch):
@@ -47,7 +47,7 @@ def test_ttl_expiry_rebuilds(api_client, monkeypatch):
 
 
 def test_cached_result_equals_fresh_build(api_client, configured_archive):
-    from api.serialization import df_records
+    from papertrail.api.serialization import df_records
 
     api_client.get("/api/years")  # warm
     assert api_client.get("/api/viz/records").json() == df_records(build_viz_records(configured_archive))

@@ -2,7 +2,7 @@
 
 import pytest
 
-from rate_budget import RateBudget, duration
+from papertrail.ingest.rate_budget import RateBudget, duration
 
 
 def _headers(requests_left=500, tokens_left=200_000, requests_limit=500, tokens_limit=200_000,

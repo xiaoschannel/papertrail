@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from tools import deploy, live_server
-from tools.deploy import Refusal
+from papertrail.dev import deploy, live_server
+from papertrail.dev.deploy import Refusal
 
 NS = {"t": "http://schemas.microsoft.com/windows/2004/02/mit/task"}
 
@@ -99,7 +99,7 @@ def test_only_running_jobs_block_a_restart():
 
 
 def test_changed_files_say_what_else_to_install():
-    assert deploy.followups(["api/main.py"]) == []
+    assert deploy.followups(["papertrail/api/main.py"]) == []
     assert deploy.followups(["requirements.txt", "frontend/package-lock.json"]) == ["pip", "npm"]
     assert deploy.followups(["requirements-deepseek.txt"]) == ["gpu"]
 

@@ -5,22 +5,22 @@ alwaysApply: true
 
 Do not use dataclass and always prefer pydantic instead.
 
-If a data migration is needed, create a page under the Dev section of the web app (frontend/src/App.tsx),
-with its endpoints in api/routers/.
+If a data migration is needed, create a page under the Dev section of the web app (frontend/src/pages/dev/, listed in frontend/src/App.tsx),
+with its endpoints in papertrail/api/routers/.
 
 Maintain the test fixtures. A feature that reads a new kind of input (a file layout, a kind of scan, a
-record) adds a synthetic example of it to tools/build_fixture.py, with tests that run against it, in the
+record) adds a synthetic example of it to tests/build_fixture.py, with tests that run against it, in the
 same change. Fixtures are generated, never hand-edited, never taken from the real archive, and must come
 out byte for byte the same on every platform: CI regenerates them and fails on any difference.
 
-Maintain the sandbox's shared state. The sandbox (tools/sandbox_server.py) starts in one state everyone
-shares, built by tools/sandbox_seed.py through the real pipeline: a filed batch (some of it marked), a batch
+Maintain the sandbox's shared state. The sandbox (sandbox.py) starts in one state everyone
+shares, built by papertrail/dev/sandbox_seed.py through the real pipeline: a filed batch (some of it marked), a batch
 waiting in Review, and a batch indexed but not read yet. A feature that can be tried by hand adds its
 examples there, in the stage where its page reads them (not the earliest stage they could be walked from),
 with a comment saying what to try, in the same change; there are no per-feature scenarios to keep up.
 Invented data only.
 
-Every scan thumbnail and gallery goes through frontend/src/components/DocumentCard.tsx (CappedImage,
+Every scan thumbnail and gallery goes through frontend/src/components/scans/DocumentCard.tsx (CappedImage,
 DocumentCard, ReceiptCard, ReceiptGallery) - Dev and migration pages included, and code copied from an
 older page or a migration tag is no exception. Don't hand-roll image tiles: the capped, top-anchored image
 is the one way a scan is shown small.

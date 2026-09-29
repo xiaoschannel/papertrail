@@ -6,11 +6,11 @@ import json
 import pytest
 from PIL import Image
 
-import experiment_runs
-from api import ingest_registry
-from api.jobs import runner
-from models import ReceiptResult, TokenUse
-from settings import get_config
+from papertrail.ingest import experiment as experiment_runs
+from papertrail.api import ingest_registry
+from papertrail.api.jobs import runner
+from papertrail.models import ReceiptResult, TokenUse
+from papertrail.settings import get_config
 
 
 # --- Sanity Check ----------------------------------------------------------------------------------------

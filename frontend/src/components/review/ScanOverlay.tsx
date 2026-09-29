@@ -1,10 +1,10 @@
 import { useState, type ReactNode } from 'react'
 import { useShortcutKeys } from '../../api/config.ts'
 import type { BoxRect, FieldBox, ReviewPage, TopPoints, Trim } from '../../api/types.ts'
-import { ScanViewer } from '../scans.tsx'
-import { TrimmedImage } from '../TrimmedImage.tsx'
+import { ScanViewer } from '../scans/scans.tsx'
+import { TrimmedImage } from '../scans/TrimmedImage.tsx'
 import { Empty } from '../ui.tsx'
-import { useHeldKey } from '../useShortcuts.ts'
+import { useHeldKey } from '../../hooks/useShortcuts.ts'
 import './ScanOverlay.css'
 
 /** Colors per extracted field; other fields get DEFAULT_FIELD_COLOR. */
@@ -32,7 +32,7 @@ const pct = (v: number) => `${v / 10}%`
 export type Turn = TopPoints | ''
 
 const SCALE = 1000
-/** A box measured on the file, placed on the file turned upright from `turn` (see document_grouping.ROTATIONS). */
+/** A box measured on the file, placed on the file turned upright from `turn` (see scans.grouping.ROTATIONS). */
 function turned(r: BoxRect, turn: Turn): BoxRect {
   switch (turn) {
     case 'left': return { x1: SCALE - r.y2, y1: r.x1, x2: SCALE - r.y1, y2: r.x2 }    // 90° clockwise

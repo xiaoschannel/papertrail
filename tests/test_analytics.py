@@ -4,14 +4,14 @@ from datetime import date
 
 import pandas as pd
 
-from analytics import (
+from papertrail.viz.analytics import (
     merchant_metrics,
     monthly_spend,
     records_in_range,
     timecapsule_matches,
     top_merchants,
 )
-from viz_records import build_viz_records
+from papertrail.viz.records import build_viz_records
 
 
 def _receipts(configured_archive) -> pd.DataFrame:
@@ -67,7 +67,7 @@ def test_records_in_range_groups_by_day():
 
 
 def test_complete_monthly_series_fills_gaps_with_zero():
-    from analytics import complete_monthly_series
+    from papertrail.viz.analytics import complete_monthly_series
 
     monthly = pd.DataFrame({
         "period": pd.PeriodIndex(["2025-01", "2025-04"], freq="M"),
@@ -83,7 +83,7 @@ def test_complete_monthly_series_fills_gaps_with_zero():
 
 
 def test_complete_monthly_series_start_end_widen_never_narrow():
-    from analytics import complete_monthly_series
+    from papertrail.viz.analytics import complete_monthly_series
 
     monthly = pd.DataFrame({"period": pd.PeriodIndex(["2025-03"], freq="M"), "count": [5]})
     monthly["month_ts"] = monthly["period"].dt.to_timestamp()
@@ -98,7 +98,7 @@ def test_complete_monthly_series_start_end_widen_never_narrow():
 
 
 def test_complete_monthly_series_empty_passthrough():
-    from analytics import complete_monthly_series
+    from papertrail.viz.analytics import complete_monthly_series
 
     empty = pd.DataFrame(columns=["period", "spend", "month_ts"])
     assert complete_monthly_series(empty, "spend").empty

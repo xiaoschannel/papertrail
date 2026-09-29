@@ -4,8 +4,8 @@ from pathlib import Path
 
 from PIL import Image
 
-from models import Trim
-from scan_enhance import Enhancement, crop_to_trim, enhance, trimmed_file
+from papertrail.models import Trim
+from papertrail.scans.enhance import Enhancement, crop_to_trim, enhance, trimmed_file
 
 
 def _banded(path: Path | None = None) -> Image.Image:

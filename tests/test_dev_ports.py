@@ -5,8 +5,8 @@ import subprocess
 
 import pytest
 
-import dev_ports
-from dev_ports import NotSetUp, Ports
+from papertrail.dev import ports as dev_ports
+from papertrail.dev.ports import NotSetUp, Ports
 
 
 def _main(tmp_path):

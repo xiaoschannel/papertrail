@@ -3,13 +3,13 @@
 > _Ex vestigiis veritas_  
 > Truth from traces.
 
-<img src="sample-annotated-receipt.jpg" alt="Sample annotated receipt" width="360" />
+<img src="docs/sample-annotated-receipt.jpg" alt="Sample annotated receipt" width="360" />
 
 A personal document archival tool for digitizing receipts, tickets, and other timed documents into a structured timeline. Tested with over 3000 real documents in Japanese, Chinese and English.
 
 This project is also built to test the "fast fashion era of SaaS from AI coding" idea and practice AI-assisted coding against a messy, real-world problem.
 
-Design decisions are documented in [design_decisions.md](design_decisions.md).
+Design decisions are documented in [design_decisions.md](docs/design_decisions.md).
 
 # Setup
 
@@ -19,7 +19,7 @@ python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements-deepseek.txt
 ```
-Then follow the below guide to [install flash-attention on Windows](flash_attn.md).
+Then follow the below guide to [install flash-attention on Windows](docs/flash_attn.md).
 
 ---
 If you don't want to use Deepseek OCR 2:
@@ -40,7 +40,7 @@ and kept in `~/.cache/papertrail`.
 
 ---
 The hosted extractors need an API key. Copy `.env.example` to `.env` and put yours in it; the file is
-gitignored, and `env.py` says which one is read when you have several checkouts.
+gitignored, and `papertrail/env.py` says which one is read when you have several checkouts.
 
 ---
 Everything lives in one **Papertrail folder**, set on the Config page: the scanner drops images into its
@@ -50,20 +50,20 @@ on `PATH`.
 
 Run the API and the web app, each in its own terminal:
 ```
-.venv\Scripts\python -m uvicorn api.main:app --host 127.0.0.1 --port 8000
+.venv\Scripts\python -m uvicorn papertrail.api.main:app --host 127.0.0.1 --port 8000
 npm --prefix frontend run dev
 ```
 Then open http://127.0.0.1:5173. Both listen on this machine only.
 
-To try things without touching your archive, `tools/sandbox_server.py` runs the API on a throwaway archive of
+To try things without touching your archive, `sandbox.py` runs the API on a throwaway archive of
 invented scans with fake models (port 8001); `npm --prefix frontend run dev:sandbox` serves the web app for it
 on port 5174. A new sandbox starts with something on every page: a batch already filed (some of it marked,
 for the Marked Workshop), a batch waiting in Review, and a batch indexed and waiting for Fix Rotation. A
 restart keeps what you did in it. To start over, stop the sandbox API and run
 ```
-.venv\Scripts\python tools\sandbox_reset.py
+.venv\Scripts\python sandbox.py reset
 ```
-then start it again (or start it with `--fresh`, which does the same). `tools/sandbox_seed.py` builds that
+then start it again (or start it with `--fresh`, which does the same). `papertrail/dev/sandbox_seed.py` builds that
 state, and says what is in it for which feature.
 
 ## Several checkouts at once
@@ -71,7 +71,7 @@ state, and says what is in it for which feature.
 Each git worktree runs its own sandbox beside the main checkout's, on ports of its own. Set a new worktree up
 once, with the main checkout's Python:
 ```
-<main checkout>\.venv\Scripts\python tools\worktree_setup.py
+<main checkout>\.venv\Scripts\python worktree_setup.py
 cd frontend
 npm install
 cd ..
@@ -86,7 +86,7 @@ been set up refuses to start its sandbox too, rather than landing on the main ch
 
 The setup also writes `.claude/launch.json`, the dev servers Claude Code starts. A worktree's are named for
 its slot (`sandbox-api-1`, `sandbox-web-1`), so starting one never stands in for another checkout's server of
-the same name. How slots are chosen is in `dev_ports.py`.
+the same name. How slots are chosen is in `papertrail/dev/ports.py`.
 
 ## Deploying live
 
@@ -95,14 +95,14 @@ The live app — the main checkout's API on 8000 and web app on 5173 — runs as
 
 Set it up once per machine, after the venv and the frontend's `npm install` above:
 ```
-.venv\Scripts\python tools\deploy.py install        register the task
-.venv\Scripts\python tools\deploy.py autostart on   start live whenever you log in (off by default)
-.venv\Scripts\python tools\deploy.py                start it now
+.venv\Scripts\python deploy.py install        register the task
+.venv\Scripts\python deploy.py autostart on   start live whenever you log in (off by default)
+.venv\Scripts\python deploy.py                start it now
 ```
 `autostart off` undoes the second one; without it, a reboot leaves live down until someone starts it. The
 commands work from any checkout, and always act on the main checkout.
 
-After a PR merges, that same `tools\deploy.py` puts the main checkout on the latest `main`, installs what
+After a PR merges, that same `deploy.py` puts the main checkout on the latest `main`, installs what
 changed in `requirements.txt` or the frontend's packages, restarts live, and waits until the web app answers
 through its API proxy.
 
@@ -111,10 +111,30 @@ the job and stops; `--even-with-job` overrides. And it leaves the main checkout 
 uncommitted changes to tracked files, a branch not merged into `main`, or commits `origin` doesn't have.
 Either way nothing is stopped, so a refused deploy costs no uptime.
 
-`tools\deploy.py status` shows what live runs, whether it starts at logon, and how far behind it is;
+`deploy.py status` shows what live runs, whether it starts at logon, and how far behind it is;
 `restart` restarts it as it is, and `stop` takes it down until someone starts it again — killing the servers
 by hand instead leaves the task believing it still runs them. Live's output goes to `.live\api.log` and
 `.live\web.log` in the main checkout.
+
+## Where things are
+
+```
+papertrail/          all of the app's Python; everything that is imported lives here
+  api/               the FastAPI server (papertrail.api.main:app)
+  ingest/ scans/ review/ archive/ curate/ viz/
+                     the core, by the app's sections: the ingest steps, image work on scans, Review's
+                     rules, filing and the folder's history, the Curate pages, the Visualize pages
+  dev/               the sandbox, each checkout's ports, deploying live
+frontend/            the React + TypeScript web app: src/pages/ by the sidebar's sections, src/components/
+                     what the pages share
+tests/               the test suite, its fixtures, and build_fixture.py, which generates them
+docs/                design notes and setup guides
+deploy.py  sandbox.py  worktree_setup.py
+                     the scripts you run; nothing imports them
+```
+Everything runs from the repo root — a root script, `python -m`, or pytest (`pythonpath = .`) — so the
+package is imported as it is in that checkout, without being installed. Installing it would tie every
+worktree sharing the main checkout's `.venv` to one checkout's code.
 
 # Workflow
 Scan your documents into a folder, and follow this process:

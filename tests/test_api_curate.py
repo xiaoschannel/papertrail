@@ -1,6 +1,6 @@
 """Contract tests: Dedupe — finding likely duplicates and tossing one."""
 
-from data import read_sidecar
+from papertrail.data import read_sidecar
 
 
 def _duplicate_of(api_client, index=1):
@@ -136,7 +136,7 @@ def test_asking_for_clusters_saves_nothing(api_client):
 
 def test_one_engines_threshold_with_the_other_is_refused(api_client, monkeypatch):
     """0.05 read as a similarity is 0%: every name would cluster with every other."""
-    import normalize_engines
+    from papertrail.curate import normalize_engines
 
     def no_embedding(*_args):
         raise AssertionError("refused before any name is embedded (that would call Ollama)")
@@ -220,7 +220,7 @@ def _running(kind, claim):
     """A job of ``kind`` that holds ``claim`` until the returned event is set."""
     import threading
 
-    from api.jobs import runner
+    from papertrail.api.jobs import runner
 
     release = threading.Event()
 
@@ -232,7 +232,7 @@ def _running(kind, claim):
 
 
 def test_names_cluster_and_merge_while_ocr_reads_another_batch(api_client):
-    from api.jobs import Claim
+    from papertrail.api.jobs import Claim
 
     release = _running("ocr", Claim(batches=frozenset({12}), gpu=True))
     try:
@@ -242,7 +242,7 @@ def test_names_cluster_and_merge_while_ocr_reads_another_batch(api_client):
 
 
 def test_names_cluster_with_embeddings_only_when_the_gpu_is_free(api_client, monkeypatch):
-    from api.jobs import Claim
+    from papertrail.api.jobs import Claim
 
     release = _running("ocr", Claim(batches=frozenset({12}), gpu=True))
     try:
@@ -326,8 +326,8 @@ def test_the_normalize_count_takes_its_own_threshold_and_forgets_ruled_apart_nam
 def test_an_embedding_count_uses_only_the_names_already_embedded(api_client, configured_archive, monkeypatch):
     import numpy as np
 
-    import name_similarity
-    from data import save_embeddings_cache
+    from papertrail.curate import similarity as name_similarity
+    from papertrail.data import save_embeddings_cache
 
     def no_model(**_kwargs):
         raise AssertionError("the sidebar must not ask Ollama")
@@ -346,7 +346,7 @@ def test_an_embedding_count_uses_only_the_names_already_embedded(api_client, con
 
 
 def test_counts_are_kept_until_the_archive_changes(api_client, monkeypatch):
-    import workshop
+    from papertrail.curate import workshop
 
     calls = []
     real = workshop.marked_documents
@@ -361,7 +361,7 @@ def test_counts_are_kept_until_the_archive_changes(api_client, monkeypatch):
 
 
 def test_counts_do_not_wait_for_a_job(api_client):
-    from api.jobs import Claim
+    from papertrail.api.jobs import Claim
 
     api_client.patch("/api/config", json={"sidebar_normalize_engine": "embedding"})
     release = _running("archive", Claim(gpu=True))

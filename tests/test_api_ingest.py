@@ -8,14 +8,14 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-import deskew
-import orientation
+from papertrail.scans import deskew
+from papertrail.scans import orientation
 from tilt_scans import scan as tilt_fixture
-from api import ingest_registry
-from api.jobs import EVERYTHING, FINISHED, Claim, JobConflict, JobRunner, runner
-from api.model_manager import ModelManager, models
-from data import load_decisions, load_extractions, load_ocr_results, load_rotation_log, save_decisions
-from models import ReceiptResult, TokenUse, load_scan_index
+from papertrail.api import ingest_registry
+from papertrail.api.jobs import EVERYTHING, FINISHED, Claim, JobConflict, JobRunner, runner
+from papertrail.api.model_manager import ModelManager, models
+from papertrail.data import load_decisions, load_extractions, load_ocr_results, load_rotation_log, save_decisions
+from papertrail.models import ReceiptResult, TokenUse, load_scan_index
 
 PAGE_1 = "01102025132642_1.png"  # the only scan conftest puts in the input folder (page 1:1)
 #: Printed pages for the orientation checks, and how to make one face each way (tests/fixtures/orientation).
@@ -152,7 +152,7 @@ def test_grouping_state_and_save(ingest_client, configured_ingest):
 
 
 def test_finalize_commits_each_step_s_files_for_every_batch_and_nothing_else(ingest_client, configured_ingest, tmp_path):
-    import archive_history
+    from papertrail.archive import history as archive_history
 
     root = configured_ingest.parent
     status = ingest_client.get("/api/ingest/finalize/rotation").json()
@@ -316,9 +316,9 @@ def test_a_scan_both_turned_and_crooked_is_measured_turned_and_fixed_in_one_step
 
 
 def test_undo_restores_the_scan_and_its_trim_from_the_history(ingest_client, configured_ingest, tmp_path):
-    import archive_history
-    from data import load_trims, set_trim
-    from models import Trim
+    from papertrail.archive import history as archive_history
+    from papertrail.data import load_trims, set_trim
+    from papertrail.models import Trim
 
     scans = tmp_path / "scans"
     printed(top_points="down").save(scans / PAGE_1)
@@ -346,8 +346,8 @@ def test_undo_restores_the_scan_and_its_trim_from_the_history(ingest_client, con
 
 def test_undo_is_refused_when_the_scan_changed_or_wasnt_kept_and_leaves_no_swap_file(
         ingest_client, configured_ingest, tmp_path, monkeypatch):
-    import archive_history
-    import rotation_review
+    from papertrail.archive import history as archive_history
+    from papertrail.ingest import rotation_review
 
     scans = tmp_path / "scans"
     printed(top_points="down").save(scans / PAGE_1)
@@ -377,7 +377,7 @@ def test_undo_is_refused_when_the_scan_changed_or_wasnt_kept_and_leaves_no_swap_
 
 
 def test_a_page_sent_back_stays_in_the_queue_when_its_fix_is_undone(ingest_client, configured_ingest, tmp_path):
-    import archive_history
+    from papertrail.archive import history as archive_history
 
     tilt_fixture("receipt_level.png").save(tmp_path / "scans" / PAGE_1)               # nothing to flag
     archive_history.ensure_repository(configured_ingest.parent)
@@ -390,8 +390,8 @@ def test_a_page_sent_back_stays_in_the_queue_when_its_fix_is_undone(ingest_clien
 
 
 def test_review_sends_back_a_page_the_detectors_missed(ingest_client, configured_ingest, tmp_path):
-    from data import EXTRACTION_RUNS, OCR_RUNS, load_model_runs, merge_model_runs
-    from models import ModelRun
+    from papertrail.data import EXTRACTION_RUNS, OCR_RUNS, load_model_runs, merge_model_runs
+    from papertrail.models import ModelRun
 
     tilt_fixture("receipt_level.png").save(tmp_path / "scans" / PAGE_1)               # nothing to flag
     pages = ingest_client.get("/api/review/document", params={"key": "1:1"}).json()["pages"]
@@ -473,8 +473,8 @@ def test_turning_a_read_page_sends_it_back_to_ocr_and_parse(ingest_client, confi
     """What was read from the scan the old way no longer holds: its OCR and its document's extraction go,
     with their run records, and OCR and Parse take the page up again. A review decision is a person's, and
     every other page keeps what was read from it."""
-    from data import EXTRACTION_RUNS, OCR_RUNS, load_model_runs, merge_model_runs
-    from models import ModelRun
+    from papertrail.data import EXTRACTION_RUNS, OCR_RUNS, load_model_runs, merge_model_runs
+    from papertrail.models import ModelRun
 
     tilt_fixture("receipt_crooked.png").save(tmp_path / "scans" / PAGE_1)
     merge_model_runs(configured_ingest, OCR_RUNS, {"1:1": ModelRun(model="m", at=0, seconds=1)})
@@ -497,8 +497,8 @@ def test_turning_a_read_page_sends_it_back_to_ocr_and_parse(ingest_client, confi
 
 
 def test_straightening_a_trimmed_page_moves_its_trim(ingest_client, configured_ingest, tmp_path):
-    from data import load_trims, set_trim
-    from models import Trim
+    from papertrail.data import load_trims, set_trim
+    from papertrail.models import Trim
 
     tilt_fixture("receipt_crooked.png").save(tmp_path / "scans" / PAGE_1)
     band = Trim(top=0.1, bottom=0.8)
@@ -676,7 +676,7 @@ def test_archive_status_and_blocker(ingest_client, configured_ingest):
 
 
 def test_archive_job_reports_missing_scans_and_blocks_review_edits(ingest_client, monkeypatch):
-    import api.routers.ingest as ingest_router
+    from papertrail.api.routers import ingest as ingest_router
 
     gate, started = threading.Event(), threading.Event()
     real_run_archive = ingest_router.pipeline.run_archive
@@ -706,7 +706,7 @@ def test_archive_job_reports_missing_scans_and_blocks_review_edits(ingest_client
 # --- the folder's history -----------------------------------------------------------------------------------
 def test_file_index_says_when_its_batches_were_added_but_not_committed(ingest_client, configured_ingest, tmp_path,
                                                                     monkeypatch):
-    import archive_history
+    from papertrail.archive import history as archive_history
 
     monkeypatch.setattr(archive_history, "GIT", "git-that-is-not-installed")
     refused = _add_batch_2(ingest_client, tmp_path / "scans")
@@ -716,7 +716,7 @@ def test_file_index_says_when_its_batches_were_added_but_not_committed(ingest_cl
 
 
 def test_a_job_whose_commit_fails_still_succeeds_and_says_so(ingest_client, configured_ingest, fake_ocr, monkeypatch):
-    import archive_history
+    from papertrail.archive import history as archive_history
 
     monkeypatch.setattr(archive_history, "GIT", "git-that-is-not-installed")
     job = ingest_client.post("/api/ingest/ocr", json={"provider": "Fake OCR", "reprocess": True}).json()
@@ -725,7 +725,7 @@ def test_a_job_whose_commit_fails_still_succeeds_and_says_so(ingest_client, conf
 
 
 def test_the_sidebar_s_count_and_a_manual_commit(ingest_client, configured_ingest):
-    import archive_history
+    from papertrail.archive import history as archive_history
 
     root = configured_ingest.parent
     before = ingest_client.get("/api/history").json()
@@ -748,7 +748,7 @@ def test_the_sidebar_s_count_and_a_manual_commit(ingest_client, configured_inges
 
 
 def test_the_history_page_lists_commits_and_changes_and_takes_them_back(ingest_client, configured_ingest, monkeypatch):
-    from api import cache
+    from papertrail.api import cache
 
     cleared = []
     monkeypatch.setattr(cache, "clear", lambda: cleared.append(True))
@@ -791,10 +791,10 @@ def test_the_history_page_lists_commits_and_changes_and_takes_them_back(ingest_c
 
 
 def test_the_api_parks_what_is_uncommitted_when_it_stops_and_takes_it_back_when_it_starts(configured_ingest):
-    import archive_history
+    from papertrail.archive import history as archive_history
     from fastapi.testclient import TestClient
 
-    from api.main import create_app
+    from papertrail.api.main import create_app
 
     root = configured_ingest.parent
     with TestClient(create_app()):
@@ -874,7 +874,7 @@ def test_job_runner_statuses_and_conflict():
 
 
 def test_job_that_crashes_or_is_cancelled_still_unloads_its_model(ingest_client, fake_ocr, monkeypatch):
-    import api.routers.ingest as ingest_router
+    from papertrail.api.routers import ingest as ingest_router
 
     def crash(*args, **kwargs):
         raise RuntimeError("CUDA out of memory")
@@ -920,8 +920,8 @@ def test_a_trim_has_to_keep_some_of_a_page_that_exists(ingest_client):
 
 
 def test_a_sliced_sheet_cant_be_trimmed_but_its_crops_can(ingest_client, configured_ingest, tmp_path):
-    import slicing
-    from models import Box, SheetGrid
+    from papertrail.scans import slicing
+    from papertrail.models import Box, SheetGrid
 
     Image.new("RGB", (200, 100), "white").save(tmp_path / "scans" / PAGE_1)    # a sheet of two tickets
     two = SheetGrid(frame=Box(x1=0, y1=0, x2=1000, y2=1000), col_lines=[500], cells=[[1, 1], [1, 2]])

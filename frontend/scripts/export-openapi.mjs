@@ -17,4 +17,4 @@ function nearestVenvPython() {
 }
 
 const python = process.env.PYTHON || nearestVenvPython() || 'python'
-execFileSync(python, [join(repo, 'tools', 'export_openapi.py')], { cwd: repo, stdio: 'inherit' })
+execFileSync(python, ['-m', 'papertrail.dev.export_openapi'], { cwd: repo, stdio: 'inherit' })

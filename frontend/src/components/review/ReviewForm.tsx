@@ -1,7 +1,7 @@
 import { useRef } from 'react'
 import { useShortcutKeys } from '../../api/config.ts'
 import type { DocumentType, HintsResponse, ReviewDocument } from '../../api/types.ts'
-import { keyLabel, useShortcuts } from '../useShortcuts.ts'
+import { keyLabel, useShortcuts } from '../../hooks/useShortcuts.ts'
 import { fieldColor } from './ScanOverlay.tsx'
 
 /** The form's editable values (cost stays a string while typing). */

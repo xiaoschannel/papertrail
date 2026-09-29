@@ -5,25 +5,19 @@ The committed fixtures under ``tests/fixtures/`` are copied into a per-test
 through the global config (brand registry, viz aggregation) use
 ``configured_archive``, which points ``settings.CONFIG_PATH`` at a temp config
 whose ``root_path`` is the ``tmp_path`` holding the copied archive (``archive/``) and the scan folder
-(``scans/``); the folder's history (archive_history) is made there by the first milestone a test hits.
+(``scans/``); the folder's history (archive.history) is made there by the first milestone a test hits.
 """
 
 from __future__ import annotations
 
 import json
 import shutil
-import sys
 from pathlib import Path
 
 import pytest
 
-# Make the project root importable (modules live at the repo root, not a package).
-REPO_ROOT = Path(__file__).resolve().parent.parent
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-
-import settings  # noqa: E402
-from settings import AppConfig  # noqa: E402
+from papertrail import settings
+from papertrail.settings import AppConfig
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
@@ -37,10 +31,10 @@ def isolated_config(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytes
     for the Experiment bench's scratch folder, the Workshop's rereads held in memory, and what a run
     believes about the rate limit -- a test that is refused a call must not slow the next one down.
     """
-    import experiment_runs
-    import extraction
-    import workshop
-    from rate_budget import RateBudget
+    from papertrail.ingest import experiment as experiment_runs
+    from papertrail.ingest import extraction
+    from papertrail.curate import workshop
+    from papertrail.ingest.rate_budget import RateBudget
 
     scratch = tmp_path_factory.mktemp("isolated")
     monkeypatch.setattr(settings, "CONFIG_PATH", scratch / "config.json")
@@ -57,8 +51,8 @@ def no_leftover_job(monkeypatch: pytest.MonkeyPatch):
     job still running never sees the real config or the real model registry.
     """
     yield
-    from api.jobs import runner
-    from api.model_manager import models
+    from papertrail.api.jobs import runner
+    from papertrail.api.model_manager import models
 
     for job in runner.running_jobs():
         runner.cancel(job["id"])
@@ -123,8 +117,8 @@ def ingest_client(configured_ingest: Path):
     """FastAPI TestClient wired to the mid-ingest fixture."""
     from fastapi.testclient import TestClient
 
-    from api import ingest_store
-    from api.main import create_app
+    from papertrail.api import ingest_store
+    from papertrail.api.main import create_app
 
     ingest_store.clear()
     return TestClient(create_app(), base_url="http://127.0.0.1")
@@ -135,8 +129,8 @@ def api_client(configured_archive: Path):
     """FastAPI TestClient wired to the fixture archive via patched config."""
     from fastapi.testclient import TestClient
 
-    from api import cache
-    from api.main import create_app
+    from papertrail.api import cache
+    from papertrail.api.main import create_app
 
     cache.clear()  # module-level cache: never let one test see another's archive
     return TestClient(create_app(), base_url="http://127.0.0.1")
