@@ -30,8 +30,8 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from papertrail.archive import history as archive_history
-from papertrail.api.routers import (brands, config, curate, dev, history, ingest, jobs, media, review, rotation, viz,
-                         workshop)
+from papertrail.api.routers import (brands, config, curate, dev, fix_preview, history, ingest, jobs, media, review,
+                         rotation, viz, workshop)
 from papertrail.api.schemas import Health
 from papertrail.archive.files import FileInUse
 from papertrail.settings import ensure_layout, get_config
@@ -107,6 +107,7 @@ def create_app() -> FastAPI:
     app.include_router(jobs.router)
     app.include_router(history.router)
     app.include_router(dev.router)
+    app.include_router(fix_preview.router)
 
     # Moving a document refuses before anything moves if a file is open elsewhere or its new name is taken
     # (archive.files); either way the archive is as it was, and the message says what to do.

@@ -220,6 +220,15 @@ export const api = {
   dev: {
     sanity: () => unwrap(client.GET('/api/dev/sanity')),
     indexAudit: () => unwrap(client.GET('/api/dev/index-audit')),
+    /** Temporary: what the extraction-vs-decision fixes would change here (reads only). */
+    fixPreview: () => unwrap(client.GET('/api/dev/fix-preview')),
+    fixApply: (which: 'smart-match' | 'records') => unwrap(which === 'smart-match'
+      ? client.POST('/api/dev/fix-preview/smart-match/apply')
+      : client.POST('/api/dev/fix-preview/records/apply')),
+    fixUndo: (which: 'smart-match' | 'records') =>
+      unwrap(client.POST('/api/dev/fix-preview/{which}/undo', { params: { path: { which } } })),
+    fixFinalize: (which: 'smart-match' | 'records') =>
+      unwrap(client.POST('/api/dev/fix-preview/{which}/finalize', { params: { path: { which } } })),
     experiment: () => unwrap(client.GET('/api/dev/experiment')),
     run: (runId: string) => unwrap(client.GET('/api/dev/experiment/{run_id}', { params: { path: { run_id: runId } } })),
     /** Start a run from an image. OpenAPI types the file as a string ("binary"); the serializer sends the File. */

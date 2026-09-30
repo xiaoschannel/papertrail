@@ -22,6 +22,7 @@ import Config from './pages/settings/Config.tsx'
 import Experiment from './pages/dev/Experiment.tsx'
 import SanityCheck from './pages/dev/SanityCheck.tsx'
 import IndexAudit from './pages/dev/IndexAudit.tsx'
+import FixPreview from './pages/dev/FixPreview.tsx'
 import History from './pages/History.tsx'
 import { HistoryPip } from './components/status/historyPip.tsx'
 import { JobIndicator, JobWatcher } from './components/status/jobs.tsx'
@@ -73,6 +74,7 @@ const NAV: { group: string; items: { to: string; label: string; stage?: Stage }[
       { to: '/experiment', label: 'Experiment' },
       { to: '/sanity-check', label: 'Sanity Check' },
       { to: '/index-audit', label: 'Index Audit' },
+      { to: '/fix-preview', label: 'Fix Preview' },
     ],
   },
 ]
@@ -132,6 +134,7 @@ export default function App() {
           <Route path="/experiment" element={<Experiment />} />
           <Route path="/sanity-check" element={<SanityCheck />} />
           <Route path="/index-audit" element={<IndexAudit />} />
+          <Route path="/fix-preview" element={<FixPreview />} />
           <Route path="/config" element={<Config />} />
           <Route path="/history" element={<History />} />
         </Routes>
