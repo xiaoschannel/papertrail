@@ -84,10 +84,12 @@ class Shortcuts(BaseModel):
     prev: str = "x"
     next: str = "c"
     undo: str = "z"
-    # The first three quick matches, on Review and in the Marked Workshop (they share the form)
+    # The first five quick matches, on Review and in the Marked Workshop (they share the form)
     quick_1: str = "1"
     quick_2: str = "2"
     quick_3: str = "3"
+    quick_4: str = "4"
+    quick_5: str = "5"
     # Every scan with boxes on it: Review, the Marked Workshop, Experiment and Receipt Detail
     hide_boxes: str = "b"
     # The Marked Workshop and Experiment
@@ -102,7 +104,7 @@ class Shortcuts(BaseModel):
     toggle_guides: str = "r"
 
     #: Actions live at the same time, so no two of them may share a key.
-    QUICK: ClassVar = ("quick_1", "quick_2", "quick_3")
+    QUICK: ClassVar = ("quick_1", "quick_2", "quick_3", "quick_4", "quick_5")
     GROUPS: ClassVar = (("accept", "mark", "toss", "prev", "next", "undo", "hide_boxes", *QUICK),
                         ("accept", "toss", "prev", "next", "hold_original", "hide_boxes", *QUICK),
                         ("confirm", "cancel"),

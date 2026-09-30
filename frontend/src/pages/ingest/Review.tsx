@@ -299,7 +299,7 @@ export default function Review() {
                 <span>{kbd(keys.accept)} accept</span> <span>{kbd(keys.mark)} mark</span>{' '}
                 <span>{kbd(keys.toss)} toss</span>{' '}
                 <span>{kbd(keys.prev)}{kbd(keys.next)} move</span>{' '}
-                <span>{kbd(keys.quick_1)}{kbd(keys.quick_2)}{kbd(keys.quick_3)} quick match</span> <span>{kbd(keys.undo)} undo</span>{' '}
+                <span>{kbd(keys.quick_1)}{kbd(keys.quick_2)}{kbd(keys.quick_3)}{kbd(keys.quick_4)}{kbd(keys.quick_5)} quick match</span> <span>{kbd(keys.undo)} undo</span>{' '}
                 <span>{kbd(keys.hide_boxes)} hold to hide boxes</span>{' '}
                 <span>{kbd(keys.confirm)} {kbd(keys.cancel)} confirm or cancel a dialog</span>
               </span>
