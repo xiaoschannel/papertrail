@@ -8,6 +8,7 @@ import { Card, ChartCard, Empty, ErrorState, Loading, Tile } from '../../compone
 import { EChart, useChartTheme } from '../../components/charts/EChart.tsx'
 import { cadenceScatter, monthlyBars } from '../../components/charts/chartOptions.ts'
 import { ReceiptGallery } from '../../components/scans/DocumentCard.tsx'
+import { SearchSelect, type Choice } from '../../components/SearchSelect.tsx'
 
 export default function Merchant() {
   const [params, setParams] = useSearchParams()
@@ -16,12 +17,19 @@ export default function Merchant() {
   const list = useQuery({ queryKey: ['merchants', mode], queryFn: () => api.merchants(mode) })
 
   const selected = mode === 'brand' ? params.get('brand') : params.get('name')
-  // the selector's value for a row: its brand id, or its exact merchant name
-  const valueOf = (o: MerchantTotals) => (mode === 'brand' ? o.brand_id : 'name' in o ? o.name : null)
+  const choices: Choice[] = useMemo(() => (list.data ?? []).flatMap((o: MerchantTotals) => {
+    // a row's value: its brand id, or its exact merchant name
+    const value = mode === 'brand' ? o.brand_id : 'name' in o ? o.name : null
+    if (!value) return []
+    const label = totalsLabel(o)
+    return [{
+      value,
+      label: mode === 'brand' && label !== value ? `${label} (${value})` : label,
+      detail: `${num(o.visit_count)} receipt(s)`,
+    }]
+  }), [list.data, mode])
   // default to the biggest merchant once the list arrives
-  const options: MerchantTotals[] = list.data ?? []
-  const fallback = options.map(valueOf).find(Boolean)
-  const current = selected || fallback || ''
+  const current = selected || choices[0]?.value || ''
 
   const detail = useQuery({
     queryKey: ['merchant', mode, current],
@@ -63,17 +71,8 @@ export default function Merchant() {
         </div>
         <div className="field" style={{ flex: 1, minWidth: 260 }}>
           <label htmlFor="merchant-pick">{mode === 'brand' ? 'Brand' : 'Merchant'}</label>
-          <select id="merchant-pick" value={current} onChange={(e) => choose(e.target.value)} style={{ maxWidth: 420 }}>
-            {options.map((o) => {
-              const value = valueOf(o)
-              if (!value) return null
-              return (
-                <option key={value} value={value}>
-                  {totalsLabel(o)}{mode === 'brand' && totalsLabel(o) !== value ? ` (${value})` : ''} — {num(o.visit_count)} receipt(s)
-                </option>
-              )
-            })}
-          </select>
+          <SearchSelect id="merchant-pick" className="wide" choices={choices} value={current} onChange={choose}
+            placeholder={mode === 'brand' ? 'Type a brand' : 'Type a merchant name'} />
         </div>
       </div>
 

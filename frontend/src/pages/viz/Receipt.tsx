@@ -9,6 +9,7 @@ import { ScanOverlay, useBoxesHidden } from '../../components/review/ScanOverlay
 import { keyLabel } from '../../hooks/useShortcuts.ts'
 import { money, num, spendExactly } from '../../format.ts'
 import { TrimmedImage } from '../../components/scans/TrimmedImage.tsx'
+import { SearchSelect, type Choice } from '../../components/SearchSelect.tsx'
 import { Card, Empty, ErrorState, Loading, Tile } from '../../components/ui.tsx'
 
 export default function Receipt() {
@@ -249,10 +250,6 @@ function EditForm({ record, onDone }: { record: VizRecord; onDone: () => void })
   )
 }
 
-/**
- * Any archived document by its original filename, name or date: type to narrow the list. Charts, the
- * calendar and merchant pages lead only to dated receipts; this reaches the rest too.
- */
 /** How many pages, and the key that lifts the boxes off them. */
 function ScanHint({ pages }: { pages: number }) {
   const hide = useShortcutKeys()?.hide_boxes
@@ -301,30 +298,21 @@ function ReceiptScan({ file, paths, trims, alt }: {
   )
 }
 
+/**
+ * Any archived document by its original filename, name or date: type to narrow the list. Charts, the
+ * calendar and merchant pages lead only to dated receipts; this reaches the rest too.
+ */
 function DocumentPicker({ file, onPick }: { file: string; onPick: (file: string) => void }) {
   const documents = useQuery({ queryKey: ['documents'], queryFn: api.documents })
-  const [typed, setTyped] = useState<string | null>(null)
-  const byFilename = useMemo(() => new Set((documents.data ?? []).map((d) => d.filename)), [documents.data])
+  const choices: Choice[] = useMemo(() => (documents.data ?? []).map((d) => {
+    const detail = [d.date || 'undated', d.name || d.document_type].join(' · ')
+    return { value: d.filename, label: d.filename, detail, search: `${d.filename} ${detail}` }
+  }), [documents.data])
   return (
     <div className="field document-picker">
       <label htmlFor="receipt-picker">Document{documents.data ? ` (${documents.data.length})` : ''}</label>
-      <input id="receipt-picker" type="text" list="receipt-picker-list" value={typed ?? file}
-        placeholder="Type a filename, name or date" autoComplete="off"
-        onChange={(e) => {
-          const value = e.target.value
-          setTyped(value)
-          if (byFilename.has(value)) {
-            onPick(value)
-            setTyped(null)
-          }
-        }} />
-      <datalist id="receipt-picker-list">
-        {(documents.data ?? []).map((d) => (
-          <option key={d.filename} value={d.filename}>
-            {[d.date || 'undated', d.name || d.document_type].join(' · ')}
-          </option>
-        ))}
-      </datalist>
+      <SearchSelect id="receipt-picker" className="wide" choices={choices} value={file} onChange={onPick}
+        placeholder="Type a filename, name or date" />
     </div>
   )
 }
