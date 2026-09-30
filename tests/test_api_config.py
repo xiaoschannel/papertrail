@@ -113,14 +113,15 @@ def test_only_pages_on_this_machine_are_served(api_client):
 def test_shortcuts_default_to_the_left_hand(api_client):
     assert api_client.get("/api/config").json()["shortcuts"] == {
         "accept": "a", "mark": "s", "toss": "d", "prev": "x", "next": "c", "undo": "z",
-        "quick_1": "1", "quick_2": "2", "quick_3": "3", "hide_boxes": "b", "hold_original": "r", "confirm": "e", "cancel": "q",
+        "quick_1": "1", "quick_2": "2", "quick_3": "3", "quick_4": "4", "quick_5": "5",
+        "hide_boxes": "b", "hold_original": "r", "confirm": "e", "cancel": "q",
         "leave_as_is": "w", "fix_scan": "e", "toggle_guides": "r"}
 
 
 def test_shortcuts_are_saved_as_a_section(api_client):
     keys = api_client.get("/api/config").json()["shortcuts"]
     chosen = {**keys, "accept": "W", "prev": "ArrowLeft", "confirm": "Enter", "cancel": "a", "hold_original": " ",
-              "quick_1": "4", "quick_2": "f"}
+              "quick_1": "7", "quick_2": "f"}
     assert api_client.patch("/api/config", json={"shortcuts": chosen}).status_code == 200
     body = api_client.get("/api/config").json()
     # a character is stored lower-cased, as the pages match keys; named keys as they are named
@@ -158,7 +159,7 @@ def test_normalize_thresholds_are_kept_to_what_their_slider_offers(api_client):
 
 def test_shortcuts_reject_what_a_page_could_not_tell_apart(api_client):
     keys = api_client.get("/api/config").json()["shortcuts"]
-    for bad in ({"mark": "a"}, {"cancel": "e"}, {"toss": "1"}, {"quick_3": "r"}, {"hold_original": "a"}, {"prev": ""}, {"next": "cc"}, {"undo": "Tab"},
+    for bad in ({"mark": "a"}, {"cancel": "e"}, {"toss": "1"}, {"quick_3": "r"}, {"quick_5": "1"}, {"hold_original": "a"}, {"prev": ""}, {"next": "cc"}, {"undo": "Tab"},
                 {"hide_boxes": "Shift"}, {"confirm": "enter"}, {"hold_original": "b"}, {"fix_scan": "q"},
                 {"leave_as_is": "e"}, {"toggle_guides": "x"}):
         assert api_client.patch("/api/config", json={"shortcuts": {**keys, **bad}}).status_code == 422, bad
