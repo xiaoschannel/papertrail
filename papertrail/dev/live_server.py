@@ -10,7 +10,8 @@ self-contained for the same reason: no imports from the repo.
 
 Each server's output goes to <checkout>/.live/<name>.log. If either server exits, the other is stopped
 and so is this script, so the task never shows as running while half the app is down. Both logs
-then say which one exited first and with what code.
+then say which one exited first and with what code. If this script fails itself, both logs get its
+traceback: the task runs it windowless (pythonw), so there is nowhere else for one to go.
 """
 import argparse
 import ctypes
@@ -18,6 +19,7 @@ import shutil
 import subprocess
 import sys
 import time
+import traceback
 from ctypes import wintypes
 from pathlib import Path
 
@@ -113,6 +115,15 @@ def run(servers: dict[str, list[str]], root: Path, logs: Path) -> None:
     The commands are an argument so a test can hand it two harmless ones and check the survivor really is
     stopped — what keeps the task from looking healthy while half the app is down.
     """
+    try:
+        _serve(servers, root, logs)
+    except BaseException:
+        # Without this the logs just end, the same as when something outside kills this script.
+        _log_failure(list(servers), logs, time.strftime('%Y-%m-%d %H:%M:%S'), traceback.format_exc())
+        raise
+
+
+def _serve(servers: dict[str, list[str]], root: Path, logs: Path) -> None:
     running: list[tuple[str, subprocess.Popen, _Job]] = []
     exited = None
     try:
@@ -142,7 +153,8 @@ def _log_ending(names: list[str], logs: Path, exited: str, code: int, stamp: str
     """Say in every log which server stopped first and how, since that one takes the rest down with it.
 
     A server can die without a word — a native crash, or killed from outside — and its log then just ends.
-    A log that ends with no such line means this script itself was stopped: a deploy, or the task ended.
+    A log that ends with neither this line nor a failure (:func:`_log_failure`) means this script itself
+    was stopped from outside: a deploy, the task ended, or something killed it.
     """
     # Windows reports a crash as an NTSTATUS such as 0xC0000005, which reads as noise in decimal.
     shown = f"{code} (0x{code & 0xFFFFFFFF:08X})" if not 0 <= code <= 0xFFFF else str(code)
@@ -151,6 +163,16 @@ def _log_ending(names: list[str], logs: Path, exited: str, code: int, stamp: str
                 else f"stopped because {exited} exited with code {shown}")
         with open(logs / f"{name}.log", "ab") as log:
             log.write(f"--- {line} at {stamp} ---\n".encode())
+
+
+def _log_failure(names: list[str], logs: Path, stamp: str, trace: str) -> None:
+    """Put this script's own error in every log. Each on its own: the error may be that one can't be written."""
+    for name in names:
+        try:
+            with open(logs / f"{name}.log", "ab") as log:
+                log.write(f"--- the launcher failed at {stamp}, stopping everything it started ---\n{trace}".encode())
+        except OSError:
+            pass
 
 
 def main() -> int:

@@ -237,6 +237,32 @@ def test_one_server_stopping_stops_the_other(tmp_path):
     assert not pathlib.Path(marker).exists(), "the surviving server was left running"
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="the launcher is what a Windows scheduled task runs: "
+                    "it uses Windows-only process flags and job objects, so it is tested on the Windows CI job")
+def test_the_launcher_failing_says_why_in_both_logs(tmp_path):
+    """The task runs it windowless, so its traceback has no console to go to; without this the logs just end."""
+    node = shutil.which("node")
+    assert node, "node is needed for this test"
+    logs = tmp_path / ".live"
+    logs.mkdir()
+    marker = (tmp_path / "still-alive.txt").as_posix()
+    stays = f"setTimeout(() => require('fs').writeFileSync('{marker}', 'alive'), 1000); setTimeout(() => {{}}, 600000)"
+    with pytest.raises(FileNotFoundError):
+        live_server.run({"stays": [node, "-e", stays], "missing": [str(tmp_path / "no-such-server.exe")]},
+                        tmp_path, logs)
+    for name in ("stays", "missing"):
+        log = (logs / f"{name}.log").read_text(encoding="utf-8")
+        assert "--- the launcher failed at" in log and "FileNotFoundError" in log
+    time.sleep(2.5)
+    assert not pathlib.Path(marker).exists(), "the server it had started was left running"
+
+
+def test_a_log_that_cannot_be_written_does_not_keep_the_failure_from_the_other(tmp_path):
+    (tmp_path / "api.log").mkdir()      # opening it for writing fails
+    live_server._log_failure(["api", "web"], tmp_path, "2026-01-01 00:00:00", "Traceback: boom\n")
+    assert "Traceback: boom" in (tmp_path / "web.log").read_text(encoding="utf-8")
+
+
 def test_a_crash_code_is_logged_as_the_status_windows_names_it(tmp_path):
     """A native crash exits with an NTSTATUS; 0xC0000005 is searchable, 3221225477 is not."""
     live_server._log_ending(["api", "web"], tmp_path, "api", 0xC0000005, "2026-01-01 00:00:00")
