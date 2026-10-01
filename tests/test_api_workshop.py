@@ -64,6 +64,26 @@ def test_the_queue_lists_documents_and_opens_the_first(api_client, configured_ar
     assert "合計" in document["ocr_text"]
 
 
+def test_the_document_carries_both_the_extraction_result_and_the_decision(api_client, configured_archive):
+    """The page starts the form from the decision Review saved when it marked the document (what was typed before
+    marking comes back); ``defaults`` stays the extraction result, which the form shows as "Extracted" and the smart
+    matches look up."""
+    sidecar_path = configured_archive / "marked" / "08102025142000_202.json"
+    data = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    data["extraction"] = ReceiptResult(document_type="receipt", language="ja", date="2025-08-01", time="09:00",
+                                       name="ローンン", phone="03-0000-0000", currency="JPY", address="",
+                                       cost=999.0).model_dump()
+    sidecar_path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+    document = api_client.get("/api/curate/workshop").json()["document"]
+
+    review, defaults, decision = data["review"], document["defaults"], document["decision"]
+    assert [decision[f] for f in ("document_type", "name", "date", "time", "cost", "currency", "comment")] == [
+        review[f] for f in ("document_type", "name", "date", "time", "cost", "currency", "comment")]
+    assert (defaults["name"], defaults["date"], defaults["cost"], defaults["phone"]) == (
+        "ローンン", "2025-08-01", 999.0, "03-0000-0000")
+
+
 def test_the_scan_preview_is_the_treated_image(api_client, configured_archive):
     with Image.open(configured_archive / "marked" / "08102025142000_202.png") as original:
         width, height = original.size

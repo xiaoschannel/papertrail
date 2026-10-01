@@ -17,7 +17,6 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote
 
-from papertrail.review import logic as rl
 from papertrail.ingest import rotation_review
 from papertrail.data import log_workshop_record, read_sidecar, remember_confirmed_names
 from papertrail.curate.dedupe import WEEK_WINDOW, parse_verdict_datetime
@@ -25,8 +24,8 @@ from papertrail.scans.deskew import straighten_file, straightened_trim
 from papertrail.archive.files import MARKED, ensure_movable, load_pages, place_document, toss_document
 from papertrail.scans.grouping import rotate_file_upright
 from papertrail.models import (
-    DocumentExtraction, DocumentFields, DocumentKey, OcrResult, ReviewDecision, RotationPrediction,
-    ScanIndex, Sidecar, Trim, WorkshopRecord, WorkshopReread,
+    DocumentExtraction, DocumentFields, DocumentKey, OcrResult, OtherResult, ReceiptResult, ReviewDecision,
+    RotationPrediction, ScanIndex, Sidecar, Trim, WorkshopRecord, WorkshopReread,
     batch_serial_key, ocr_page_section, turned_trim,
 )
 from papertrail.scans.enhance import TREATMENTS_VERSION
@@ -196,8 +195,8 @@ def accept(output_path: Path, document: MarkedDocument, decision: ReviewDecision
     the Workshop did and how the read went (``workshop_record``) goes on the first page and in the log.
     """
     ensure_movable(document.pages)
+    record = workshop_record(document, decision, reread)       # before a scan put here by hand gets its sidecar
     _write_missing_sidecars(document)
-    record = workshop_record(document, decision, reread)
     if reread is not None:
         store_reprocessed(document, reread, output_path, judge)
     pages = load_pages(document.pages)
@@ -211,26 +210,61 @@ def accept(output_path: Path, document: MarkedDocument, decision: ReviewDecision
 
 
 #: The fields a record compares, and how: a name the same but for case or spacing is the same name (the form
-#: offers a known name's usual spelling in place of the one read), a cost the same to the sen.
+#: offers a known name's usual spelling in place of the one read), a cost the same to the sen. A cost or
+#: currency that wasn't read (None) matches nothing.
 _SAME = {
     "document_type": lambda a, b: a == b,
     "name": lambda a, b: " ".join(a.split()).casefold() == " ".join(b.split()).casefold(),
     "date": lambda a, b: a == b,
     "time": lambda a, b: a == b,
-    "cost": lambda a, b: abs(a - b) < 0.005,
+    "cost": lambda a, b: a is not None and b is not None and abs(a - b) < 0.005,
     "currency": lambda a, b: a == b,
 }
+
+#: What only a receipt has: on anything else a decision holds 0 and "" for them, which aren't values.
+_RECEIPT_ONLY = ("cost", "currency")
+
+
+def read_fields(extraction: DocumentExtraction) -> DocumentFields:
+    """The extraction result's fields as the extractor returned them: no placeholder for a name it didn't find
+    (the form shows one), and no cost or currency for a document extracted as one that has neither."""
+    receipt = extraction if isinstance(extraction, ReceiptResult) else None
+    other = extraction if isinstance(extraction, OtherResult) else None
+    dated = receipt or other
+    return DocumentFields(document_type=extraction.document_type,
+                          name=receipt.name if receipt else other.title if other else "",
+                          date=dated.date if dated else "", time=dated.time if dated else "",
+                          cost=receipt.cost if receipt else None, currency=receipt.currency if receipt else None)
+
+
+def corrected(read: DocumentFields | None, accepted: DocumentFields) -> list[str]:
+    """The fields of the accepted document that differ from the record's extraction result, every one of them
+    when there is none (a non-receipt has no cost or currency)."""
+    fields = [name for name in _SAME if not (accepted.document_type != "receipt" and name in _RECEIPT_ONLY)]
+    if read is None:
+        return fields
+    return [name for name in fields if not _SAME[name](getattr(read, name), getattr(accepted, name))]
 
 
 def workshop_record(document: MarkedDocument, decision: ReviewDecision, reread: Reread | None) -> WorkshopRecord:
     """What the Workshop did to ``document`` and how that read went, for accepting it under ``decision``.
 
-    What was read is the reread's extraction, else the one the document was marked with, else what review
-    recorded (a document marked before anything was extracted)."""
+    The record's extraction result is the reread's, else the one the document was marked with, else its
+    decision (a document marked before anything was extracted: its form started from an extraction result),
+    and none (None) for a scan put in ``marked/`` by hand, which nothing has extracted. That is the scan
+    without a sidecar, so this is asked before the missing sidecars are written."""
     extraction = reread.extraction if reread else document.first.extraction
-    read = rl.form_defaults(extraction) if extraction else rl.defaults_from_decision(document.first.review)
-    read_fields = DocumentFields(document_type=read.document_type, name=read.name, date=read.date,
-                                 time=read.time, cost=read.cost, currency=read.currency)
+    read: DocumentFields | None
+    if extraction is not None:
+        read = read_fields(extraction)
+    elif read_sidecar(document.pages[0]) is None:
+        read = None
+    else:
+        recorded = document.first.review
+        receipt = recorded.document_type == "receipt"
+        read = DocumentFields(document_type=recorded.document_type, name=recorded.name, date=recorded.date,
+                              time=recorded.time, cost=recorded.cost if receipt else None,
+                              currency=recorded.currency if receipt else None)
     accepted = DocumentFields(document_type=decision.document_type, name=decision.name, date=decision.date,
                               time=decision.time, cost=decision.cost, currency=decision.currency)
     return WorkshopRecord(
@@ -240,9 +274,7 @@ def workshop_record(document: MarkedDocument, decision: ReviewDecision, reread: 
             top_points=reread.top_points or None, degrees=reread.degrees, treatment=reread.treatment,
             settings=reread.settings, trims=[result.trim for result in reread.results],
         ) if reread else None,
-        read=read_fields, accepted=accepted,
-        corrected=[name for name, same in _SAME.items()
-                   if not same(getattr(read_fields, name), getattr(accepted, name))])
+        read=read, accepted=accepted, corrected=corrected(read, accepted))
 
 
 def toss(output_path: Path, document: MarkedDocument) -> list[str]:

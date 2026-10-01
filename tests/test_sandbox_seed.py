@@ -24,7 +24,8 @@ def test_the_first_batch_is_filed_with_some_of_it_marked(sandbox):
               for p in (sandbox.archive / "marked").glob("*.png")}
     assert {name.split("_")[1] for name in marked} == {f"{serial}.png" for serial in seed.MARKED}
     drugstore = marked["02152026090030_4.png"]           # marked untrimmed: read with its coupon
-    assert drugstore.trim is None and drugstore.review.cost == 3000.0
+    assert drugstore.trim is None and drugstore.extraction.cost == 3000.0
+    assert drugstore.review.cost == 1680.0                # its own total, typed before it was marked
     assert drugstore.review.comment == seed.MARKED[4]
 
 

@@ -32,6 +32,8 @@ What each stage holds for a feature today:
   real one would. Turning or straightening a page after OCR sends it back to OCR and Parse.
 * Sent back: 2:3, in Review, was fed in a little crooked, too little to be flagged: send it back to Fix
   Rotation from its scan in Review.
+* Workshop form: the marked 1:4's extraction result has its coupon's total (¥3000); its own (¥1680) was typed
+  in Review before it was marked, and the Workshop's form starts from that decision, not the extraction result.
 * Workshop straighten: the marked 1:5 was fed in crooked; the Workshop starts its reread from the tilt.
 * Mend white lines: the marked 1:7 was printed by a thermal head with dead dots, so white lines run down it
   and cut its print; the Workshop's Mend white lines treatment joins it back up.
@@ -210,6 +212,8 @@ def archived_batch(sb: Sandbox) -> None:
 
 ARCHIVED_TRIMMED_BEFORE_OCR = {3: COUPON_TRIM}
 MARKED = {4: "the total looks like the coupon's", 5: "faded print", 7: "white lines through the print"}
+#: typed in Review before the document was marked: the Workshop's form starts from them
+TYPED_BEFORE_MARKING = {4: {"cost": 1680.0}}
 #: read with no name and named in Review: the named by hand
 NAMED_BY_HAND = {12: "Coffee Stand Foo"}
 
@@ -473,7 +477,8 @@ def build(sb: Sandbox) -> None:
             decisions[key] = ReviewDecision(
                 verdict="marked" if serial in MARKED else "accepted", document_type=defaults.document_type,
                 name=NAMED_BY_HAND.get(serial, defaults.name), date=defaults.date, time=defaults.time, cost=defaults.cost,
-                currency=defaults.currency, comment=MARKED.get(serial, ""))
+                currency=defaults.currency, comment=MARKED.get(serial, "")).model_copy(
+                update=TYPED_BEFORE_MARKING.get(serial, {}))
         save_decisions(sb.archive, decisions)
         pipeline.run_archive(sb.archive, sb.scans, _Quiet())
 
