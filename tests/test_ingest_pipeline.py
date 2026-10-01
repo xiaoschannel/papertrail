@@ -592,14 +592,14 @@ def test_an_archive_from_before_the_history_is_committed_and_its_scans_cleared_o
     (scans / "fresh.png").write_bytes(b"")
 
     plan = ip.plan_archive(archive_dir, scans)
-    assert plan.blocker is None and plan.files == 0 and plan.scans_to_remove == 9
+    assert plan.blocker is None and plan.files == 0 and plan.scans_to_remove == 11
     message = ip.run_archive(archive_dir, scans, FakeProgress())
 
     from papertrail.data import filed_scan_pages
-    pages = filed_scan_pages(archive_dir)                    # the 9 indexed scans' pages, and a couple filed otherwise
-    assert len(pages) > 9
+    pages = filed_scan_pages(archive_dir)                    # the 11 indexed scans' pages, and a couple filed otherwise
+    assert len(pages) > 11
     assert message.startswith(f"Nothing new to file. Committed {len(pages)} page(s) filed earlier (")
-    assert message.endswith("). Removed 9 scan(s) from the scan folder.")
+    assert message.endswith("). Removed 11 scan(s) from the scan folder.")
     assert [p.name for p in scans.iterdir()] == ["fresh.png"]
     tracked = archive_history.tracked_paths(archive_dir.parent, "archive")
     assert all(page.relative_to(archive_dir.parent).as_posix() in tracked for page in pages.values())

@@ -1,4 +1,5 @@
-"""Curate: likely duplicates in the archive, and merging merchant names that mean one shop."""
+"""Curate: likely duplicates in the archive, merging merchant names that mean one shop, and naming the
+documents filed under no name."""
 
 from __future__ import annotations
 
@@ -9,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from papertrail.archive import files as document_files
 from papertrail.curate import merge as name_merge
+from papertrail.curate import naming
 from papertrail.curate import workshop
 from papertrail.api import cache
 from papertrail.api.deps import get_output_path
@@ -18,13 +20,15 @@ from papertrail.api.model_manager import models
 from papertrail.api.routers.brands import prefix_suggestions
 from papertrail.api.schemas import (
     CurateCountsOut, DedupeCluster, DedupeMember, DedupeOut, DistinctIn, DistinctOut, KeepIn, KeptPair, MergeIn,
-    MergeOut, MoveOut, NameCount, NameGroupOut, NormalizeEngineOut, NormalizeOut, RestoreIn, TossIn, TossOut,
+    MergeOut, MoveOut, NameCount, NamedDocumentOut, NamedOut, NameDocumentsIn, NameGroupOut, NormalizeEngineOut,
+    NormalizeOut, RestoreIn, TossIn, TossOut, UnnamedOut,
 )
 from papertrail.data import (
     load_distinct_pairs, load_kept_duplicates, read_sidecar, save_kept_duplicates,
 )
 from papertrail.curate.dedupe import drop_confirmed_different, find_dedupe_clusters
 from papertrail.models import ReviewDecision
+from papertrail.review.logic import is_placeholder_name
 from papertrail.curate.merge import NameGroup
 from papertrail.curate.similarity import EMBED_MODEL, unload_embeddings
 from papertrail.curate.normalize_engines import ENGINES
@@ -95,10 +99,12 @@ def curate_counts(
         (engine_id, threshold, *(_mtime(output_path / f) for f in
                                  ("distinct_pairs.json", "name_normalizations.json", "name_embeddings.npz"))),
         name_groups)
+    unnamed = cache.sidebar_count(output_path, "unnamed", (), lambda: len(naming.naming_documents(
+        cache.viz_records(output_path), cache.archive_state(output_path))[0]))
     return CurateCountsOut(workshop=marked, dedupe=dedupe, brands=brands,
                            brands_min_names=min_names, normalize=normalize,
                            normalize_engine=engine_id, normalize_threshold=threshold,
-                           normalize_unembedded=unembedded)
+                           normalize_unembedded=unembedded, unnamed=unnamed)
 
 
 @router.get("/dedupe", response_model=DedupeOut)
@@ -293,3 +299,53 @@ def confirm_distinct(body: DistinctIn, output_path: Path = Depends(get_output_pa
 @one_edit_at_a_time
 def forget_distinct(first: str, second: str, output_path: Path = Depends(get_output_path)):
     return DistinctOut(pairs=name_merge.forget_different(output_path, first, second))
+
+
+# --- Unnamed: naming the documents filed under no name ------------------------------------------
+@router.get("/unnamed", response_model=UnnamedOut)
+def unnamed_documents(keep: list[str] = Query([]), output_path: Path = Depends(get_output_path)):
+    """The documents filed under a placeholder name, and the named by hand: read with no name, filed with one.
+
+    ``keep``: documents the page named, which it shows where they were; they come back as filed now, since
+    naming one can renumber the files of another that shared its name."""
+    records = cache.viz_records(output_path)
+    state = cache.archive_state(output_path)
+    unnamed, by_hand = naming.naming_documents(records, state)
+    kept = naming.documents_by_key(records, state, keep)
+    counts = records["name"].value_counts() if not records.empty else {}
+    names = sorted(((str(name), int(count)) for name, count in counts.items() if not is_placeholder_name(str(name))),
+                   key=lambda pair: (-pair[1], pair[0]))
+    return UnnamedOut(unnamed=unnamed, named_by_hand=by_hand, kept=[kept[key] for key in keep if key in kept],
+                      names=[NameCount(name=name, count=count) for name, count in names],
+                      placeholders=sorted(naming.PLACEHOLDER_NAMES))
+
+
+@router.post("/unnamed/name", response_model=NamedOut)
+def name_documents(body: NameDocumentsIn, output_path: Path = Depends(get_output_path)):
+    """File these documents under one name, in order. Only the name changes (the extraction keeps what was
+    read), and the files are renamed, since the name is part of the file name.
+
+    Refused before anything moves when a document isn't where the page last saw it (409) or a file is open
+    elsewhere (409, ``FileInUse``). A document that fails to move after that ends the naming there: the answer
+    says which were named, and why the next one wasn't, so the page keeps what was done."""
+    records = cache.viz_records(output_path)
+    rows = {row["filename"]: row for row in records.to_dict("records")} if not records.empty else {}
+    keys = list(dict.fromkeys(body.documents))
+    missing = [key for key in keys if key not in rows]
+    if missing:
+        raise HTTPException(status_code=404, detail=f"not in the archive: {', '.join(missing)}")
+    try:
+        with no_job_running("name documents", kind="archive"):   # Archive moves files in the same folders
+            outcome = naming.name_documents(output_path, [list(rows[key]["paths"]) for key in keys], body.name)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except naming.NotNamed as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    finally:
+        cache.clear()   # names changed and files moved (all of them, or the ones before a failure)
+    done = keys[:outcome.named]
+    now = naming.documents_by_key(cache.viz_records(output_path), cache.archive_state(output_path), done)
+    return NamedOut(named=[NamedDocumentOut(document=now[key], previous_name=str(rows[key]["name"]))
+                           for key in done if key in now],
+                    error=None if outcome.error is None else
+                    f"Named {outcome.named} of {len(keys)}; the next one couldn't be moved: {outcome.error}")

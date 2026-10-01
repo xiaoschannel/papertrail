@@ -12,9 +12,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from papertrail.data import load_smart_match_cache, save_smart_match_cache
+from papertrail.data import remember_confirmed_names
 from papertrail.archive.files import load_pages, place_document
-from papertrail.models import ReceiptResult, ReviewDecision, Sidecar, batch_serial_key
+from papertrail.models import ReceiptResult, ReviewDecision, Sidecar
 from papertrail.review.logic import Draft, accept_error
 
 
@@ -79,22 +79,6 @@ def apply_receipt_edit(output_path: Path, page_paths: list[str], edit: ReceiptEd
         return sidecar.model_copy(update={"review": decision, "extraction": extraction})
 
     new_paths = place_document(output_path, pages, decision, sidecar_for=updated)
-    _remember_name(output_path, first, edit)
+    remember_confirmed_names(output_path, [(first, edit.name)])   # teach the smart matcher the name
     return new_paths
 
-
-def _remember_name(output_path: Path, sidecar: Sidecar, edit: ReceiptEdit) -> None:
-    """Teach the smart matcher the confirmed name, so Review suggests it next time."""
-    extraction = sidecar.extraction
-    key = sidecar.document_key
-    if key is None and sidecar.batch_id is not None and sidecar.serial is not None:
-        key = batch_serial_key(sidecar.batch_id, sidecar.serial)
-    if key is None:
-        key = sidecar.original_filename
-    cache = load_smart_match_cache(output_path)
-    cache[key] = {
-        "extracted": getattr(extraction, "name", "") or getattr(extraction, "title", ""),
-        "confirmed": edit.name,
-        "extracted_phone": getattr(extraction, "phone", "") if isinstance(extraction, ReceiptResult) else "",
-    }
-    save_smart_match_cache(output_path, cache)

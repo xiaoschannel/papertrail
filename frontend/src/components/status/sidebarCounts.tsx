@@ -13,7 +13,7 @@ import type { CurateCounts, PipelineCounts } from '../../api/types.ts'
  */
 
 export type Stage = 'unindexed' | 'rotation' | 'ocr' | 'parse' | 'review' | 'archive'
-  | 'workshop' | 'dedupe' | 'brands' | 'normalize'
+  | 'workshop' | 'dedupe' | 'brands' | 'normalize' | 'unnamed'
 
 export type SidebarCounts = { ingest: PipelineCounts | undefined; curate: CurateCounts | undefined }
 
@@ -48,6 +48,7 @@ function describe({ ingest, curate }: SidebarCounts, stage: Stage): [number, str
     case 'archive': return ingest && [ingest.archive, 'documents ready to file']
     case 'workshop': return curate && [curate.workshop, 'marked documents to rework']
     case 'dedupe': return curate && [curate.dedupe, 'likely duplicates to check']
+    case 'unnamed': return curate && [curate.unnamed, 'documents filed under no name']
     case 'brands': return curate && [curate.brands,
       `prefixes shared by ${curate.brands_min_names}+ unbranded names (set in Config)`]
     case 'normalize': {

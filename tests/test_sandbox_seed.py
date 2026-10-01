@@ -38,8 +38,8 @@ def test_the_filed_batch_s_scans_left_the_scan_folder_for_the_archive_s_history(
     log = subprocess.run(["git", "-C", str(sandbox.root), "log", "--format=%s"], check=True, capture_output=True,
                          text=True, encoding="utf-8").stdout.splitlines()
     milestones = ["File Index: batch 3 (18 scans)", "Parse with ", "OCR with ", "File Index: batch 2 (4 scans)",
-                  "Archive: 7 scans cleared out of the scan folder", "Archive batch 1: 7 files", "Parse with ",
-                  "OCR with ", "File Index: batch 1 (7 scans)", "History started"]
+                  "Archive: 12 scans cleared out of the scan folder", "Archive batch 1: 12 files", "Parse with ",
+                  "OCR with ", "File Index: batch 1 (12 scans)", "History started"]
     assert len(log) == len(milestones) and all(s.startswith(m) for s, m in zip(log, milestones)), log
     # trims aren't a milestone: batch 2's wait for one (or the Commit button)
     assert archive_history.changed_paths(sandbox.root) == {"archive/trims.json"}
@@ -51,6 +51,23 @@ def test_the_filed_coupon_receipt_is_trimmed_and_read_as_the_receipt_alone(sandb
     assert supermarket.trim == COUPON and supermarket.ocr.trim == COUPON
     assert supermarket.review.verdict == "accepted" and supermarket.review.cost == 2150.0
     assert "COUPON" not in supermarket.ocr.markdown
+
+
+def test_the_filed_batch_has_receipts_filed_unnamed_and_one_named_by_hand(sandbox):
+    from papertrail.curate import naming
+    from papertrail.data import load_reorganized_state
+    from papertrail.viz.records import build_viz_records
+
+    state = load_reorganized_state(sandbox.archive)
+    unnamed, by_hand = naming.naming_documents(build_viz_records(sandbox.archive, state), state)
+
+    assert [d.filename for d in unnamed] == ["02152026090110_8.png", "02152026090120_9.png", "02152026090140_11.png",
+                                             "02152026090130_10.png"]           # oldest first: 9 and 11 share a minute
+    assert {(d.name, d.read) for d in unnamed} == {("Receipt", "")}             # read with no name, filed so
+    assert [d.path.rsplit("/", 1)[1] for d in unnamed[1:3]] == ["2026年2月16日 08：20 Receipt.png",
+                                                                 "2026年2月16日 08：20 Receipt (2).png"]
+    [named] = by_hand
+    assert (named.filename, named.name, named.read) == ("02152026090150_12.png", seed.NAMED_BY_HAND[12], "")
 
 
 def test_the_second_batch_waits_in_review(sandbox):

@@ -16,6 +16,7 @@ import Archive from './pages/ingest/Archive.tsx'
 import Brands from './pages/curate/Brands.tsx'
 import Dedupe from './pages/curate/Dedupe.tsx'
 import Normalize from './pages/curate/Normalize.tsx'
+import Unnamed from './pages/curate/Unnamed.tsx'
 import Workshop from './pages/curate/Workshop.tsx'
 import Config from './pages/settings/Config.tsx'
 import Experiment from './pages/dev/Experiment.tsx'
@@ -48,6 +49,7 @@ const NAV: { group: string; items: { to: string; label: string; stage?: Stage }[
       { to: '/dedupe', label: 'Dedupe', stage: 'dedupe' },
       { to: '/normalize', label: 'Normalize', stage: 'normalize' },
       { to: '/brands', label: 'Brand registry', stage: 'brands' },
+      { to: '/unnamed', label: 'Unnamed', stage: 'unnamed' },
     ],
   },
   {
@@ -126,6 +128,7 @@ export default function App() {
           <Route path="/dedupe" element={<Dedupe />} />
           <Route path="/normalize" element={<Normalize />} />
           <Route path="/brands" element={<Brands />} />
+          <Route path="/unnamed" element={<Unnamed />} />
           <Route path="/experiment" element={<Experiment />} />
           <Route path="/sanity-check" element={<SanityCheck />} />
           <Route path="/index-audit" element={<IndexAudit />} />

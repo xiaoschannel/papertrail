@@ -216,6 +216,11 @@ the disk.
    that decision as Fix Rotation keeps its own, in the page's sidecar and the rotation log.
 2. **Dedupe** — Time-based duplicate detection for documents with matching timestamps and costs.
 3. **Normalize** — Unify similar merchant/document names.
+4. **Unnamed** — Name the documents filed under no name ("Receipt": the extractor found none and nobody typed
+   one in), laid out together so the ones from one shop can be picked by eye and named at once. Only the
+   name changes: the extraction keeps what the model read, so a document named there joins the *named by
+   hand*, the page's second view — documents read with no name and filed with one, which is what a better
+   extraction prompt can be tried against.
 
 ## Visualize
 1. **Dashboard** — Monthly spending timeline, document volume, top merchants.

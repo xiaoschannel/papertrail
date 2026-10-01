@@ -152,7 +152,7 @@ def test_replace_groups_for_batch(ingest_dir):
 def test_load_reorganized_state(archive_dir):
     tossed, accepted = data.load_reorganized_state(archive_dir)
     assert tossed == {"08102025143000_201.png"}
-    assert len(accepted) == 9
+    assert len(accepted) == 11
     sidecar, rel = accepted["01102025132642_101.png"]
     assert sidecar.review.name == "セブン-イレブン 品川駅前店"
     assert rel == "2025/01/2025年1月10日 13：26 セブン-イレブン 品川駅前店.png"
@@ -175,8 +175,8 @@ def test_legacy_ocr_superset_sidecar_loads(archive_dir):
 
 def test_scan_organized_filenames(archive_dir):
     organized = data.scan_organized_filenames(archive_dir)
-    # 9 archived sidecars + 1 tossed + 1 marked image
-    assert len(organized) == 11
+    # 11 archived sidecars + 1 tossed + 1 marked image
+    assert len(organized) == 13
     assert "08102025143000_201.png" in organized  # tossed
     assert "08102025142000_202.png" in organized  # marked
 

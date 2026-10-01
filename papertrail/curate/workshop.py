@@ -19,13 +19,13 @@ from urllib.parse import quote
 
 from papertrail.review import logic as rl
 from papertrail.ingest import rotation_review
-from papertrail.data import load_smart_match_cache, log_workshop_record, read_sidecar, save_smart_match_cache
+from papertrail.data import log_workshop_record, read_sidecar, remember_confirmed_names
 from papertrail.curate.dedupe import WEEK_WINDOW, parse_verdict_datetime
 from papertrail.scans.deskew import straighten_file, straightened_trim
 from papertrail.archive.files import MARKED, ensure_movable, load_pages, place_document, toss_document
 from papertrail.scans.grouping import rotate_file_upright
 from papertrail.models import (
-    DocumentExtraction, DocumentFields, DocumentKey, OcrResult, ReceiptResult, ReviewDecision, RotationPrediction,
+    DocumentExtraction, DocumentFields, DocumentKey, OcrResult, ReviewDecision, RotationPrediction,
     ScanIndex, Sidecar, Trim, WorkshopRecord, WorkshopReread,
     batch_serial_key, ocr_page_section, turned_trim,
 )
@@ -205,7 +205,7 @@ def accept(output_path: Path, document: MarkedDocument, decision: ReviewDecision
     placed = place_document(output_path, pages, decision, sidecar_for=lambda sidecar: sidecar.model_copy(
         update={"review": decision, **({"workshop": record} if sidecar.original_filename == first else {})}))
     log_workshop_record(output_path, record)
-    _remember_name(output_path, pages[0][1], decision)
+    remember_confirmed_names(output_path, [(pages[0][1], decision.name)])
     rereads.drop(document.key)
     return placed
 
@@ -283,19 +283,6 @@ def _write_missing_sidecars(document: MarkedDocument) -> None:
     for path, sidecar in zip(document.pages, document.sidecars):
         if read_sidecar(path) is None:
             write_sidecar(path, sidecar)
-
-
-def _remember_name(output_path: Path, sidecar: Sidecar, decision: ReviewDecision) -> None:
-    """Teach the smart-match cache the name the model read and the name it turned out to be."""
-    key = sidecar.document_key or _page_key(sidecar) or sidecar.original_filename
-    read = sidecar.extraction
-    cache = load_smart_match_cache(output_path)
-    cache[key] = {
-        "extracted": getattr(read, "name", "") or getattr(read, "title", ""),
-        "confirmed": decision.name,
-        "extracted_phone": read.phone if isinstance(read, ReceiptResult) else "",
-    }
-    save_smart_match_cache(output_path, cache)
 
 
 def _page_key(sidecar: Sidecar) -> str | None:

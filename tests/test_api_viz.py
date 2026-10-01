@@ -9,14 +9,14 @@ def test_viz_records_matches_pure_output(api_client, configured_archive):
     resp = api_client.get("/api/viz/records")
     assert resp.status_code == 200
     body = resp.json()
-    assert len(body) == 8
+    assert len(body) == 10
     assert resp.json() == df_records(build_viz_records(configured_archive))
 
 
 def test_viz_items_count(api_client):
     resp = api_client.get("/api/viz/items")
     assert resp.status_code == 200
-    assert len(resp.json()) == 9
+    assert len(resp.json()) == 12
 
 
 def test_top_merchants_by_spend(api_client):
@@ -138,7 +138,8 @@ def test_date_range(api_client):
 def test_merchants_selector_list(api_client):
     rows = api_client.get("/api/merchants").json()
     groups = {r["merchant_group"] for r in rows}
-    assert groups == {"セブン-イレブン", "ビックカメラ", "Tealive", "上海小笼包馆", "スターバックス 渋谷店"}
+    assert groups == {"セブン-イレブン", "ビックカメラ", "Tealive", "上海小笼包馆", "スターバックス 渋谷店", "パン工房サンプル",
+                      "Receipt"}   # the unnamed receipt, until it is named
     seven = next(r for r in rows if r["merchant_group"] == "セブン-イレブン")
     assert seven["visit_count"] == 3
 

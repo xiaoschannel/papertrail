@@ -7,8 +7,8 @@ from papertrail.viz.records import build_viz_items, build_viz_records
 
 def test_build_viz_records_collapses_multipage(configured_archive):
     df = build_viz_records(configured_archive)
-    # 9 archived sidecars, but the 2-page ビックカメラ doc collapses to one record.
-    assert len(df) == 8
+    # 11 archived sidecars, but the 2-page ビックカメラ doc collapses to one record.
+    assert len(df) == 10
 
     multi = df[df["filename"] == "5:106-107"].iloc[0]
     assert len(multi["paths"]) == 2
@@ -34,6 +34,6 @@ def test_build_viz_records_brand_and_dates(configured_archive):
 
 def test_build_viz_items(configured_archive):
     items = build_viz_items(configured_archive)
-    # 品川(2) + 上野(1) + 目黒(1) + 上海(2) + Tealive(1) + ビック(1) + スタバ(1) = 9
-    assert len(items) == 9
+    # 品川(2) + 上野(1) + 目黒(1) + 上海(2) + Tealive(1) + ビック(1) + スタバ(1) + unnamed(2) + パン工房(1) = 12
+    assert len(items) == 12
     assert set(items.columns) >= {"merchant", "merchant_group", "item_name", "total_price"}
