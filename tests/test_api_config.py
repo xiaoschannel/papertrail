@@ -7,31 +7,16 @@ def test_get_config_reflects_fixture(api_client, configured_archive):
     assert resp.json()["root_path"] == str(configured_archive.parent)
 
 
-def test_the_folder_s_subfolders_are_named_as_the_history_expects(tmp_path):
-    """Named the obvious way by hand (Archive, Scans), they would match none of a milestone's paths, as git
-    reports them as they are on disk; they are renamed, keeping what is in them, and a missing one made."""
-    from papertrail.settings import ensure_layout
-
-    root = tmp_path / "My Receipts"
-    (root / "Archive" / "2025").mkdir(parents=True)
-    (root / "Archive" / "batches.json").write_text("{}", encoding="utf-8")
-    (root / "Scans").mkdir()
-    (root / "Scans" / "scan.png").write_bytes(b"x")
-
-    ensure_layout(root)
-
-    assert sorted(p.name for p in root.iterdir()) == ["archive", "scans"]
-    assert (root / "archive" / "batches.json").read_text(encoding="utf-8") == "{}"
-    assert (root / "archive" / "2025").is_dir() and (root / "scans" / "scan.png").read_bytes() == b"x"
-    ensure_layout(root)                                          # named right already: left as it is
-    assert sorted(p.name for p in root.iterdir()) == ["archive", "scans"]
-    ensure_layout(tmp_path / "not made yet")                     # nothing there: nothing made
-    assert not (tmp_path / "not made yet").exists()
-
+def test_setting_the_folder_gives_it_its_two_subfolders(api_client, tmp_path):
+    """A new setup starts with somewhere for the scanner to drop images and somewhere to file them; a folder
+    that isn't there yet is left alone."""
     fresh = tmp_path / "fresh"
     fresh.mkdir()
-    ensure_layout(fresh)
+    assert api_client.patch("/api/config", json={"root_path": str(fresh)}).status_code == 200
     assert sorted(p.name for p in fresh.iterdir()) == ["archive", "scans"]
+
+    assert api_client.patch("/api/config", json={"root_path": str(tmp_path / "not made yet")}).status_code == 200
+    assert not (tmp_path / "not made yet").exists()
 
 
 def test_put_config_persists(api_client):

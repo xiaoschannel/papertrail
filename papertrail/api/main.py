@@ -34,7 +34,7 @@ from papertrail.api.routers import (brands, config, curate, dev, history, ingest
                          workshop)
 from papertrail.api.schemas import Health
 from papertrail.archive.files import FileInUse
-from papertrail.settings import ensure_layout, get_config
+from papertrail.settings import get_config
 
 
 #: The names this machine answers to. The API serves only them: see ``only_this_machine``.
@@ -54,7 +54,6 @@ async def _lifespan(_app: FastAPI):
     milestone (archive.history). A folder that isn't set, or git that isn't there, is left alone."""
     root = get_config().root_path
     if root:
-        ensure_layout(root)       # subfolders named exactly as the history's paths expect
         try:
             if archive_history.unpark(Path(root)):
                 log.info("Unparked the changes committed at the last shutdown.")
