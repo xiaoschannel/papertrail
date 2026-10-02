@@ -515,6 +515,11 @@ def _git(root, *args):
                           encoding="utf-8").stdout.strip()
 
 
+#: what Archive says of the scans whose filed pages aren't in the last commit as they are
+WAITING = ("stay until their filed pages are committed as they are (edited or re-filed since, or never committed; "
+           "a manual commit does it).")
+
+
 def _indexed_scans(tmp_path: Path, ingest_dir: Path) -> Path:
     """``_scans``, committed as File Index's milestone would have: the fixture's batch predates the history,
     so a test that reads the log stages that commit itself."""
@@ -544,7 +549,7 @@ def test_archive_clears_out_scans_filed_earlier_and_leaves_what_is_still_being_i
     edited["review"]["comment"] = "corrected on Receipt Detail"
     page.write_text(json.dumps(edited), encoding="utf-8")
     message = ip.run_archive(ingest_dir, scans, FakeProgress())
-    assert message == "Nothing new to file. 1 scan(s) stay until their filed pages are committed (edited since; a manual commit does it)."
+    assert message == f"Nothing new to file. 1 scan(s) {WAITING}"
     archive_history.commit(ingest_dir.parent, "the edit")
     assert ip.run_archive(ingest_dir, scans, FakeProgress()) == "Nothing new to file. Removed 1 scan(s) from the scan folder."
 
@@ -569,46 +574,84 @@ def test_no_scan_leaves_the_scan_folder_until_the_archive_is_committed(ingest_di
     assert load_scan_index(ingest_dir).batches[0].archived              # filed all the same
     assert len(list(scans.iterdir())) == 8
 
+    # no later run commits what that one filed: the pages wait for a commit by hand, and their scans with them
     monkeypatch.undo()
-    message = ip.run_archive(ingest_dir, scans, FakeProgress())        # the next run commits and clears out
-    assert message.startswith("Nothing new to file. Committed 8 page(s) filed earlier (")
-    assert message.endswith("). Removed 8 scan(s) from the scan folder.")
+    assert ip.run_archive(ingest_dir, scans, FakeProgress()) == f"Nothing new to file. 8 scan(s) {WAITING}"
+    assert len(list(scans.iterdir())) == 8
+    archive_history.commit(tmp_path, archive_history.MANUAL)
+    assert ip.run_archive(ingest_dir, scans, FakeProgress()) == "Nothing new to file. Removed 8 scan(s) from the scan folder."
     assert _git(ingest_dir.parent, "log", "--format=%s").splitlines() == [
-        "Archive: 8 scans cleared out of the scan folder", "Archive: 8 pages filed before the history",
+        "Archive: 8 scans cleared out of the scan folder", archive_history.MANUAL,
         "File Index: batch 1 (8 scans)", "History started"]
     assert list(scans.iterdir()) == []
 
 
-def test_an_archive_from_before_the_history_is_committed_and_its_scans_cleared_out(archive_dir):
-    """The live archive on the first run after this: every page filed so far goes into the first commit,
-    and the scans they came from, still in the scan folder, go. A scan differs from its filed page here
-    (the Workshop turns a marked page in place), and was never committed at File Index: its own bytes go
-    into the history before it is deleted."""
+def _scans_of(archive_dir: Path) -> tuple[Path, list[str]]:
+    """``_scans`` beside a filed archive (none of them its page), and the indexed files it holds."""
+    return _scans(archive_dir.parent, archive_dir), [fn for _, _, fn in iter_indexed_files(load_scan_index(archive_dir))]
+
+
+def test_an_archive_from_before_the_history_waits_for_a_commit_by_hand_then_its_scans_clear_out(archive_dir):
+    """Archive commits only what a run files, so an archive filed before the history began waits for a commit
+    by hand (live's "Initial Commit"), and so do the scans it holds. Then they go, each still in the history
+    byte for byte, though its filed page isn't it any more (the Workshop turns a marked page in place)."""
     import subprocess
 
-    scans = archive_dir.parent / "scans"
-    scans.mkdir()
-    for _, _, fn in iter_indexed_files(load_scan_index(archive_dir)):
-        Image.new("RGB", (40, 80), "white").save(scans / fn)
+    root = archive_dir.parent
+    scans, indexed = _scans_of(archive_dir)
     scanned = {p.name: p.read_bytes() for p in scans.iterdir()}
     (scans / "fresh.png").write_bytes(b"")
 
     plan = ip.plan_archive(archive_dir, scans)
-    assert plan.blocker is None and plan.files == 0 and plan.scans_to_remove == 11
-    message = ip.run_archive(archive_dir, scans, FakeProgress())
+    assert plan.blocker is None and plan.files == 0 and plan.scans_to_remove == len(indexed)
+    assert ip.run_archive(archive_dir, scans, FakeProgress()) == f"Nothing new to file. {len(indexed)} scan(s) {WAITING}"
+    assert archive_history.head(root) is None and len(list(scans.iterdir())) == len(indexed) + 1
 
-    from papertrail.data import filed_scan_pages
-    pages = filed_scan_pages(archive_dir)                    # the 11 indexed scans' pages, and a couple filed otherwise
-    assert len(pages) > 11
-    assert message.startswith(f"Nothing new to file. Committed {len(pages)} page(s) filed earlier (")
-    assert message.endswith("). Removed 11 scan(s) from the scan folder.")
+    archive_history.commit(root, archive_history.MANUAL)
+    assert ip.run_archive(archive_dir, scans, FakeProgress()) == f"Nothing new to file. Removed {len(indexed)} scan(s) from the scan folder."
     assert [p.name for p in scans.iterdir()] == ["fresh.png"]
-    tracked = archive_history.tracked_paths(archive_dir.parent, "archive")
-    assert all(page.relative_to(archive_dir.parent).as_posix() in tracked for page in pages.values())
+    from papertrail.data import filed_scan_pages
+    pages = filed_scan_pages(archive_dir)
     for name, original in scanned.items():                  # deleted, and still there byte for byte
-        kept = subprocess.run(["git", "-C", str(archive_dir.parent), "show", f"HEAD~1:scans/{name}"],
+        kept = subprocess.run(["git", "-C", str(root), "show", f"HEAD~1:scans/{name}"],
                               check=True, capture_output=True).stdout
         assert kept == original and kept != pages[name].read_bytes()
+
+
+def test_a_page_re_filed_after_its_commit_is_left_to_a_commit_by_hand_old_name_and_all(archive_dir):
+    """Re-filing a page under a new name (Receipt Detail here; Normalize, Unnamed, the Workshop, Dedupe) is an
+    edit, so its old name's deletion and its new name wait together, and its scan with them. Archive used to
+    commit the new name alone, as a page "filed before the history", leaving the document under both names in
+    the last commit and the deletion for a later commit."""
+    from papertrail.data import read_sidecar
+    from papertrail.viz.receipt_edit import ReceiptEdit, apply_receipt_edit
+    from papertrail.viz.records import build_viz_records
+
+    root = archive_dir.parent
+    scans, indexed = _scans_of(archive_dir)
+    archive_history.commit(root, archive_history.MANUAL)            # the history's start, as live's was
+    assert ip.run_archive(archive_dir, scans, FakeProgress()) == f"Nothing new to file. Removed {len(indexed)} scan(s) from the scan folder."
+
+    row = next(r for _, r in build_viz_records(archive_dir).iterrows()
+               if len(r["paths"]) == 1 and read_sidecar(archive_dir / r["paths"][0]).original_filename in indexed)
+    [old] = row["paths"]
+    [new] = apply_receipt_edit(archive_dir, [old], ReceiptEdit(
+        document_type=row["document_type"], name="Renamed Shop", date=row["date"], time=row["time"],
+        cost=row["cost"], currency=row["currency"], address=row["address"], language=row["language"],
+        comment=row["comment"]))
+    # its scan still in the scan folder (in use when the last run cleared out, say)
+    Image.new("RGB", (40, 80), "white").save(scans / read_sidecar(archive_dir / new).original_filename)
+    last = archive_history.head(root)
+
+    assert ip.run_archive(archive_dir, scans, FakeProgress()) == f"Nothing new to file. 1 scan(s) {WAITING}"
+    assert archive_history.head(root) == last                       # nothing committed
+    halves = {(f"archive/{Path(page).with_suffix(suffix).as_posix()}", kind)
+              for page, kind in ((old, "deleted"), (new, "added")) for suffix in (".png", ".json")}
+    assert halves <= {(c.path, c.kind) for c in archive_history.changes(root)}
+
+    archive_history.commit(root, archive_history.MANUAL)            # one commit holds the whole move
+    assert halves <= {(c.path, c.kind) for c in archive_history.commit_files(root, archive_history.head(root).sha)}
+    assert ip.run_archive(archive_dir, scans, FakeProgress()) == "Nothing new to file. Removed 1 scan(s) from the scan folder."
 
 
 def test_archiving_files_what_the_calls_behind_a_document_took(ingest_dir, tmp_path):
@@ -642,8 +685,11 @@ def test_run_archive_does_not_finalize_when_a_file_fails_and_resumes_later(inges
 
     Image.new("RGB", (40, 80)).save(scans / "01102025133000_2.png")
     progress = FakeProgress()
-    assert ip.run_archive(ingest_dir, scans, progress).startswith("Archived 1 file(s).")  # only the one left
+    message = ip.run_archive(ingest_dir, scans, progress)
+    assert message.startswith("Archived 1 file(s).")                                    # only the one left
     assert load_scan_index(ingest_dir).batches[0].archived
+    # the batch's commit holds the pages the first run filed too, so every scan leaves
+    assert message.endswith("Removed 8 scan(s) from the scan folder.")
 
 
 def test_run_archive_redoes_a_file_whose_sidecar_failed(ingest_dir, tmp_path, monkeypatch):

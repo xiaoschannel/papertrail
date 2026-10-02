@@ -11,7 +11,8 @@ from papertrail.api import ingest_registry as registry
 from papertrail.api.routers.curate import normalize_engine_options
 from papertrail.api.schemas import ConfigOptions, PathCheck
 from papertrail.ingest.indexing_schemes import SCHEMES
-from papertrail.settings import NAMED_KEYS, TILT_SHARE_RANGE, AppConfig, ensure_layout, get_config, save_config, update_config
+from papertrail.settings import (NAMED_KEYS, TILT_SHARE_RANGE, AppConfig, archive_path, get_config, save_config,
+                                 scans_path, update_config)
 
 router = APIRouter(prefix="/api/config", tags=["config"])
 
@@ -31,11 +32,12 @@ AppConfigPatch = _partial(AppConfig, "AppConfigPatch")
 
 
 def _make_layout() -> None:
-    """The Papertrail folder's two subfolders, when the folder itself is there: a new setup starts with
-    somewhere for the scanner to drop images and somewhere to file them (settings.ensure_layout)."""
+    """The Papertrail folder's two subfolders, made when the folder itself is there: a new setup starts
+    with somewhere for the scanner to drop images and somewhere to file them."""
     root = get_config().root_path
-    if root:
-        ensure_layout(root)
+    if root and Path(root).is_dir():
+        for folder in (scans_path(root), archive_path(root)):
+            folder.mkdir(exist_ok=True)
 
 
 @router.get("")
