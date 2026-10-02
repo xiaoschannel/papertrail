@@ -59,9 +59,11 @@ def _review_document(output_path: Path, document: workshop.MarkedDocument,
                      reread: workshop.Reread | None) -> ReviewDocument:
     """The marked document in Review's shape, so both pages share one form and one set of rules.
 
-    With a reread pending, the text, the form's defaults and the boxes are the reread's. A reread's boxes
-    are measured on the pages turned as it read them, so they are placed on the band the preview shows
-    turned that way (``workshop.reading_trim``); stored boxes, on the page's own trim.
+    With a reread pending, the text, the form's defaults and the boxes are the reread's. ``defaults`` is always
+    the extraction result (the form shows it as "Extracted", and the smart matches look it up); where the form starts
+    is the page's call: from ``decision``, the one Review saved when it marked the document, unless a reread
+    is pending. A reread's boxes are measured on the pages turned as it read them, so they are placed on the
+    band the preview shows turned that way (``workshop.reading_trim``); stored boxes, on the page's own trim.
     """
     sidecar = document.first
     extraction = _extraction(document, reread)

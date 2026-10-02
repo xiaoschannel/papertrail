@@ -38,6 +38,7 @@ def test_saving_unchanged_values_keeps_the_same_file(archive_dir):
 
 def test_editing_renames_the_file_and_rewrites_the_sidecar(archive_dir):
     row = _record(archive_dir)
+    read = read_sidecar(archive_dir / row["path"]).extraction
     [path] = apply_receipt_edit(archive_dir, list(row["paths"]),
                                _edit(row, name="Renamed Shop", cost=99.0, comment="checked the total"))
 
@@ -46,8 +47,43 @@ def test_editing_renames_the_file_and_rewrites_the_sidecar(archive_dir):
     assert sidecar.review.name == "Renamed Shop" and sidecar.review.cost == 99.0
     assert sidecar.review.comment == "checked the total"
     assert sidecar.review.verdict == "accepted"                      # the verdict is never changed
-    assert sidecar.extraction.name == "Renamed Shop"                 # extraction follows the review
+    assert sidecar.extraction == read                                # the extraction result stays as it was
     assert sidecar.original_filename == read_sidecar(archive_dir / path).original_filename
+
+
+def test_an_edit_leaves_the_extraction_result_untouched_on_every_page(archive_dir):
+    row = next(r for _, r in build_viz_records(archive_dir).iterrows() if len(r["paths"]) > 1)
+    before = [read_sidecar(archive_dir / p) for p in row["paths"]]
+
+    after = apply_receipt_edit(archive_dir, list(row["paths"]), _edit(
+        row, document_type="other", name="Retyped", date="2024-02-03", time="04:05", address="新しい住所",
+        language="en"))
+
+    pages = [read_sidecar(archive_dir / p) for p in after]
+    assert [(p.extraction, p.ocr) for p in pages] == [(p.extraction, p.ocr) for p in before]
+    assert {(p.review.document_type, p.review.name, p.review.address, p.review.language) for p in pages} == {
+        ("other", "Retyped", "新しい住所", "en")}
+
+
+@pytest.mark.parametrize("document_type", ["receipt", "other"])
+def test_address_and_language_edits_are_kept_whatever_the_document_type(archive_dir, document_type):
+    row = next(r for _, r in build_viz_records(archive_dir).iterrows() if r["document_type"] == document_type)
+
+    [path] = apply_receipt_edit(archive_dir, list(row["paths"]), _edit(row, address="編集町1-1", language="zh"))
+
+    review = read_sidecar(archive_dir / path).review
+    assert (review.address, review.language) == ("編集町1-1", "zh")
+    shown = _record(archive_dir, row["filename"])
+    assert (shown["address"], shown["language"]) == ("編集町1-1", "zh")
+
+
+def test_an_address_nobody_edited_is_the_extraction_results_and_clearing_it_sticks(archive_dir):
+    row = next(r for _, r in build_viz_records(archive_dir).iterrows() if r["address"])
+    assert read_sidecar(archive_dir / row["path"]).review.address is None   # shown from the extraction
+
+    apply_receipt_edit(archive_dir, list(row["paths"]), _edit(row, address=""))
+
+    assert _record(archive_dir, row["filename"])["address"] == ""           # not the model's again
 
 
 def test_every_page_of_a_multi_page_document_is_refiled_in_page_order(archive_dir):

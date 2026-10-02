@@ -36,8 +36,22 @@ const VERDICT_COLORS: Record<string, string> = { accepted: '#28a745', marked: '#
 const readingTrim = (trim: Trim | null, top: TopPoints | '', degrees = 0) =>
   (top === 'left' || top === 'right' || degrees ? null : trim)
 
-/** The comment review left ("why is this marked?") is part of the document, not a blank field. */
-const startForm = (doc: ReviewDocument): FormState => ({ ...initialForm(doc), comment: doc.decision?.comment ?? '' })
+const DOCUMENT_TYPES: readonly string[] = ['receipt', 'other', 'corrupted']
+
+/**
+ * Where the form starts: the decision Review saved when it marked the document, all of it (what was typed before
+ * marking comes back, and the comment says why it is marked), unless a reread is pending: its extraction
+ * result is new. `doc.defaults` stays the extraction result either way, so the form's "Extracted" note shows it.
+ */
+const startForm = (doc: ReviewDocument, rereading: boolean): FormState => {
+  const recorded = doc.decision
+  if (rereading || !recorded) return { ...initialForm(doc), comment: recorded?.comment ?? '' }
+  const type = (DOCUMENT_TYPES.includes(recorded.document_type) ? recorded.document_type : 'receipt') as FormState['document_type']
+  return {
+    document_type: type, name: recorded.name, date: recorded.date, time: recorded.time,
+    cost: type === 'receipt' ? String(recorded.cost) : '', currency: recorded.currency, comment: recorded.comment,
+  }
+}
 
 /**
  * The bench for documents review marked instead of deciding: treat the scan until OCR can read it,
@@ -95,7 +109,8 @@ export default function Workshop() {
       setEnhancement((current) => ({ ...current, top_points: said.turn ?? '', degrees: said.tilt ?? 0 }))
     }
   }, [said])
-  useEffect(() => setForm(document ? startForm(document) : null), [document])
+  const rereading = reread !== null
+  useEffect(() => setForm(document ? startForm(document, rereading) : null), [document, rereading])
   const discard = useMutation({
     mutationFn: (documentKey: string) => api.workshop.discardReread(documentKey),
     onSuccess: (body) => queryClient.setQueryData(['curate', 'workshop', key], body),

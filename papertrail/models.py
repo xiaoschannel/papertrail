@@ -260,6 +260,10 @@ class ReviewDecision(BaseModel):
     currency: str = ""
     comment: str = ""
     toss_reason: TossReason | None = None
+    #: What a person set these to, in Receipt Detail; None where nobody has (Review's form doesn't show them),
+    #: and what the extraction read stands.
+    address: str | None = None
+    language: str | None = None
 
     @property
     def sliced(self) -> bool:
@@ -340,14 +344,18 @@ class RotationDecision(BaseModel):
 
 
 class DocumentFields(BaseModel):
-    """The fields a document is filed under, as a record keeps them: every one, whatever it was."""
+    """The fields a document is filed under, as a record keeps them: every one, whatever it was.
+
+    As a record's extraction result (``WorkshopRecord.read``), they are the extractor's, as it returned them:
+    an empty name where it found none, and no cost or currency (None) for a document extracted as one that
+    has neither."""
 
     document_type: str
     name: str
     date: str
     time: str
-    cost: float
-    currency: str
+    cost: float | None = None
+    currency: str | None = None
 
 
 class WorkshopReread(BaseModel):
@@ -375,7 +383,8 @@ class WorkshopRecord(BaseModel):
     treatments, their defaults and whatever else wants to know what rescued a document.
 
     ``read`` is what the models read, raw, and ``accepted`` what was filed, both in full; ``corrected``
-    names the fields that differ, and can always be worked out again from the two. Without a reread,
+    names the fields of the accepted document that differ, and can always be worked out again from the two
+    (``curate.workshop.corrected``). Without a reread,
     ``read`` is what the document was read as before it was marked: accepting it so doesn't mean it needed
     no treatment, as its fields may have been typed in by hand after the scan was given up on."""
 
@@ -383,7 +392,8 @@ class WorkshopRecord(BaseModel):
     key: str
     filenames: list[str]
     reread: WorkshopReread | None = None
-    read: DocumentFields
+    #: None: no extraction result (a scan put in ``marked/`` by hand and accepted without a reread)
+    read: DocumentFields | None = None
     accepted: DocumentFields
     corrected: list[str]
 

@@ -161,6 +161,9 @@ def test_a_scan_marked_by_hand_without_a_sidecar_is_listed_and_can_be_decided(ar
 
     [placed] = workshop.accept(archive_dir, document, _decision())
     assert read_sidecar(archive_dir / placed).original_filename == "hand placed.png"
+    record = read_sidecar(archive_dir / placed).workshop
+    assert record.read is None                                   # nothing extracted it: not a receipt costing 0
+    assert record.corrected == ["document_type", "name", "date", "time", "cost", "currency"]
 
 
 
@@ -223,3 +226,57 @@ def test_a_scan_marked_by_hand_can_be_trimmed(archive_dir):
     path, sidecar = workshop.marked_page(archive_dir, "by hand.png")
     workshop.trim_page(path, sidecar, Trim(top=0.2, bottom=1.0))
     assert read_sidecar(path).trim == Trim(top=0.2, bottom=1.0) and read_sidecar(path).review.verdict == "marked"
+
+
+# --- what a record keeps as read ----------------------------------------------------------------------
+def test_a_records_extraction_result_is_the_extractors_not_the_forms_defaults():
+    from papertrail.models import CorruptedResult, OtherResult
+
+    nameless = workshop.read_fields(ReceiptResult(document_type="receipt", language="ja", date="", time="", name="",
+                                                  currency="JPY", address="", cost=300.0))
+    assert (nameless.name, nameless.cost, nameless.currency) == ("", 300.0, "JPY")   # not "Receipt"
+    other = workshop.read_fields(OtherResult(document_type="other", language="en", date="2025-08-10", time="",
+                                             title="Parking Ticket"))
+    assert (other.name, other.date, other.cost, other.currency) == ("Parking Ticket", "2025-08-10", None, None)
+    corrupted = workshop.read_fields(CorruptedResult(document_type="corrupted"))
+    assert (corrupted.name, corrupted.cost, corrupted.currency) == ("", None, None)
+
+
+def test_corrected_names_only_fields_the_accepted_document_has():
+    from papertrail.models import DocumentFields
+
+    read_other = DocumentFields(document_type="other", name="Ticket", date="2025-08-10", time="10:00")
+    as_other = DocumentFields(document_type="other", name="Ticket", date="2025-08-10", time="10:00",
+                              cost=0.0, currency="")
+    assert workshop.corrected(read_other, as_other) == []                 # 0 and "" on an "other" aren't values
+    as_receipt = as_other.model_copy(update={"document_type": "receipt", "cost": 500.0, "currency": "JPY"})
+    assert workshop.corrected(read_other, as_receipt) == ["document_type", "cost", "currency"]
+    read_receipt = as_receipt.model_copy(update={"cost": 480.0})
+    assert workshop.corrected(read_receipt, as_other) == ["document_type"]  # the cost wasn't corrected; it went
+
+
+def test_a_record_of_nothing_extracted_takes_the_decision_without_a_cost_it_never_had(archive_dir):
+    sidecar_path = archive_dir / "marked" / "08102025142000_202.json"
+    data = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    data["review"] |= {"document_type": "other", "cost": 0.0, "currency": ""}
+    sidecar_path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    [document] = workshop.marked_documents(archive_dir)
+
+    review = data["review"]
+    record = workshop.workshop_record(document, _decision(name=review["name"], time=review["time"], cost=0.0), None)
+
+    assert (record.read.document_type, record.read.cost, record.read.currency) == ("other", None, None)
+    assert record.corrected == ["document_type", "cost", "currency"]
+
+
+def test_a_record_of_a_nameless_extraction_result_keeps_the_name_empty(archive_dir):
+    sidecar_path = archive_dir / "marked" / "08102025142000_202.json"
+    data = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    data["extraction"] = ReceiptResult(document_type="receipt", language="ja", date="2025-08-10", time="14:20",
+                                       name="", currency="JPY", address="", cost=300.0).model_dump()
+    sidecar_path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    [document] = workshop.marked_documents(archive_dir)
+
+    record = workshop.workshop_record(document, _decision(name="Typed Shop"), None)
+
+    assert record.read.name == "" and record.corrected == ["name"]

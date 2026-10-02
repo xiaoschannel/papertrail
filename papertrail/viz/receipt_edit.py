@@ -14,7 +14,7 @@ from pathlib import Path
 
 from papertrail.data import remember_confirmed_names
 from papertrail.archive.files import load_pages, place_document
-from papertrail.models import ReceiptResult, ReviewDecision, Sidecar
+from papertrail.models import ReviewDecision
 from papertrail.review.logic import Draft, accept_error
 
 
@@ -67,18 +67,13 @@ def apply_receipt_edit(output_path: Path, page_paths: list[str], edit: ReceiptEd
         cost=(edit.cost or 0.0) if edit.document_type == "receipt" else 0.0,
         currency=edit.currency if edit.document_type == "receipt" else "",
         comment=edit.comment,
+        address=edit.address,
+        language=edit.language,
     )
 
-    def updated(sidecar: Sidecar) -> Sidecar:
-        extraction = sidecar.extraction
-        if edit.document_type == "receipt" and isinstance(extraction, ReceiptResult):
-            extraction = extraction.model_copy(update={
-                "address": edit.address, "language": edit.language, "name": edit.name,
-                "date": edit.date, "time": edit.time, "cost": edit.cost or 0.0, "currency": edit.currency,
-            })
-        return sidecar.model_copy(update={"review": decision, "extraction": extraction})
-
-    new_paths = place_document(output_path, pages, decision, sidecar_for=updated)
+    # Only the decision changes: the extraction result stays as it was, as Review and the Workshop keep it.
+    new_paths = place_document(output_path, pages, decision,
+                               sidecar_for=lambda sidecar: sidecar.model_copy(update={"review": decision}))
     remember_confirmed_names(output_path, [(first, edit.name)])   # teach the smart matcher the name
     return new_paths
 
