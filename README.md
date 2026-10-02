@@ -200,11 +200,12 @@ file, or **Discard all**, throws the changes away: a file goes back to its last 
 commit holds is deleted. Throwing changes away waits while a job runs.
 
 A scan leaves the scan folder only once its filed page is in the last commit as it is on disk. Archive
-removes the scans it just filed, and any filed earlier that are still there; a page edited since keeps its
-scan until the edit is committed, and a scan a batch still being ingested needs stays. An archive from
-before the history gets every page filed so far committed by the first Archive run, which then clears the
-backlog of scans out. If git is missing, Archive stops after filing and says so; the next run commits and
-clears out.
+removes the scans it just filed, and any filed earlier that are still there; a page edited or re-filed
+since (a new name from Receipt Detail, Normalize, Unnamed, the Workshop or Dedupe) keeps its scan until the
+change is committed, and a scan a batch still being ingested needs stays. Archive commits only the batches
+it archives (a run that stopped part-way included), so any other page the history lacks waits for a commit
+by hand. If git is missing, Archive stops after filing and says so; commit on the History page once it is
+installed, and the next run clears out.
 
 The history lives in the folder's `.git`, which roughly doubles the folder's size (images don't compress).
 Keep it on the same backup as the folder: it protects against the app and against mistakes, not against

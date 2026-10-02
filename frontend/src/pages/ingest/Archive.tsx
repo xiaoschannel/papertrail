@@ -91,8 +91,10 @@ export default function Archive() {
             </p>
           )}
           <p>
-            The archive is then committed to its history, and once every file in it is committed the scans it
-            holds are deleted from the scan folder: {which}. A scan a batch still being ingested needs stays.
+            {s.files > 0 && 'What it files is then committed to the history. '}A scan the archive holds is
+            deleted from the scan folder once its filed page is committed as it is: {which}. A page edited or
+            re-filed since keeps its scan until a commit on the History page, and a scan a batch still being
+            ingested needs stays.
           </p>
         </ConfirmDialog>
       )}

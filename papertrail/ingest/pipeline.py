@@ -988,7 +988,7 @@ def plan_archive(output_path: Path, input_path: Path | None = None) -> ArchivePl
     all_complete = bool(unarchived) and len(complete) == len(unarchived)
     slice_problems = [p for b in unarchived for p in slicing.mismatches(b, all_decisions)]
     if not unarchived:
-        # with only scans to clear out, a run commits the archive and removes them
+        # with only scans to clear out, a run removes those whose filed pages are committed
         blocker = None if scans_to_remove else "No new files to organize."
     elif slice_problems:   # an interrupted slice: saving or unslicing the sheet repairs it
         blocker = f"Fix the sliced sheets on the Slice page first: {'; '.join(slice_problems)}."
@@ -1044,10 +1044,11 @@ def _page_paths(root: Path, pages: Iterable[Path]) -> list[str]:
 def run_archive(output_path: Path, input_path: Path, progress: Progress) -> str:
     """Copy every file to its destination with a sidecar; then, only if all succeeded, update the smart-
     match cache, mark the batches archived and delete the mid-ingest files. Then commit what it filed to the
-    folder's history (and any page filed before the history began, or before a commit that failed), and
-    remove every scan whose filed page is in the last commit from the scan folder, committing that too.
-    Re-running resumes: files already archived are skipped by the plan, and a run with nothing new to file
-    still clears the scans out."""
+    folder's history, and remove every scan whose filed page is in the last commit from the scan folder,
+    committing that too. Only the batches it archives are Archive's to commit: any other filed page the
+    history doesn't have as it is on disk (edited or re-filed since, or of a batch whose commit failed) waits
+    for a manual commit, and its scan with it. Re-running resumes: files already archived are skipped by
+    the plan, and a run with nothing new to file still clears the scans out."""
     plan = plan_archive(output_path, input_path)
     if plan.blocker:
         raise ValueError(plan.blocker)
@@ -1142,35 +1143,29 @@ def run_archive(output_path: Path, input_path: Path, progress: Progress) -> str:
             else:
                 (output_path / name).unlink()
 
-    # Milestone: what this run filed. A HistoryError (git missing, a repository problem) fails the run here,
-    # with the batches filed and every scan still where it was; the next run commits and clears them out.
+    # Milestone: the batches this run archived, every page of them, those a run that stopped part-way (a file
+    # that failed, a cancel) filed too. A HistoryError (git missing, a repository problem) fails the run here,
+    # with the batches filed and every scan still where it was; a manual commit takes the pages, and the
+    # next run clears the scans out.
     root = root_of(output_path)
+    pages = filed_scan_pages(output_path)
     sha = None
     if plan.moves:
         progress.say("Committing the filed pages…")
-        sha = archive_history.commit(root, _archive_commit_message(plan.complete_batch_ids, copied), [
-            *_page_paths(root, (output_path / m.destination for m in plan.moves)),
+        archived = {fn for b in scan_index.batches if b.batch_id in plan.complete_batch_ids
+                    for fn in b.files.values()}
+        filed = [page for fn, page in pages.items() if fn in archived]
+        sha = archive_history.commit(root, _archive_commit_message(plan.complete_batch_ids, len(filed)), [
+            *_page_paths(root, filed),
             f"{ARCHIVE_DIR}/batches.json", f"{ARCHIVE_DIR}/smart_match_cache.json", f"{ARCHIVE_DIR}/{ROTATION_LOG}",
             f"{ARCHIVE_DIR}/{WORKSHOP_LOG}",
             *(f"{ARCHIVE_DIR}/{name}" for name in CLEANUP_ARTIFACTS)])
 
-    # A filed page the history doesn't have yet is Archive's too: filed before the history began, or by a
-    # run whose commit failed. (One the history has but that changed since is someone's edit, and waits.)
-    pages = filed_scan_pages(output_path)
-    tracked = archive_history.tracked_paths(root, ARCHIVE_DIR)
-    earlier = [page for page in pages.values() if page.relative_to(root).as_posix() not in tracked]
-    earlier_sha = None
-    if earlier:
-        progress.say(f"Committing {len(earlier)} page(s) filed earlier…")
-        earlier_sha = archive_history.commit(
-            root, f"Archive: {len(earlier)} page{'s' if len(earlier) != 1 else ''} filed before the history",
-            _page_paths(root, earlier))
-        tracked = archive_history.tracked_paths(root, ARCHIVE_DIR)
-
     # A scan leaves the scan folder only for a filed page that is in the last commit as it is on disk; and
     # its own bytes go into the history first, since the page may not be them any more (the Workshop turns
-    # a page in place) and a scan filed before the history began was never committed at File Index.
+    # a page in place) and a scan whose File Index commit failed was never committed.
     progress.say("Removing the filed scans from the scan folder…")
+    tracked = archive_history.tracked_paths(root, ARCHIVE_DIR)
     dirty = archive_history.changed_paths(root, [ARCHIVE_DIR]) or set()
 
     def committed(page: Path) -> bool:
@@ -1206,13 +1201,11 @@ def run_archive(output_path: Path, input_path: Path, progress: Progress) -> str:
         parts.append(f"Cleaned up {', '.join(cleaned)}.")
     if sha:
         parts.append(f"Committed the filed pages ({sha}).")
-    if earlier_sha:
-        parts.append(f"Committed {len(earlier)} page(s) filed earlier ({earlier_sha}).")
     if removed:
         parts.append(f"Removed {len(removed)} scan(s) from the scan folder.")
     if waiting:
-        parts.append(f"{waiting} scan(s) stay until their filed pages are committed (edited since; a manual "
-                     f"commit does it).")
+        parts.append(f"{waiting} scan(s) stay until their filed pages are committed as they are (edited or "
+                     f"re-filed since, or never committed; a manual commit does it).")
     if in_use:
         parts.append(f"{len(in_use)} scan(s) couldn't be removed (in use?): {', '.join(in_use[:5])}"
                      f"{'…' if len(in_use) > 5 else ''}; the next run will.")

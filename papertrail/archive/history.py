@@ -14,14 +14,17 @@ whatever else happens to be uncommitted:
   scans as turned, the crops, the grouping and what it cleared). The pages apply each edit as it is made;
   Finalize is the one commit for the step, however many batches it covers.
 * OCR, Parse ending, however they ended: that run's result files.
-* Archive: the filed pages, the index, the match cache, the working files it deleted; then, once every
-  filed page is in the last commit, the scans it removed from the scan folder.
+* Archive: every page of the batches it archived, the index, the match cache, the working files it
+  deleted; then the scans it removed from the scan folder, each once its filed page is in the last commit
+  as it is on disk.
 * A manual commit, from the History page: everything uncommitted, with a message.
 * The API stopping: everything uncommitted, as a parking commit (``PARKED``) that the next start undoes,
   so those changes go back to uncommitted and land in their proper milestone.
 
-Nothing else commits. Review decisions, Workshop decisions, Receipt Detail edits, Normalize and Dedupe
-accumulate, and the sidebar shows how many files wait, until a milestone that owns them or a manual commit.
+Nothing else commits. Review decisions, Workshop decisions, Receipt Detail edits, Normalize, Unnamed and
+Dedupe accumulate (a page one of them re-files under a new name too: its old name's deletion and its new
+name wait together), and the sidebar shows how many files wait, until a milestone that owns them or a manual
+commit.
 
 The History page also takes things back, in two separate steps. :func:`uncommit` undoes the last
 commit and leaves every file as it is, its changes uncommitted again (to commit differently, or to throw
